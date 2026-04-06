@@ -61,6 +61,23 @@ npx expo start
 - **web-dashboard-expert**: 웹 대시보드 전문가
 - **pro-plan-guard**: Pro 플랜 기능 체크 전문가
 
+## MCP 설정
+Claude Code와 Cursor에서 외부 서비스에 직접 접근할 수 있어요.
+
+| MCP | 용도 |
+|---|---|
+| Firebase | Firestore 데이터 직접 조회·수정 |
+| GitHub | 이슈, PR, 브랜치 관리 |
+| Figma | 디자인을 코드로 자동 변환 |
+| Playwright | 웹 대시보드 자동 테스트 |
+| Sequential Thinking | 복잡한 문제 단계별 분석 |
+
+### 설정 방법
+Cursor → Settings → MCP 탭에서 위 MCP들을 추가하세요.
+- GitHub: Personal access token 필요 (github.com → Settings → Developer settings)
+- Figma: API key 필요 (figma.com → Settings → Personal access tokens)
+- Firebase, Playwright, Sequential Thinking: 별도 키 불필요
+
 ## 주의사항
 - .env.local은 절대 GitHub에 올리지 말 것 (.gitignore에 포함됨)
 - UI 텍스트는 반드시 constants/strings.ts에서 관리
