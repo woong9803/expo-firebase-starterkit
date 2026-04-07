@@ -1,12 +1,6 @@
 {
+  "ENABLE_TOOL_SEARCH": "auto",
   "mcpServers": {
-    "firebase": {
-      "command": "npx",
-      "args": ["-y", "firebase-tools-mcp"],
-      "env": {
-        "FIREBASE_PROJECT_ID": "${EXPO_PUBLIC_FIREBASE_PROJECT_ID}"
-      }
-    },
     "github": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
@@ -14,12 +8,15 @@
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
     },
-    "figma": {
-      "command": "npx",
-      "args": ["-y", "figma-developer-mcp"],
+    "shrimp-task-manager": {
+      "command": "node",
+      "args": ["/Users/lyh3254/desktop/project/mcp-shrimp-task-manager/dist/index.js"],
       "env": {
-        "FIGMA_API_KEY": "${FIGMA_API_KEY}"
+        "DATA_DIR": "/Users/lyh3254/Desktop/project/dev-app-first/shirmp_data",
+        "TEMPLATES_USE": "en",
+        "ENABLE_GUI": "true"
       }
     }
   }
 }
+
