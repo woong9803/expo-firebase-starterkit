@@ -1,47 +1,57 @@
-# CLAUDE.md
+Claude Code가 이 프로젝트에서 작업할 때 자동으로 읽는 지침서입니다.
+세부 규칙은 `.claude/rules/` 파일을 참조하세요.
 
-이 파일은 Claude Code가 이 프로젝트에서 작업할 때 자동으로 읽는 지침서입니다.
+---
 
-## 기술 스택 — 앱
-- React Native + Expo (expo-router, TypeScript strict 모드)
-- Firebase (Firestore, Auth, Storage, FCM, Cloud Functions)
-- Zustand (전역 상태관리)
+## 기술 스택
 
-## 기술 스택 — 웹 대시보드 (admin 전용)
-- React + Vite + TypeScript
-- TailwindCSS + React Query + Recharts
-- Firebase (앱과 동일한 DB 공유)
-- Firebase Hosting 또는 Vercel 배포
+### 앱 (React Native)
+- **프레임워크**: React Native + Expo + TypeScript (strict 모드)
+- **라우팅**: expo-router (파일 기반, 역할별 화면 분리)
+- **상태관리**: Zustand
+- **백엔드**: Firebase — Firestore · Auth · Storage · FCM · Cloud Functions
 
-## 개발 명령어
-npx expo start           # 앱 개발 서버
-npx expo start --ios     # iOS 시뮬레이터
-npx expo start --android # 안드로이드 에뮬레이터
+### 웹 대시보드 (admin 전용)
+- **프레임워크**: React + Vite + TypeScript
+- **스타일**: TailwindCSS
+- **데이터**: React Query + Firebase (앱과 동일 DB 공유)
+- **차트**: Recharts
+- **배포**: Firebase Hosting 또는 Vercel
+
+---
 
 ## 폴더 구조
-app/(auth)/     # 로그인 전 화면 (로그인, 회원가입)
-app/(app)/      # 로그인 후 화면 (메인 기능)
-lib/            # Firebase 초기화, 헬퍼 함수
-store/          # Zustand 전역 상태
-types/          # TypeScript 타입 정의
-constants/      # UI 텍스트 (strings.ts — 하드코딩 금지)
-components/     # 재사용 가능한 공통 컴포넌트
 
-## 코딩 규칙
-- 모든 UI 텍스트는 constants/strings.ts에서 가져올 것 (하드코딩 금지)
-- Firebase 초기화는 lib/firebase.ts 하나에서만 관리
-- 전역 상태는 Zustand store에서만 관리
-- 환경변수는 반드시 .env.local에서 관리 — 코드에 키 하드코딩 금지
-- EXPO_PUBLIC_ 접두사 없는 환경변수는 앱에서 읽히지 않음
-- 마감 시간 판단은 반드시 serverTimestamp() 사용 (클라이언트 시간 금지)
-- 카카오 Admin Key는 Cloud Functions 환경변수에만 저장 — 클라이언트 코드 절대 금지
+```
+app/             # Expo 앱 소스 → app/CLAUDE.md 참조
+├── (auth)/      # 로그인 전 화면
+└── (app)/       # 로그인 후 화면 (역할별 분기)
 
-## 학원 승인 정책
-- admin 가입 직후 status: pending — 기능 제한 상태
-- status: active 확인 후에만 전체 기능 사용 가능
-- 미승인 시 학생 3명, 반 1개까지만 허용
-- Security Rules에서 academies.status 반드시 체크
+functions/       # Cloud Functions → functions/CLAUDE.md 참조
+├── auth/
+├── homework/
+├── academy/
+└── notifications/
 
-## 권한 구조
-- admin: 전체 권한
-- teacher: adfdafdafadfd
+components/      # 재사용 공통 컴포넌트
+lib/             # Firebase 초기화, 헬퍼 함수
+store/           # Zustand 전역 상태
+types/           # TypeScript 타입 정의
+constants/       # strings.ts — UI 텍스트 (하드코딩 금지)
+.claude/rules/   # 세부 규칙 문서
+```
+
+> 각 폴더 진입 시 해당 `CLAUDE.md` 를 우선 참조할 것
+> - `app/CLAUDE.md` — expo-router·컴포넌트·카메라·인증 흐름
+> - `functions/CLAUDE.md` — 트리거 유형·함수 목록·배포 명령어
+
+---
+
+## 세부 규칙 참조
+
+| 파일 | 내용 | 로드 조건 |
+|------|------|----------|
+| `.claude/rules/workflow.md` | 빌드·테스트·린트 명령어, 작업 순서 | 항상 (전역) |
+| `.claude/rules/coding.md` | 코딩 컨벤션, Firebase·환경변수·상태관리 규칙 | `app/` `components/` `lib/` `store/` `types/` `constants/` 작업 시 |
+| `.claude/rules/security.md` | Security Rules 원칙, 역할별 권한표, 학원 승인 정책 | `firestore.rules` `storage.rules` `app/(auth)/` `lib/firebase.ts` `functions/` 작업 시 |
+| `.claude/rules/domain-terms.md` | 역할·출결·숙제·구독 등 도메인 용어 정의 | `app/` `components/` `lib/` `store/` `types/` 작업 시 |

@@ -1,0 +1,41 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─────────────────────────────────────────────
+    // 공통: 로그인하지 않은 사용자는 전체 접근 금지
+    // ─────────────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    // 숙제 제출 이미지
+    // 경로: homeworks/{homeworkId}/{studentUid}/{filename}
+    // ─────────────────────────────────────────────
+    match /homeworks/{homeworkId}/{studentUid}/{filename} {
+      // 본인 또는 로그인한 사용자(선생님·원장님)는 읽기 가능
+      allow read: if request.auth != null;
+      // 본인 uid 경로에만 업로드 가능 (학생 본인 제출물만)
+      allow write: if request.auth != null
+                   && request.auth.uid == studentUid
+                   // 이미지 파일만 허용 (최대 10MB)
+                   && request.resource.contentType.matches('image/.*')
+                   && request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    // ─────────────────────────────────────────────
+    // 프로필 이미지
+    // 경로: profiles/{uid}/{filename}
+    // ─────────────────────────────────────────────
+    match /profiles/{uid}/{filename} {
+      // 로그인한 사용자라면 누구든 읽기 가능 (공개 프로필)
+      allow read: if request.auth != null;
+      // 본인 uid 경로에만 업로드 가능
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.contentType.matches('image/.*')
+                   && request.resource.size <= 5 * 1024 * 1024;
+    }
+  }
+}

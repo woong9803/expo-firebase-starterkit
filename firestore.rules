@@ -1,0 +1,158 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────
+    // 공통 헬퍼 함수
+    // ─────────────────────────────────────────────
+
+    // 로그인 여부 확인
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 현재 사용자 문서 가져오기
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // 현재 사용자의 역할 반환
+    function getUserRole() {
+      return getUserData().role;
+    }
+
+    // 특정 학원의 소속 멤버인지 확인
+    function isAcademyMember(academyId) {
+      return getUserData().academy_id == academyId;
+    }
+
+    // admin 또는 teacher 역할인지 확인
+    function isStaff() {
+      return getUserRole() in ['admin', 'teacher'];
+    }
+
+    // admin 역할인지 확인
+    function isAdmin() {
+      return getUserRole() == 'admin';
+    }
+
+    // 학원 승인 상태가 active인지 확인 (pending 상태 기능 제한)
+    function isAcademyActive(academyId) {
+      return get(/databases/$(database)/documents/academies/$(academyId)).data.status == 'active';
+    }
+
+    // ─────────────────────────────────────────────
+    // academies/{academyId} — 학원
+    // ─────────────────────────────────────────────
+    match /academies/{academyId} {
+      // 소속 멤버만 읽기 가능
+      allow read: if isAuthenticated() && isAcademyMember(academyId);
+      // admin만 학원 정보 수정 가능
+      allow write: if isAuthenticated()
+                   && isAcademyMember(academyId)
+                   && isAdmin();
+      // 신규 학원 생성은 누구든 가능 (가입 온보딩 흐름)
+      allow create: if isAuthenticated();
+    }
+
+    // ─────────────────────────────────────────────
+    // users/{uid} — 사용자
+    // ─────────────────────────────────────────────
+    match /users/{uid} {
+      // 본인 또는 같은 학원 소속이면 읽기 가능
+      allow read: if isAuthenticated()
+                  && (request.auth.uid == uid
+                      || isAcademyMember(resource.data.academy_id));
+      // 본인 문서만 수정 가능
+      allow write: if isAuthenticated() && request.auth.uid == uid;
+      // 신규 가입 시 본인 문서 생성 가능
+      allow create: if isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // ─────────────────────────────────────────────
+    // classes/{classId} — 반
+    // ─────────────────────────────────────────────
+    match /classes/{classId} {
+      // 같은 학원 소속이면 읽기 가능
+      allow read: if isAuthenticated()
+                  && isAcademyMember(resource.data.academy_id);
+      // admin 또는 teacher만 반 생성·수정·삭제 가능
+      allow write: if isAuthenticated()
+                   && isAcademyMember(resource.data.academy_id)
+                   && isStaff();
+      allow create: if isAuthenticated() && isStaff();
+    }
+
+    // ─────────────────────────────────────────────
+    // homeworks/{homeworkId} — 숙제
+    // ─────────────────────────────────────────────
+    match /homeworks/{homeworkId} {
+      // 같은 반 소속이면 읽기 가능
+      allow read: if isAuthenticated()
+                  && (getUserData().class_id == resource.data.class_id
+                      || isStaff());
+      // teacher 또는 admin만 숙제 출제 가능
+      allow write: if isAuthenticated() && isStaff();
+      allow create: if isAuthenticated() && isStaff();
+
+      // homeworks/{homeworkId}/submissions/{studentUid} — 제출물
+      match /submissions/{studentUid} {
+        // 본인(학생), teacher, admin 읽기 가능
+        allow read: if isAuthenticated()
+                    && (request.auth.uid == studentUid || isStaff());
+        // 학생 본인만 제출 가능
+        allow write: if isAuthenticated()
+                     && request.auth.uid == studentUid
+                     && getUserRole() == 'student';
+        allow create: if isAuthenticated()
+                      && request.auth.uid == studentUid
+                      && getUserRole() == 'student';
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // attendances/{classId_date} — 출결
+    // (문서 ID 형식: {classId}_{YYYY-MM-DD})
+    // ─────────────────────────────────────────────
+    match /attendances/{attendanceDoc} {
+      // 같은 학원 소속이면 읽기 가능
+      allow read: if isAuthenticated();
+      // teacher, admin만 출결 입력·수정 가능
+      allow write: if isAuthenticated() && isStaff();
+      allow create: if isAuthenticated() && isStaff();
+    }
+
+    // ─────────────────────────────────────────────
+    // notices/{noticeId} — 공지사항
+    // ─────────────────────────────────────────────
+    match /notices/{noticeId} {
+      // 같은 학원 소속이면 읽기 가능
+      allow read: if isAuthenticated()
+                  && isAcademyMember(resource.data.academy_id);
+      // teacher, admin만 공지 작성·수정·삭제 가능
+      allow write: if isAuthenticated()
+                   && isAcademyMember(resource.data.academy_id)
+                   && isStaff();
+      allow create: if isAuthenticated() && isStaff();
+    }
+
+    // ─────────────────────────────────────────────
+    // notifications/{notifId} — 알림
+    // ─────────────────────────────────────────────
+    match /notifications/{notifId} {
+      // 수신자 본인만 읽기 가능
+      allow read: if isAuthenticated()
+                  && request.auth.uid == resource.data.target_uid;
+      // 클라이언트 직접 쓰기 금지 — Cloud Functions에서만 생성
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    // appConfig/v1 — 앱 버전 설정 (읽기 전용)
+    // ─────────────────────────────────────────────
+    match /appConfig/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // 콘솔/Functions에서만 관리
+    }
+  }
+}
