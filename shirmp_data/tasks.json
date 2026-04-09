@@ -47,14 +47,14 @@
       "name": "TASK 101: lib/auth.ts — 인증 헬퍼 함수 구현",
       "description": "모든 인증 화면에서 공통으로 사용할 헬퍼 함수를 lib/auth.ts에 구현한다. Firebase Auth 래퍼, Firestore users 문서 생성, 코드 검증 로직을 포함한다.",
       "notes": "카카오 Admin Key는 Cloud Function에서만 사용. 클라이언트에서는 httpsCallable로만 호출. serverTimestamp()를 created_at에 사용. Collections 헬퍼(lib/firestore.ts) import 사용.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "750f0c4c-809d-4ba4-9ebc-e513cf6f7755"
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-08T02:36:04.347Z",
       "relatedFiles": [
         {
           "path": "lib/auth.ts",
@@ -84,21 +84,23 @@
       ],
       "implementationGuide": "export 함수 목록:\n- signInWithEmail(email, password)\n- signUpWithEmail(email, password)\n- signInWithGoogle()\n- signInWithApple() (iOS 전용)\n- signInWithKakao(): httpsCallable kakaoLogin 호출 → signInWithCustomToken()\n- sendPhoneOtp(phoneNumber): 중복 번호 체크 후 signInWithPhoneNumber()\n- verifyPhoneOtp(verificationId, code)\n- createUserDoc(uid, data): users/{uid} setDoc\n- validateAcademyCode(code): academies where academy_code == code\n- validateInviteCode(code): classes where invite_code == code\n- validateLinkCode(code): users where link_code == code AND role == student\n- generateLinkCode(): 6자리 영숫자 랜덤\n- checkPhoneDuplicate(phone): users where phone_number == phone",
       "verificationCriteria": "npx tsc --noEmit 에러 없음. 모든 export 함수가 올바른 타입 시그니처를 가짐. Collections 헬퍼를 통해서만 Firestore 접근.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "lib/auth.ts 생성 완료. 이메일/소셜(Google/Apple/카카오)/Phone OTP 인증 래퍼, Firestore users 문서 생성/업데이트, 학원코드·반코드·연동코드 검증, 6자리 코드 생성, 중복번호 체크 총 13개 함수 구현. 동일 이메일 충돌 처리, E.164 전화번호 변환, 카카오 Cloud Function 연동 포함. types/index.ts에 academy_code 필드 추가. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-08T02:36:04.338Z"
     },
     {
       "id": "7e2780a7-548d-40d6-8f0b-874a971dfdd9",
       "name": "TASK 102: app/(auth)/login.tsx — 로그인 화면 구현",
       "description": "이메일/비밀번호 + Google/Apple/카카오 소셜 로그인을 지원하는 로그인 화면을 구현한다. UI 가이드(딥 블루 테마, 버튼 스타일)를 준수한다.",
       "notes": "로그인 성공 후 router.replace() 불필요 — app/_layout.tsx onAuthStateChanged가 자동 처리. StyleSheet.create() 사용. 텍스트는 strings.auth에서 import.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "0d8a8c2a-b0c1-48cb-9df5-1de2933d80f2"
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-08T02:46:25.590Z",
       "relatedFiles": [
         {
           "path": "app/(auth)/login.tsx",
@@ -123,21 +125,23 @@
       ],
       "implementationGuide": "컴포넌트 구조:\n- ScrollView 기반 레이아웃\n- 앱 로고 + 타이틀\n- 이메일/비밀번호 TextInput (border 1.5px #E2E8F0, borderRadius 10px)\n- Primary 버튼 (bg #2176C7, borderRadius 10px, fontWeight 700)\n- 구분선 '또는'\n- Google 버튼 (bg #fff, border 1.5px #E2E8F0, color #333)\n- Apple 버튼 (bg #0F172A) — Platform.OS === 'ios'만 렌더\n- 카카오 버튼 (bg #FEE500, color #191919)\n- '회원가입하기' 링크 → router.push('/(auth)/register')\n로직: 각 버튼에서 lib/auth.ts 헬퍼 호출, 로딩 useState, 에러 표시",
       "verificationCriteria": "이메일 로그인 성공 시 /(app)/로 이동. 소셜 로그인 버튼이 각각 올바른 스타일로 렌더됨. Apple 버튼은 iOS에서만 표시됨. 잘못된 자격증명 시 에러 메시지 표시.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "app/(auth)/login.tsx 구현 완료. 이메일/비밀번호 + Google/Apple(iOS 전용)/카카오 소셜 로그인 버튼 구현. UI 가이드 색상 스펙 준수(Primary #2176C7, Google #fff+border, Apple #0F172A, Kakao #FEE500). StyleSheet.create() 사용, constants/strings.ts에서 모든 텍스트 import, 에러 인라인 표시(#FEF2F2 박스), 로그인 성공 후 _layout.tsx 자동 라우팅 위임. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-08T02:46:25.590Z"
     },
     {
       "id": "3c170a6b-4f85-4e46-b14d-b63bf14493fe",
       "name": "TASK 103: app/(auth)/register.tsx + StepIndicator — 회원가입 화면 및 공용 컴포넌트",
       "description": "이메일/비밀번호 회원가입 화면과 온보딩 전체에서 공용으로 쓰이는 StepIndicator 컴포넌트를 구현한다.",
       "notes": "StepIndicator는 TASK 104(phone-verify), TASK 106(code-input)에서도 사용. components/ 폴더에 분리하여 재사용성 확보.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "0d8a8c2a-b0c1-48cb-9df5-1de2933d80f2"
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-09T02:08:53.931Z",
       "relatedFiles": [
         {
           "path": "app/(auth)/register.tsx",
@@ -167,21 +171,23 @@
       ],
       "implementationGuide": "components/StepIndicator.tsx:\n- interface Props: { steps: number, current: number }\n- 완료 스텝: bg #2176C7 + 흰 체크 아이콘\n- 현재 스텝: bg #2176C7 + 숫자 + shadowColor '#B5D4F4' (glow ring)\n- 미완료 스텝: bg #F1F5F9 + 회색 숫자\n- 스텝 사이 연결선 렌더\n\nregister.tsx:\n- StepIndicator steps={3} current={1}\n- 이름, 이메일, 비밀번호, 비밀번호 확인 TextInput\n- 유효성 검사: 이메일 형식, 비밀번호 8자 이상, 비밀번호 일치\n- signUpWithEmail 호출 후 성공 시 router.push('/(auth)/phone-verify')\n- 에러 인라인 표시",
       "verificationCriteria": "회원가입 폼 유효성 검사 동작. 성공 시 phone-verify로 이동. StepIndicator가 현재 스텝을 시각적으로 올바르게 표시.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "components/StepIndicator.tsx 신규 생성 — 완료(파란 원+흰 체크)/현재(파란 원+숫자+glow ring #B5D4F4)/미완료(회색 원+회색 숫자) 3가지 상태 + 스텝 사이 연결선 렌더. app/(auth)/register.tsx 구현 — 이름/이메일/비밀번호/확인 폼, 이메일 형식·8자 이상·일치 유효성 검사, signUpWithEmail 후 phone-verify로 이동(name 파라미터 전달), 이미 사용 중인 이메일 에러 처리. UI 가이드 색상 스펙 준수. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-09T02:08:53.930Z"
     },
     {
       "id": "094be210-725d-4985-9cb3-1355658956c3",
       "name": "TASK 104: app/(auth)/phone-verify.tsx — 휴대폰 OTP 인증 화면",
       "description": "Firebase Phone Auth 기반 SMS OTP 인증 화면을 구현한다. 6칸 OTP 박스 UI와 자동 포커스 이동, 중복 번호 체크를 포함한다.",
       "notes": "신규 파일 생성. TextInput ref 배열은 useRef<(TextInput | null)[]>([]) 패턴 사용. onKeyPress에서 Backspace 감지하여 이전 칸 포커스 이동 처리.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "3c170a6b-4f85-4e46-b14d-b63bf14493fe"
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-09T02:17:09.354Z",
       "relatedFiles": [
         {
           "path": "app/(auth)/phone-verify.tsx",
@@ -211,21 +217,23 @@
       ],
       "implementationGuide": "phone-verify.tsx (신규 파일):\n- StepIndicator steps={3} current={2}\n- 전화번호 TextInput (국가코드 +82 기본값)\n- '인증번호 받기' 버튼 → sendPhoneOtp() 호출\n- OTP 6칸 박스 UI:\n  - TextInput ref 배열 6개 (useRef<TextInput>[])\n  - 각 칸 width:38, height:46, textAlign:'center', maxLength:1\n  - 입력됨: borderColor '#378ADD', bg '#E6F1FB', color '#0C447C'\n  - 현재 입력 포커스: borderColor '#2176C7', shadowColor '#B5D4F4'\n  - 미입력: borderColor '#E2E8F0', bg '#F8FAFC'\n  - onChangeText: 값 입력 시 다음 칸 자동 포커스, 삭제 시 이전 칸 포커스\n- '확인' 버튼 → verifyPhoneOtp() → 성공 시 router.push('/(auth)/role-select')\n- 중복 번호 에러: strings.errors.duplicatePhone 표시\n- 재발송 버튼 (60초 타이머, useEffect 카운트다운)",
       "verificationCriteria": "OTP 6칸 박스 UI 가이드 스펙대로 렌더됨. 숫자 입력 시 자동 포커스 이동. Backspace 시 이전 칸 이동. 인증 성공 후 role-select로 이동. 중복 번호 에러 메시지 표시.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "app/(auth)/phone-verify.tsx 신규 구현. StepIndicator steps=3 current=2, 전화번호 입력→OTP 입력 2단계 플로우, 6칸 OTP 박스(38×46px) 미입력/포커스/입력됨 3가지 상태 UI 가이드 스펙 준수(border #E2E8F0/#2176C7/#378ADD, bg #F8FAFC/#fff/#E6F1FB, glow ring #B5D4F4), 숫자 입력 시 다음 칸 자동 포커스/Backspace 시 이전 칸 이동, 60초 재전송 타이머, DUPLICATE_PHONE 에러 처리, OTP 검증 성공 후 role-select 이동 및 users 문서 초기 생성. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-09T02:17:09.353Z"
     },
     {
       "id": "4579c0ba-e23f-49e6-be3a-ddb7d93f02d1",
       "name": "TASK 105: app/(auth)/role-select.tsx + academy-register.tsx — 역할 선택 및 학원 등록 화면",
       "description": "역할 선택 화면(4개 카드 UI)과 admin 전용 학원 등록 화면을 구현한다.",
       "notes": "academy-register.tsx 신규 파일. Firestore academies 문서 ID는 addDoc 자동 생성. serverTimestamp() 사용 필수. Collections 헬퍼 사용.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "0d8a8c2a-b0c1-48cb-9df5-1de2933d80f2"
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-09T02:21:47.123Z",
       "relatedFiles": [
         {
           "path": "app/(auth)/role-select.tsx",
@@ -255,14 +263,16 @@
       ],
       "implementationGuide": "role-select.tsx:\n- StepIndicator steps={3} current={3}\n- 4개 역할 카드 (원장님/선생님/학생/학부모)\n- 선택 시: borderColor '#2176C7', bg '#E6F1FB' / 체크 원: bg '#2176C7'\n- 미선택: borderColor '#E2E8F0'\n- 역할 선택 후 분기:\n  - admin → router.push('/(auth)/academy-register')\n  - 나머지 → router.push('/(auth)/code-input', { params: { role } })\n\nacademy-register.tsx (신규 파일):\n- 운영 유형 카드 3개: 학원/교습소/개인과외\n- 학원명, 대표자명, 연락처, 주소 TextInput\n- '학원 만들기' Primary 버튼\n- 제출: academies addDoc { status:'pending', plan:'free', submitted_at: serverTimestamp(), ... } → users 업데이트 { role:'admin', academy_id } → router.replace('/(auth)/pending')",
       "verificationCriteria": "역할 카드 선택 시 시각적 피드백. admin 선택 후 academy-register 이동. 학원 등록 후 Firestore academies 문서가 status:pending으로 생성됨. pending 화면으로 이동.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "role-select.tsx 구현 — StepIndicator steps=3 current=3, 4개 역할 카드(원장님/선생님/학생/학부모) 2×2 그리드, 선택 시 border #2176C7+bg #E6F1FB+체크 원 bg #2176C7, admin→academy-register/나머지→code-input 분기. academy-register.tsx 신규 구현 — 운영 유형 3종 카드(학원/교습소/개인과외), 학원명/대표자명/연락처/주소 폼, academies addDoc(status:pending, academy_code 자동 생성), users updateDoc(role:admin, academy_id), pending 화면으로 이동. serverTimestamp() 사용, Collections 헬퍼 사용. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-09T02:21:47.122Z"
     },
     {
       "id": "9791a658-314c-46ec-96f5-2ba706a5c168",
       "name": "TASK 106: app/(auth)/code-input.tsx + pending.tsx — 코드 입력 및 승인 대기 화면",
       "description": "teacher/student/parent의 코드 입력 화면(브루트포스 방지 포함)과 admin 승인 대기 화면을 구현한다.",
       "notes": "arrayUnion은 firebase/firestore에서 import. Academy 타입에 academy_code 필드 없으면 types/index.ts에 추가 필요.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "0d8a8c2a-b0c1-48cb-9df5-1de2933d80f2"
@@ -272,7 +282,7 @@
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-09T02:28:19.742Z",
       "relatedFiles": [
         {
           "path": "app/(auth)/code-input.tsx",
@@ -302,21 +312,23 @@
       ],
       "implementationGuide": "code-input.tsx:\n- router.params에서 role 수신\n- 역할별 안내 텍스트 (teacher:학원코드 / student:반코드 / parent:연동코드)\n- 브루트포스 방지: attemptCount, isLocked, lockTimer useState\n  - 5회 오류 시 isLocked=true, 30초 카운트다운 후 해제\n  - useEffect 1초마다 lockTimer--\n- '확인' 버튼: validateAcademyCode/validateInviteCode/validateLinkCode 호출\n  - teacher: users 업데이트 { role:'teacher', academy_id }\n  - student: users 업데이트 { role:'student', class_id, academy_id, link_code: generateLinkCode() }\n  - parent: users 업데이트 { role:'parent', children: arrayUnion(studentUid) }\n  - 성공: router.replace('/(app)/')\n\npending.tsx:\n- 로고 + '승인 대기 중' 안내\n- 허용 기능 목록 (학생 3명, 반 1개, 기본 출결·숙제·공지)\n- 차단 기능 목록 (선생님 초대, Pro 플랜)\n- '로그아웃' 버튼: signOut(auth) + clearUser()",
       "verificationCriteria": "5회 오류 후 30초 잠금 동작. teacher 성공 시 /(app)/(teacher)로 이동. student 가입 후 users 문서에 link_code 6자리 생성됨. parent 연동 후 children 배열에 자녀 uid 추가됨.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "code-input.tsx 구현 — role 파라미터 수신, 역할별 안내텍스트(teacher/student/parent), 5회 오류 시 30초 잠금(카운트다운 useEffect), teacher→academyId 검증+users 업데이트, student→inviteCode 검증+linkCode 자동발급+users 업데이트, parent→linkCode 검증+arrayUnion(children) 업데이트, 성공 시 /(app)/으로 이동. pending.tsx 구현 — 허용기능(학생3명/반1개/출결숙제공지) 및 차단기능(선생님초대/Pro플랜) 시각화, 로그아웃 버튼(signOut+clearUser). npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-09T02:28:19.740Z"
     },
     {
       "id": "cd68dc42-bf55-4634-b49a-257c91fa01d7",
       "name": "TASK 107: Cloud Functions — kakaoLogin.ts + createStudentAccount.ts 구현",
       "description": "카카오 커스텀 토큰 발급 함수와 선생님의 학생 계정 직접 생성 함수를 Cloud Functions로 구현한다.",
       "notes": "functions에서 axios 추가 설치 필요. onCall에서 request.auth.token.role로 teacher 체크. KAKAO_ADMIN_KEY 클라이언트 코드 노출 절대 금지.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "750f0c4c-809d-4ba4-9ebc-e513cf6f7755"
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-09T02:31:19.274Z",
       "relatedFiles": [
         {
           "path": "functions/src/auth/kakaoLogin.ts",
@@ -341,21 +353,23 @@
       ],
       "implementationGuide": "functions/src/auth/kakaoLogin.ts:\n- onCall: request.data.accessToken 수신\n- axios로 카카오 API /v2/user/me 호출\n- admin.auth().createCustomToken(kakaoUid) 발급\n- return { customToken }\n\nfunctions/src/auth/createStudentAccount.ts:\n- onCall: request.auth 체크 (teacher 역할만)\n- email = s_${randomCode}@eduonepass.app\n- admin.auth().createUser({ email, password: tempPassword })\n- Firestore users 문서 생성 (role:'student', link_code 포함)\n- return { email, tempPassword, linkCode, name } (인쇄용 카드 데이터)\n\nKAKAO_ADMIN_KEY: functions/.env에서 process.env로만 읽기",
       "verificationCriteria": "functions/ TypeScript 컴파일 에러 없음. kakaoLogin이 accessToken → customToken 구조 확인. createStudentAccount가 teacher 역할 체크 후 학생 계정 생성 구조 확인.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "kakaoLogin.ts — axios로 카카오 /v2/user/me 호출, kakaoUid로 Firebase Custom Token 발급, accessToken 없음/카카오 401/내부 오류 3단계 에러 처리. createStudentAccount.ts — teacher/admin 역할 체크, s_{6자리}@eduonepass.app 가상이메일+임시비밀번호 생성, Firebase Auth createUser+Firestore users 문서 생성, 인쇄용 카드 데이터 반환. functions TypeScript 컴파일 에러 0개.",
+      "completedAt": "2026-04-09T02:31:19.273Z"
     },
     {
       "id": "5d6427d7-9d96-47c7-91a4-7d3d5302194b",
       "name": "TASK 108: Firestore Security Rules — academies.status 체크 추가",
       "description": "기존 Firestore Security Rules에 학원 승인 상태 체크 로직을 추가하여 미승인 학원의 기능 제한을 적용한다.",
       "notes": "Rules get() 호출은 추가 읽기 비용 발생 — 최소한으로 사용. Firestore Rules Playground에서 역할별 시나리오 검증 필수.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "0d8a8c2a-b0c1-48cb-9df5-1de2933d80f2"
         }
       ],
       "createdAt": "2026-04-08T02:11:40.348Z",
-      "updatedAt": "2026-04-08T02:11:40.348Z",
+      "updatedAt": "2026-04-09T02:33:25.293Z",
       "relatedFiles": [
         {
           "path": "firestore.rules",
@@ -375,7 +389,9 @@
       ],
       "implementationGuide": "firestore.rules 업데이트:\n1. 헬퍼 함수 추가:\n   - function isAcademyActive(academyId): get(academies/academyId).status == 'active'\n   - function isAcademyPendingOrActive(academyId): status in ['pending','active']\n2. classes write: pending이면 기존 반 수 < 1 체크\n3. users write (teacher role): academy status == 'active'만 허용\n4. homeworks/attendances/notices write: academy status != 'rejected'\n5. 기존 rules 파일 읽고 기존 구조 유지하며 추가",
       "verificationCriteria": "pending 학원에서 선생님 초대 시도 시 Rules 거부됨. active 학원에서 정상 동작. rejected 상태에서 모든 쓰기 거부됨.",
-      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수."
+      "analysisResult": "Phase 2: EduOnePass 온보딩 및 인증 시스템 구현. 기반 코드(firebase.ts, firestore.ts, types/index.ts, constants/strings.ts, useAuthStore.ts, _layout.tsx 라우팅 분기)는 Phase 1에서 완성됨. 각 auth 화면 파일은 빈 껍데기 상태로 존재하며, phone-verify.tsx/academy-register.tsx/lib/auth.ts는 신규 생성 필요. 스타일은 StyleSheet.create() 사용, 텍스트는 constants/strings.ts에서 import, Firestore 접근은 Collections 헬퍼 사용 원칙 준수.",
+      "summary": "isAcademyPendingOrActive(academyId) 헬퍼 추가 + isMyAcademyPendingOrActive() 편의 함수 추가. classes/homeworks/attendances/notices의 write/create에 isAcademyPendingOrActive 체크 적용 — rejected 학원 모든 쓰기 차단. academies update를 isAcademyActive로 제한(rejected/pending 상태에서 학원 정보 수정 불가). pending 상태 반 1개 제한은 카운트 쿼리 불가로 앱/CF 레이어에서 추가 검증 명시. 학생 제출물에도 rejected 차단 적용.",
+      "completedAt": "2026-04-09T02:33:25.288Z"
     }
   ]
 }

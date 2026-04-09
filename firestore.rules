@@ -36,9 +36,22 @@ service cloud.firestore {
       return getUserRole() == 'admin';
     }
 
-    // 학원 승인 상태가 active인지 확인 (pending 상태 기능 제한)
+    // 학원 승인 상태가 active인지 확인
+    // 선생님 초대 등 active 상태에서만 허용되는 기능에 사용
     function isAcademyActive(academyId) {
       return get(/databases/$(database)/documents/academies/$(academyId)).data.status == 'active';
+    }
+
+    // 학원 승인 상태가 pending 또는 active인지 확인 (rejected 차단용)
+    // 승인 대기 중에도 기본 기능(출결·숙제·공지)은 허용
+    function isAcademyPendingOrActive(academyId) {
+      return get(/databases/$(database)/documents/academies/$(academyId)).data.status
+             in ['pending', 'active'];
+    }
+
+    // 현재 사용자의 academy_id로 학원 상태 확인
+    function isMyAcademyPendingOrActive() {
+      return isAcademyPendingOrActive(getUserData().academy_id);
     }
 
     // ─────────────────────────────────────────────
@@ -47,12 +60,15 @@ service cloud.firestore {
     match /academies/{academyId} {
       // 소속 멤버만 읽기 가능
       allow read: if isAuthenticated() && isAcademyMember(academyId);
-      // admin만 학원 정보 수정 가능
-      allow write: if isAuthenticated()
-                   && isAcademyMember(academyId)
-                   && isAdmin();
-      // 신규 학원 생성은 누구든 가능 (가입 온보딩 흐름)
+      // admin만 학원 정보 수정 가능 (active 상태에서만)
+      allow update: if isAuthenticated()
+                    && isAcademyMember(academyId)
+                    && isAdmin()
+                    && isAcademyActive(academyId);
+      // 신규 학원 생성은 누구든 가능 (가입 온보딩 흐름 — pending 상태로 생성)
       allow create: if isAuthenticated();
+      // 삭제는 불가 (탈퇴 처리는 Cloud Functions에서)
+      allow delete: if false;
     }
 
     // ─────────────────────────────────────────────
@@ -64,9 +80,11 @@ service cloud.firestore {
                   && (request.auth.uid == uid
                       || isAcademyMember(resource.data.academy_id));
       // 본인 문서만 수정 가능
-      allow write: if isAuthenticated() && request.auth.uid == uid;
+      allow update: if isAuthenticated() && request.auth.uid == uid;
       // 신규 가입 시 본인 문서 생성 가능
       allow create: if isAuthenticated() && request.auth.uid == uid;
+      // 삭제 불가 (소프트 삭제 사용: deleted_at 필드)
+      allow delete: if false;
     }
 
     // ─────────────────────────────────────────────
@@ -76,11 +94,17 @@ service cloud.firestore {
       // 같은 학원 소속이면 읽기 가능
       allow read: if isAuthenticated()
                   && isAcademyMember(resource.data.academy_id);
-      // admin 또는 teacher만 반 생성·수정·삭제 가능
-      allow write: if isAuthenticated()
-                   && isAcademyMember(resource.data.academy_id)
-                   && isStaff();
-      allow create: if isAuthenticated() && isStaff();
+      // admin 또는 teacher만 반 수정·삭제 가능
+      // rejected 학원은 모든 쓰기 차단
+      allow update, delete: if isAuthenticated()
+                             && isAcademyMember(resource.data.academy_id)
+                             && isStaff()
+                             && isAcademyPendingOrActive(resource.data.academy_id);
+      // 반 생성: pending 상태에서는 최대 1개 제한 (카운트는 앱/CF에서 추가 검증)
+      // rejected 학원은 반 생성 불가
+      allow create: if isAuthenticated()
+                    && isStaff()
+                    && isMyAcademyPendingOrActive();
     }
 
     // ─────────────────────────────────────────────
@@ -92,21 +116,28 @@ service cloud.firestore {
                   && (getUserData().class_id == resource.data.class_id
                       || isStaff());
       // teacher 또는 admin만 숙제 출제 가능
-      allow write: if isAuthenticated() && isStaff();
-      allow create: if isAuthenticated() && isStaff();
+      // rejected 학원은 쓰기 차단
+      allow update, delete: if isAuthenticated()
+                             && isStaff()
+                             && isMyAcademyPendingOrActive();
+      allow create: if isAuthenticated()
+                    && isStaff()
+                    && isMyAcademyPendingOrActive();
 
       // homeworks/{homeworkId}/submissions/{studentUid} — 제출물
       match /submissions/{studentUid} {
         // 본인(학생), teacher, admin 읽기 가능
         allow read: if isAuthenticated()
                     && (request.auth.uid == studentUid || isStaff());
-        // 학생 본인만 제출 가능
+        // 학생 본인만 제출 가능 (rejected 학원은 제출 차단)
         allow write: if isAuthenticated()
                      && request.auth.uid == studentUid
-                     && getUserRole() == 'student';
+                     && getUserRole() == 'student'
+                     && isMyAcademyPendingOrActive();
         allow create: if isAuthenticated()
                       && request.auth.uid == studentUid
-                      && getUserRole() == 'student';
+                      && getUserRole() == 'student'
+                      && isMyAcademyPendingOrActive();
       }
     }
 
@@ -115,11 +146,16 @@ service cloud.firestore {
     // (문서 ID 형식: {classId}_{YYYY-MM-DD})
     // ─────────────────────────────────────────────
     match /attendances/{attendanceDoc} {
-      // 같은 학원 소속이면 읽기 가능
+      // 인증된 사용자 읽기 가능
       allow read: if isAuthenticated();
       // teacher, admin만 출결 입력·수정 가능
-      allow write: if isAuthenticated() && isStaff();
-      allow create: if isAuthenticated() && isStaff();
+      // rejected 학원은 쓰기 차단
+      allow write: if isAuthenticated()
+                   && isStaff()
+                   && isMyAcademyPendingOrActive();
+      allow create: if isAuthenticated()
+                    && isStaff()
+                    && isMyAcademyPendingOrActive();
     }
 
     // ─────────────────────────────────────────────
@@ -130,10 +166,14 @@ service cloud.firestore {
       allow read: if isAuthenticated()
                   && isAcademyMember(resource.data.academy_id);
       // teacher, admin만 공지 작성·수정·삭제 가능
-      allow write: if isAuthenticated()
-                   && isAcademyMember(resource.data.academy_id)
-                   && isStaff();
-      allow create: if isAuthenticated() && isStaff();
+      // rejected 학원은 쓰기 차단
+      allow update, delete: if isAuthenticated()
+                             && isAcademyMember(resource.data.academy_id)
+                             && isStaff()
+                             && isAcademyPendingOrActive(resource.data.academy_id);
+      allow create: if isAuthenticated()
+                    && isStaff()
+                    && isMyAcademyPendingOrActive();
     }
 
     // ─────────────────────────────────────────────

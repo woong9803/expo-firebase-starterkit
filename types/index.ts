@@ -27,6 +27,7 @@ export interface User {
 export interface Academy {
   id: string;
   name: string;
+  academy_code: string;       // 선생님 가입 시 입력하는 학원코드 (6자리 영숫자)
   plan: AcademyPlan;
   trial_ends_at: Timestamp | null;
   status: AcademyStatus;
