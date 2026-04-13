@@ -140,7 +140,7 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
   - ✅ `app/(app)/(teacher)/_layout.tsx` — 홈/숙제/출결/공지/내정보 / 활성색 #5B50E8
   - ✅ `app/(app)/(student)/_layout.tsx` — 홈/숙제/영상/출결/내정보 / 활성색 #5B50E8
   - ✅ `app/(app)/(parent)/_layout.tsx` — 홈/숙제/공지/내정보 / 활성색 #F59E0B
-  - ✅ `app/(app)/(admin)/_layout.tsx` — 홈/출결/학생/공지/**설정** / 활성색 #5B50E8
+  - ✅ `app/(app)/(admin)/_layout.tsx` — 홈/숙제/출결/학생/공지/**설정** / 활성색 #5B50E8
 - ✅ 선생님 홈 (`app/(app)/(teacher)/index.tsx`)
   - ✅ 헤더: 보라 그라데이션 카드 (#7C3AED → #5B50E8) + 알림 아이콘
   - ✅ 통계 3칸: 미검사 숙제 / 오늘 결석 / 이번달 출석률
