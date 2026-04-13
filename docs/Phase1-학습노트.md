@@ -1,4 +1,4 @@
-# Phase 1 학습 노트 — EduOnePass 프로젝트 기초 세팅
+# Phase 1 학습 노트 — dev-app-first 프로젝트 기초 세팅
 
 > 이 문서는 Phase 1에서 만든 파일들이 **무엇인지, 왜 필요한지**를 설명합니다.
 > 프로그래밍을 처음 접하는 분도 이해할 수 있도록 비유와 함께 설명합니다.
@@ -8,7 +8,7 @@
 ## 전체 구조 한눈에 보기
 
 ```
-EduOnePass 앱
+dev-app-first 앱
 │
 ├── Firebase (백엔드 서버) ──── 구글이 제공하는 서버. 우리가 서버를 직접 만들 필요 없음
 │   ├── Auth          ──── 로그인/회원가입 담당
@@ -323,9 +323,9 @@ _layout.tsx가 Firebase에 물어봄: "지금 로그인한 사람 있어?"
 
 | 항목 | 값 |
 |------|-----|
-| 앱 이름 | EduOnePass |
-| iOS 번들 ID | com.eduonepass.app |
-| Android 패키지명 | com.eduonepass.app |
+| 앱 이름 | dev-app-first |
+| iOS 번들 ID | com.dev-app-first.app |
+| Android 패키지명 | com.dev-app-first.app |
 | 딥링크 스킴 | edu-one-pass:// |
 
 > **딥링크 스킴이란?** 카카오톡 링크를 클릭했을 때 앱이 자동으로 열리는 기능에 필요한 주소예요.

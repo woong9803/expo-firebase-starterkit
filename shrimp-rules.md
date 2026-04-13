@@ -1,4 +1,4 @@
-# EduOnePass — AI Agent 개발 지침
+# dev-app-first — AI Agent 개발 지침
 
 > 이 문서는 AI Coding Agent 전용입니다. 개발자 문서가 아닙니다.
 
@@ -6,7 +6,7 @@
 
 ## 1. 프로젝트 개요
 
-- **앱 이름**: EduOnePass (학원 관리 앱)
+- **앱 이름**: dev-app-first (학원 관리 앱)
 - **스택**: React Native + Expo + TypeScript (strict) / Firebase (Firestore·Auth·Storage·FCM·Functions)
 - **웹 대시보드**: React + Vite + TailwindCSS + React Query (admin 전용)
 - **사용자 역할**: `admin`(원장) · `teacher`(선생님) · `student`(학생) · `parent`(학부모)

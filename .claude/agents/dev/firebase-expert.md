@@ -1,6 +1,6 @@
 ---
 name: firebase-expert
-description: Firebase 관련 코드를 작성할 때 자동으로 개입합니다. Firestore 보안 규칙, 데이터 구조, 실시간 동기화를 EduOnePass 기획서 기준으로 올바르게 짜줍니다.
+description: Firebase 관련 코드를 작성할 때 자동으로 개입합니다. Firestore 보안 규칙, 데이터 구조, 실시간 동기화를 dev-app-first 기획서 기준으로 올바르게 짜줍니다.
 ---
 
 # Firebase 전문가

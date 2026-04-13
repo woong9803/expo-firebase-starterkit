@@ -1,0 +1,383 @@
+{
+  "tasks": [
+    {
+      "id": "7038f275-bcb9-4e90-8b6f-528250e59f32",
+      "name": "TASK 001 — types/index.ts 완성",
+      "description": "types/index.ts에 Submission, Notice, AppNotification, AppConfig 인터페이스를 추가하고, User 인터페이스의 누락 필드(academy_id, class_id, link_code, children, birth_date, guardian_phone, enrollment_date, deleted_at)를 보완한다. PRD Firestore 데이터 구조 섹션 전체를 반영해야 한다.",
+      "notes": "Notification은 브라우저 내장 타입과 충돌하므로 반드시 AppNotification으로 명명. 모든 Timestamp는 firebase/firestore의 Timestamp 타입 사용.",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2026-04-07T06:45:39.776Z",
+      "updatedAt": "2026-04-07T06:55:40.043Z",
+      "relatedFiles": [
+        {
+          "path": "types/index.ts",
+          "type": "TO_MODIFY",
+          "description": "전체 타입 정의 파일",
+          "lineStart": 1,
+          "lineEnd": 57
+        },
+        {
+          "path": "docs/PRD.md",
+          "type": "REFERENCE",
+          "description": "Firestore 데이터 구조 섹션 3 참조"
+        }
+      ],
+      "implementationGuide": "1. User 인터페이스에 누락 필드 추가: academy_id(string), class_id(string|null), link_code(string|null), children(string[]), birth_date(string|null), guardian_phone(string|null), enrollment_date(Timestamp|null), deleted_at(Timestamp|null)\n2. Submission 인터페이스 추가: image_urls(string[]), status('submitted'|'checked'), is_late(boolean), feedback('👍'|'💧'|null), submitted_at(Timestamp)\n3. Notice 인터페이스 추가: id, title, content, is_important(boolean), academy_id, read_by(string[]), created_at(Timestamp), created_by(string)\n4. AppNotification 인터페이스 추가: target_uid, type('homework_feedback'|'homework_due'|'attendance'|'notice'), title, body, is_read(boolean), created_at(Timestamp)\n5. AppConfig 인터페이스 추가: min_version_ios, min_version_android, latest_version, force_update_message\n6. AttendanceStatus에 'onLeave' 추가",
+      "verificationCriteria": "npx tsc --noEmit 에러 0개. Submission, Notice, AppNotification, AppConfig 인터페이스가 export됨. User 인터페이스에 academy_id 포함.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. 현재 lib/firebase.ts(Auth/Firestore/Storage 초기화 완료), types/index.ts(기본 타입 일부), store/useAuthStore.ts(기본 골격), constants/strings.ts(auth/common 기본값)가 존재하며 app/ 라우트 구조와 Security Rules가 미완성 상태.",
+      "summary": "User, Academy, Class, Homework 인터페이스 보완 및 Submission, Notice, AppNotification, AppConfig 인터페이스 신규 추가 완료. AttendanceStatus에 onLeave 추가. AppNotification으로 브라우저 내장 타입 충돌 회피. npx tsc --noEmit 에러 0개 확인.",
+      "completedAt": "2026-04-07T06:55:40.042Z"
+    },
+    {
+      "id": "b66f3232-de39-421c-bc4f-66c21b378427",
+      "name": "TASK 002 — constants/strings.ts 확장",
+      "description": "현재 auth, common 네임스페이스만 있는 strings.ts에 역할 선택, 온보딩, 숙제, 출결, 공지, 오류 메시지 등 Phase 1에서 필요한 모든 UI 문자열을 추가한다.",
+      "notes": "기존 auth, common 키는 절대 삭제하지 말 것.",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2026-04-07T06:45:39.776Z",
+      "updatedAt": "2026-04-07T06:55:41.461Z",
+      "relatedFiles": [
+        {
+          "path": "constants/strings.ts",
+          "type": "TO_MODIFY",
+          "description": "UI 문자열 상수 파일"
+        }
+      ],
+      "implementationGuide": "기존 export const strings = { auth: {...}, common: {...} } 구조를 유지하며 다음 네임스페이스 추가:\n- roles: { admin: '원장님', teacher: '선생님', student: '학생', parent: '학부모' }\n- onboarding: { selectRole: '역할을 선택해주세요', academyCode: '학원코드 입력', inviteCode: '반 코드 입력', linkCode: '자녀 연동코드 입력', pending: '승인 대기 중', pendingDesc: '학원 승인 후 모든 기능을 이용할 수 있어요' }\n- homework: { title: '숙제', submit: '제출', dueDate: '마감일', noHomework: '숙제가 없어요' }\n- attendance: { title: '출결', present: '출석', late: '지각', absent: '결석', onLeave: '휴원' }\n- notice: { title: '공지사항', important: '중요', noNotice: '공지가 없어요' }\n- errors: { codeNotFound: '코드를 찾을 수 없어요', duplicatePhone: '이미 가입된 번호예요. 로그인해주세요', tooManyAttempts: '잠시 후 다시 시도해주세요' }",
+      "verificationCriteria": "roles, onboarding, homework, attendance, notice, errors 네임스페이스가 존재하고 export됨. 기존 auth/common 유지.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. 현재 lib/firebase.ts(Auth/Firestore/Storage 초기화 완료), types/index.ts(기본 타입 일부), store/useAuthStore.ts(기본 골격), constants/strings.ts(auth/common 기본값)가 존재하며 app/ 라우트 구조와 Security Rules가 미완성 상태.",
+      "summary": "기존 auth/common 네임스페이스 유지하며 roles, onboarding, homework, attendance, notice, errors 6개 네임스페이스 추가 완료. 인덴트 통일 및 한국어 주석 추가. npx tsc --noEmit 에러 0개 확인.",
+      "completedAt": "2026-04-07T06:55:41.460Z"
+    },
+    {
+      "id": "7eea997a-5749-41c3-b048-8d32a0892b00",
+      "name": "TASK 003 — store/useAuthStore.ts 확장",
+      "description": "현재 user(User|null), isLoading만 있는 useAuthStore에 academyId와 academy 정보를 추가하여 앱 전역에서 학원 정보에 접근 가능하게 한다.",
+      "notes": "Academy 타입은 types/index.ts에서 import. TASK 001 완료 후 진행.",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "7038f275-bcb9-4e90-8b6f-528250e59f32"
+        }
+      ],
+      "createdAt": "2026-04-07T06:45:39.776Z",
+      "updatedAt": "2026-04-07T07:14:15.012Z",
+      "relatedFiles": [
+        {
+          "path": "store/useAuthStore.ts",
+          "type": "TO_MODIFY",
+          "description": "Zustand 인증 상태 스토어",
+          "lineStart": 1,
+          "lineEnd": 18
+        },
+        {
+          "path": "types/index.ts",
+          "type": "DEPENDENCY",
+          "description": "Academy 타입 참조"
+        }
+      ],
+      "implementationGuide": "AuthState 인터페이스에 추가:\n- academyId: string | null\n- academy: Academy | null\n- setAcademy: (academy: Academy | null) => void\n- setAcademyId: (id: string | null) => void\ninitial state에 academyId: null, academy: null 추가\nclearUser 액션에서 academyId, academy도 null로 초기화",
+      "verificationCriteria": "useAuthStore에서 academy, academyId 접근 가능. clearUser 시 academy/academyId도 초기화됨. npx tsc --noEmit 에러 0개.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. 현재 lib/firebase.ts(Auth/Firestore/Storage 초기화 완료), types/index.ts(기본 타입 일부), store/useAuthStore.ts(기본 골격), constants/strings.ts(auth/common 기본값)가 존재하며 app/ 라우트 구조와 Security Rules가 미완성 상태.",
+      "summary": "Academy 타입 import 추가, AuthState에 academyId/academy 필드 및 setAcademyId/setAcademy 액션 추가, clearUser에서 academyId·academy 동시 초기화 구현. npx tsc --noEmit 에러 0개 확인.",
+      "completedAt": "2026-04-07T07:14:15.011Z"
+    },
+    {
+      "id": "7a7b376b-6148-42c7-94b7-3da1faa20ad1",
+      "name": "TASK 004 — lib/firebase.ts FCM 초기화 추가",
+      "description": "현재 Auth, Firestore, Storage만 초기화된 lib/firebase.ts에 FCM(Firebase Cloud Messaging) 초기화를 추가한다.",
+      "notes": "Expo 프로젝트이므로 expo-notifications 또는 @react-native-firebase/messaging 중 package.json에 있는 것 사용. 없으면 TODO 주석.",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2026-04-07T06:45:39.776Z",
+      "updatedAt": "2026-04-07T07:05:14.578Z",
+      "relatedFiles": [
+        {
+          "path": "lib/firebase.ts",
+          "type": "TO_MODIFY",
+          "description": "Firebase 초기화 파일",
+          "lineStart": 1,
+          "lineEnd": 19
+        },
+        {
+          "path": "package.json",
+          "type": "REFERENCE",
+          "description": "설치된 패키지 확인"
+        }
+      ],
+      "implementationGuide": "1. package.json에서 FCM 관련 패키지 확인 (@react-native-firebase/messaging, expo-notifications)\n2. 설치된 패키지 기준으로 messaging 초기화 코드 추가\n3. 미설치 시 TODO 주석으로 남기고 나머지 export 유지\n4. Platform.OS === 'web' 시 skip 처리",
+      "verificationCriteria": "lib/firebase.ts에 messaging export 또는 TODO 주석 존재. npx tsc --noEmit 에러 0개.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. 현재 lib/firebase.ts(Auth/Firestore/Storage 초기화 완료), types/index.ts(기본 타입 일부), store/useAuthStore.ts(기본 골격), constants/strings.ts(auth/common 기본값)가 존재하며 app/ 라우트 구조와 Security Rules가 미완성 상태.",
+      "summary": "expo-notifications 미설치 확인 후 lib/firebase.ts에 FCM TODO 주석 추가. 설치 명령어(npx expo install expo-notifications)와 활성화 방법 안내. 기존 db/auth/storage export 유지. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-07T07:05:14.577Z"
+    },
+    {
+      "id": "382706c2-b5cd-4d69-82c0-814389984ebc",
+      "name": "TASK 006 — Firestore/Storage Security Rules 초안 작성",
+      "description": "역할(role), 학원(academy_id), 승인 상태(status) 기반의 Firestore Security Rules와 Storage Rules 초안을 작성한다.",
+      "notes": "파일럿 단계이므로 기본 접근 제어 원칙 적용에 집중. Pro 플랜 체크는 Phase 2 이후 보완 예정.",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "7038f275-bcb9-4e90-8b6f-528250e59f32"
+        }
+      ],
+      "createdAt": "2026-04-07T06:45:39.776Z",
+      "updatedAt": "2026-04-07T07:16:31.762Z",
+      "relatedFiles": [
+        {
+          "path": "firestore.rules",
+          "type": "CREATE",
+          "description": "Firestore Security Rules"
+        },
+        {
+          "path": "storage.rules",
+          "type": "CREATE",
+          "description": "Storage Security Rules"
+        },
+        {
+          "path": ".claude/rules/security.md",
+          "type": "REFERENCE",
+          "description": "보안 규칙 원칙 참조"
+        }
+      ],
+      "implementationGuide": "firestore.rules 컬렉션별 규칙:\n- academies/{academyId}: read=소속 멤버, write=admin\n- users/{uid}: read=본인/같은 academy, write=본인\n- classes/{classId}: read=같은 academy, write=admin/teacher\n- homeworks/{hwId}: read=같은 class, write=teacher/admin\n- homeworks/{hwId}/submissions/{studentUid}: read=본인/teacher/admin, write=본인(student)\n- attendances/{doc}: read=같은 academy, write=teacher/admin\n- notices/{noticeId}: read=같은 academy, write=teacher/admin\n- notifications/{notifId}: read=target_uid==request.auth.uid, write=false\n\nstorage.rules:\n- 인증된 사용자만 접근\n- homeworks/ 경로: 본인 uid 포함 경로만 write 허용\n\n공통 헬퍼 함수:\nfunction isAuthenticated() / function getUserRole() / function isAcademyMember(academyId)",
+      "verificationCriteria": "firestore.rules, storage.rules 파일 존재. 모든 주요 컬렉션에 역할별 접근 제어 규칙 적용됨.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. 현재 lib/firebase.ts(Auth/Firestore/Storage 초기화 완료), types/index.ts(기본 타입 일부), store/useAuthStore.ts(기본 골격), constants/strings.ts(auth/common 기본값)가 존재하며 app/ 라우트 구조와 Security Rules가 미완성 상태.",
+      "summary": "firestore.rules, storage.rules 신규 생성 완료. Firestore: academies·users·classes·homeworks·submissions·attendances·notices·notifications·appConfig 9개 컬렉션에 역할(role)·학원(academy_id)·승인 상태 기반 접근 제어 적용. 공통 헬퍼 함수(isAuthenticated, getUserRole, isAcademyMember, isStaff, isAdmin, isAcademyActive) 분리. Storage: 숙제 제출 이미지(본인 uid 경로, 이미지 형식·10MB 제한), 프로필 이미지(5MB 제한) 경로별 규칙 적용. notifications는 클라이언트 write 차단(Functions 전용).",
+      "completedAt": "2026-04-07T07:16:31.762Z"
+    },
+    {
+      "id": "3c5d3307-20b2-4b50-a1d7-eff431a06092",
+      "name": "TASK 005 — app/ 라우트 파일 생성 (빈 껍데기)",
+      "description": "expo-router 규칙에 따라 app/ 디렉토리에 필요한 모든 라우트 파일을 빈 껍데기로 생성한다. _layout.tsx의 인증/역할 분기 로직은 TASK 007에서 별도 구현한다.",
+      "notes": "이 태스크는 파일 생성만. 인증 상태 체크·역할 분기 로직은 TASK 007에서 구현.",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "7038f275-bcb9-4e90-8b6f-528250e59f32"
+        },
+        {
+          "taskId": "b66f3232-de39-421c-bc4f-66c21b378427"
+        },
+        {
+          "taskId": "7eea997a-5749-41c3-b048-8d32a0892b00"
+        }
+      ],
+      "createdAt": "2026-04-07T06:49:33.071Z",
+      "updatedAt": "2026-04-08T00:32:56.187Z",
+      "relatedFiles": [
+        {
+          "path": "app/_layout.tsx",
+          "type": "CREATE",
+          "description": "루트 레이아웃 (빈 껍데기)"
+        },
+        {
+          "path": "app/(auth)/_layout.tsx",
+          "type": "CREATE",
+          "description": "인증 전 레이아웃"
+        },
+        {
+          "path": "app/(auth)/login.tsx",
+          "type": "CREATE",
+          "description": "로그인 화면"
+        },
+        {
+          "path": "app/(auth)/register.tsx",
+          "type": "CREATE",
+          "description": "회원가입 화면"
+        },
+        {
+          "path": "app/(auth)/role-select.tsx",
+          "type": "CREATE",
+          "description": "역할 선택 화면"
+        },
+        {
+          "path": "app/(auth)/code-input.tsx",
+          "type": "CREATE",
+          "description": "코드 입력 화면"
+        },
+        {
+          "path": "app/(app)/_layout.tsx",
+          "type": "CREATE",
+          "description": "로그인 후 레이아웃 (빈 껍데기)"
+        },
+        {
+          "path": "app/(app)/(admin)/index.tsx",
+          "type": "CREATE",
+          "description": "원장 홈"
+        },
+        {
+          "path": "app/(app)/(teacher)/index.tsx",
+          "type": "CREATE",
+          "description": "선생님 홈"
+        },
+        {
+          "path": "app/(app)/(student)/index.tsx",
+          "type": "CREATE",
+          "description": "학생 홈"
+        },
+        {
+          "path": "app/(app)/(parent)/index.tsx",
+          "type": "CREATE",
+          "description": "학부모 홈"
+        }
+      ],
+      "implementationGuide": "생성할 파일 11개 (모두 빈 껍데기 — View + Text만):\n- app/_layout.tsx: Stack 네비게이터 기본 구조만 (분기 로직 제외)\n- app/(auth)/_layout.tsx: Stack 레이아웃\n- app/(auth)/login.tsx\n- app/(auth)/register.tsx\n- app/(auth)/role-select.tsx\n- app/(auth)/code-input.tsx\n- app/(app)/_layout.tsx: Slot 또는 Stack (분기 로직 제외)\n- app/(app)/(admin)/index.tsx\n- app/(app)/(teacher)/index.tsx\n- app/(app)/(student)/index.tsx\n- app/(app)/(parent)/index.tsx\n\n빈 껍데기 패턴:\nimport { View, Text } from 'react-native'\nexport default function ScreenName() {\n  return <View><Text>화면명</Text></View>\n}",
+      "verificationCriteria": "11개 파일 모두 존재. npx expo start 실행 시 크래시 없음. npx tsc --noEmit 에러 0개.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. app.json → app.config.ts 전환, lib/firestore.ts 컬렉션 참조 헬퍼, .env.local 구성, 라우트 파일 생성과 분기 로직을 분리하여 각 태스크의 책임을 명확히 한다.",
+      "summary": "app/ 하위 11개 라우트 파일 생성 완료. _layout.tsx(루트·auth·app), (auth)/login·register·role-select·code-input, (app)/(admin·teacher·student·parent)/index.tsx. 각 파일은 View+Text 빈 껍데기. 인증·역할 분기 로직은 포함하지 않음(TASK 007 예정). npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-08T00:32:56.187Z"
+    },
+    {
+      "id": "71a0e8fb-ae14-49d7-8f56-bb36da47319f",
+      "name": "TASK 007 — _layout.tsx 인증·역할 분기 로직 구현",
+      "description": "app/_layout.tsx에 Firebase Auth 상태 감지 + useAuthStore 연동을 구현하고, app/(app)/_layout.tsx에 role 기반 역할별 화면 리다이렉트 로직을 구현한다. 역할 분기는 반드시 이 파일 단 한 곳에서만 처리한다.",
+      "notes": "개별 화면(admin/index.tsx 등)에서 role 체크 절대 금지. 분기는 이 파일에서만.",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "3c5d3307-20b2-4b50-a1d7-eff431a06092"
+        },
+        {
+          "taskId": "7eea997a-5749-41c3-b048-8d32a0892b00"
+        }
+      ],
+      "createdAt": "2026-04-07T06:49:33.071Z",
+      "updatedAt": "2026-04-08T00:36:51.968Z",
+      "relatedFiles": [
+        {
+          "path": "app/_layout.tsx",
+          "type": "TO_MODIFY",
+          "description": "루트 레이아웃 — Auth 상태 감지"
+        },
+        {
+          "path": "app/(app)/_layout.tsx",
+          "type": "TO_MODIFY",
+          "description": "역할 분기 유일한 지점"
+        },
+        {
+          "path": "store/useAuthStore.ts",
+          "type": "DEPENDENCY",
+          "description": "user, academy 상태 참조"
+        },
+        {
+          "path": "lib/firebase.ts",
+          "type": "DEPENDENCY",
+          "description": "auth 인스턴스 참조"
+        }
+      ],
+      "implementationGuide": "app/_layout.tsx:\n- onAuthStateChanged 구독 → user 있으면 useAuthStore.setUser() 호출\n- user 없으면 router.replace('/(auth)/login') 리다이렉트\n- isLoading 중 로딩 스피너 표시\n- useEffect cleanup에서 구독 해제\n\napp/(app)/_layout.tsx:\n- useAuthStore에서 user.role 읽기\n- role === 'admin' → router.replace('/(app)/(admin)')\n- role === 'teacher' → router.replace('/(app)/(teacher)')\n- role === 'student' → router.replace('/(app)/(student)')\n- role === 'parent' → router.replace('/(app)/(parent)')\n- user.academy_id 없으면 온보딩으로 리다이렉트\n- academy.status === 'pending'이면 승인 대기 화면으로 리다이렉트",
+      "verificationCriteria": "미인증 시 login으로 리다이렉트. 역할별 올바른 화면으로 이동. academy_id 없으면 온보딩 이동. npx tsc --noEmit 에러 0개.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. app.json → app.config.ts 전환, lib/firestore.ts 컬렉션 참조 헬퍼, .env.local 구성, 라우트 파일 생성과 분기 로직을 분리하여 각 태스크의 책임을 명확히 한다.",
+      "summary": "app/_layout.tsx에 onAuthStateChanged 구독·Firestore user·academy 로드·isLoading 스피너·인증 상태별 리다이렉트 구현. app/(app)/_layout.tsx에 role 기반 역할별 화면 분기(admin/teacher/student/parent), academy_id 없으면 role-select 온보딩, academy.status===pending이면 pending 화면으로 이동 구현. app/(auth)/pending.tsx 빈 껍데기 추가. 역할 분기는 (app)/_layout.tsx 단 한 곳에서만 처리. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-08T00:36:51.967Z"
+    },
+    {
+      "id": "c817ad78-58d0-4c71-9a73-767ee2c99614",
+      "name": "TASK 008 — .env.local 구성 및 검증",
+      "description": ".env.example의 모든 키를 기준으로 .env.local에 실제 Firebase 프로젝트 값이 올바르게 설정되어 있는지 확인하고, 누락된 키를 보완한다. EXPO_PUBLIC_ 접두사 규칙을 검증한다.",
+      "notes": ".env.local은 Git에 커밋하지 않는다. 실제 값 입력은 사용자가 직접 해야 하므로 키 목록과 형식만 정비하고 누락 키 보고.",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2026-04-07T06:49:33.071Z",
+      "updatedAt": "2026-04-07T07:05:16.017Z",
+      "relatedFiles": [
+        {
+          "path": ".env.local",
+          "type": "TO_MODIFY",
+          "description": "실제 환경변수 값 파일"
+        },
+        {
+          "path": ".env.example",
+          "type": "REFERENCE",
+          "description": "키 목록 기준"
+        },
+        {
+          "path": ".gitignore",
+          "type": "REFERENCE",
+          "description": ".env.local 제외 여부 확인"
+        }
+      ],
+      "implementationGuide": "확인할 키 목록 (.env.example 기준):\n- EXPO_PUBLIC_FIREBASE_API_KEY\n- EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN\n- EXPO_PUBLIC_FIREBASE_PROJECT_ID\n- EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET\n- EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID\n- EXPO_PUBLIC_FIREBASE_APP_ID\n- EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID\n\n검증 규칙:\n- 앱 번들 노출 가능한 값만 EXPO_PUBLIC_ 사용\n- KAKAO_ADMIN_KEY는 .env.local에 있어도 되지만 functions/.env에만 저장하도록 안내\n- .gitignore에 .env.local 제외 여부 확인\n- functions/.env 파일 존재 여부 확인 및 KAKAO_ADMIN_KEY 위치 안내",
+      "verificationCriteria": ".env.local에 EXPO_PUBLIC_ 7개 키 모두 존재. .gitignore에 .env.local 포함. functions/.env에 KAKAO_ADMIN_KEY 위치 확인.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. app.json → app.config.ts 전환, lib/firestore.ts 컬렉션 참조 헬퍼, .env.local 구성, 라우트 파일 생성과 분기 로직을 분리하여 각 태스크의 책임을 명확히 한다.",
+      "summary": ".env.local 선행 공백 제거 및 섹션별 주석 정비. EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID 키 추가. 서버 시크릿 분리 경고 주석 추가. functions/.env 파일 생성(KAKAO_ADMIN_KEY). .gitignore에 functions/.env 항목 추가. .gitignore의 .env*.local 규칙으로 .env.local 제외 확인.",
+      "completedAt": "2026-04-07T07:05:16.016Z"
+    },
+    {
+      "id": "57235caa-3a60-4c8b-b9e4-76cc36e1daeb",
+      "name": "TASK 009 — app.json → app.config.ts 전환",
+      "description": "현재 정적 app.json을 동적 app.config.ts로 전환하여 process.env에서 Firebase 설정값을 읽어 extra 필드로 주입한다. 이를 통해 환경별 설정 분리가 가능해진다.",
+      "notes": "app.config.ts는 Node.js 환경에서 실행되므로 process.env 직접 사용 가능. Expo SDK 54 기준.",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "c817ad78-58d0-4c71-9a73-767ee2c99614"
+        }
+      ],
+      "createdAt": "2026-04-07T06:49:33.071Z",
+      "updatedAt": "2026-04-08T00:32:57.616Z",
+      "relatedFiles": [
+        {
+          "path": "app.config.ts",
+          "type": "CREATE",
+          "description": "동적 Expo 설정 파일"
+        },
+        {
+          "path": "app.json",
+          "type": "TO_MODIFY",
+          "description": "전환 후 삭제 대상"
+        },
+        {
+          "path": ".env.local",
+          "type": "DEPENDENCY",
+          "description": "환경변수 참조"
+        }
+      ],
+      "implementationGuide": "1. app.json 내용을 app.config.ts로 이전\n2. extra 필드에 Firebase 환경변수 주입:\n   extra: {\n     firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,\n     firebaseProjectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,\n     ... 나머지 Firebase 키\n   }\n3. 앱 이름/슬러그를 'dev-app-first'로 변경\n4. bundleIdentifier(iOS), package(Android) 추가: com.dev-app-first.app\n5. app.json 삭제 (app.config.ts가 우선)\n6. ExpoConfig 타입 import: import { ExpoConfig, ConfigContext } from 'expo/config'",
+      "verificationCriteria": "app.config.ts 존재. npx expo start 정상 실행. 앱 이름이 dev-app-first로 표시. app.json 삭제됨.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. app.json → app.config.ts 전환, lib/firestore.ts 컬렉션 참조 헬퍼, .env.local 구성, 라우트 파일 생성과 분기 로직을 분리하여 각 태스크의 책임을 명확히 한다.",
+      "summary": "app.config.ts 생성 완료. ExpoConfig 타입 사용, 앱명 dev-app-first·슬러그 edu-one-pass·bundleIdentifier/package com.dev-app-first.app 설정. extra 필드에 Firebase 6개 환경변수 주입. app.json 삭제 완료. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-08T00:32:57.615Z"
+    },
+    {
+      "id": "aa4d6e61-4861-43b8-89a8-e546076486a2",
+      "name": "TASK 010 — lib/firestore.ts 컬렉션 참조 헬퍼 작성",
+      "description": "Firestore 컬렉션 경로를 타입 안전하게 참조하는 헬퍼 함수를 lib/firestore.ts에 작성한다. 컬렉션 경로 문자열 하드코딩을 방지하고, 전체 앱에서 일관된 Firestore 쿼리 패턴을 제공한다.",
+      "notes": "attendance 문서 키는 '{classId}_{YYYY-MM-DD}' 형식. db는 lib/firebase.ts에서 import. 직접 collection(db, '...') 문자열 사용 금지하고 이 헬퍼 사용.",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "7038f275-bcb9-4e90-8b6f-528250e59f32"
+        }
+      ],
+      "createdAt": "2026-04-07T06:49:33.071Z",
+      "updatedAt": "2026-04-08T00:33:06.222Z",
+      "relatedFiles": [
+        {
+          "path": "lib/firestore.ts",
+          "type": "CREATE",
+          "description": "Firestore 컬렉션 참조 헬퍼"
+        },
+        {
+          "path": "lib/firebase.ts",
+          "type": "DEPENDENCY",
+          "description": "db 인스턴스 참조"
+        },
+        {
+          "path": "types/index.ts",
+          "type": "DEPENDENCY",
+          "description": "타입 참조"
+        }
+      ],
+      "implementationGuide": "lib/firestore.ts 구조:\nimport { collection, doc } from 'firebase/firestore'\nimport { db } from './firebase'\n\n// 컬렉션 참조 헬퍼\nexport const Collections = {\n  academies: () => collection(db, 'academies'),\n  academy: (academyId: string) => doc(db, 'academies', academyId),\n  users: () => collection(db, 'users'),\n  user: (uid: string) => doc(db, 'users', uid),\n  classes: () => collection(db, 'classes'),\n  class: (classId: string) => doc(db, 'classes', classId),\n  homeworks: () => collection(db, 'homeworks'),\n  homework: (hwId: string) => doc(db, 'homeworks', hwId),\n  submissions: (hwId: string) => collection(db, 'homeworks', hwId, 'submissions'),\n  submission: (hwId: string, studentUid: string) => doc(db, 'homeworks', hwId, 'submissions', studentUid),\n  attendances: () => collection(db, 'attendances'),\n  attendance: (classId: string, date: string) => doc(db, 'attendances', classId + '_' + date),\n  attendanceRecords: (classId: string, date: string) => collection(db, 'attendances', classId + '_' + date, 'records'),\n  notices: () => collection(db, 'notices'),\n  notifications: () => collection(db, 'notifications'),\n}",
+      "verificationCriteria": "lib/firestore.ts 존재. Collections 객체의 모든 주요 컬렉션 참조 함수 존재. npx tsc --noEmit 에러 0개.",
+      "analysisResult": "Phase 1 목표: Expo 앱이 정상 실행되고 Firebase 각 서비스가 연결된 상태. app.json → app.config.ts 전환, lib/firestore.ts 컬렉션 참조 헬퍼, .env.local 구성, 라우트 파일 생성과 분기 로직을 분리하여 각 태스크의 책임을 명확히 한다.",
+      "summary": "lib/firestore.ts 생성 완료. Collections 객체에 academies·users·classes·homeworks·submissions·attendances·attendanceRecords·notices·notifications·appConfig 10개 컬렉션 참조 함수 구현. 출결 문서 ID는 {classId}_{date} 형식 적용. npx tsc --noEmit 에러 0개.",
+      "completedAt": "2026-04-08T00:33:06.221Z"
+    }
+  ]
+}

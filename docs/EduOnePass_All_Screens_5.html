@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduOnePass — UI Screens v4.5</title>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#4F46E5;--primary-light:#818CF8;
+  --green:#10B981;--amber:#F59E0B;--danger:#EF4444;--purple:#8B5CF6;
+  --bg:#F8F7FF;--surface:#FFFFFF;--surface2:#F1F0FB;
+  --border:#E5E4F0;--text:#1A1830;--text2:#6B6B8A;--text3:#A0A0BC;
+  --radius:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Pretendard',-apple-system,sans-serif;background:#0F0E1A;color:var(--text);min-height:100vh;}
+.site-header{position:sticky;top:0;z-index:100;background:rgba(15,14,26,0.95);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.06);padding:0 32px;display:flex;align-items:center;height:64px;gap:16px;}
+.logo{font-size:17px;font-weight:800;color:#fff;letter-spacing:-0.5px;margin-right:auto;}
+.logo span{color:var(--primary-light);}
+.tab-nav{display:flex;gap:4px;}
+.tab-btn{padding:8px 18px;border-radius:10px;border:none;background:transparent;color:rgba(255,255,255,0.45);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;white-space:nowrap;}
+.tab-btn:hover{color:rgba(255,255,255,0.75);background:rgba(255,255,255,0.06);}
+.tab-btn.active{color:#fff;}
+.tab-btn[data-role="onboarding"].active{background:#374151;}
+.tab-btn[data-role="teacher"].active{background:var(--primary);}
+.tab-btn[data-role="student"].active{background:var(--green);}
+.tab-btn[data-role="parent"].active{background:var(--amber);}
+.tab-btn[data-role="admin"].active{background:var(--purple);}
+.role-section{display:none;}.role-section.active{display:block;}
+.section-hero{padding:40px 40px 28px;}
+.section-tag{display:inline-flex;align-items:center;gap:8px;padding:5px 14px;border-radius:100px;font-size:12px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:10px;}
+.tag-onboard{background:rgba(100,100,120,0.3);color:#aaa;}
+.tag-teacher{background:rgba(79,70,229,0.2);color:var(--primary-light);}
+.tag-student{background:rgba(16,185,129,0.2);color:#34D399;}
+.tag-parent{background:rgba(245,158,11,0.2);color:#FCD34D;}
+.tag-admin{background:rgba(139,92,246,0.2);color:#C4B5FD;}
+.section-title{font-size:26px;font-weight:800;color:#fff;letter-spacing:-0.5px;margin-bottom:4px;}
+.section-desc{font-size:13px;color:rgba(255,255,255,0.4);}
+.screens-grid{padding:20px 40px 60px;display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start;}
+.screen-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;}
+.screen-label{font-size:11px;font-weight:700;color:rgba(255,255,255,0.35);letter-spacing:0.8px;text-transform:uppercase;}
+/* Phone */
+.phone{width:375px;height:780px;background:var(--surface);border-radius:44px;overflow:hidden;box-shadow:0 20px 60px rgba(79,70,229,0.14),0 4px 16px rgba(0,0,0,0.1),0 0 0 8px #1E1C30,0 0 0 10px #2A2845;position:relative;display:flex;flex-direction:column;flex-shrink:0;}
+.phone::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:30px;background:#1E1C30;border-radius:0 0 20px 20px;z-index:50;}
+.phone-inner{flex:1;overflow-y:auto;overflow-x:hidden;padding-top:30px;scrollbar-width:none;}
+.phone-inner::-webkit-scrollbar{display:none;}
+/* Components */
+.status-bar{height:44px;padding:12px 24px 0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+.status-time{font-size:13px;font-weight:700;}
+.status-icons{display:flex;gap:6px;align-items:center;font-size:12px;}
+.bottom-nav{height:80px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 8px 16px;flex-shrink:0;}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:12px;cursor:pointer;position:relative;}
+.nav-icon{font-size:22px;line-height:1;}
+.nav-label{font-size:10px;font-weight:600;color:var(--text3);}
+.nav-badge{position:absolute;top:4px;right:18px;width:16px;height:16px;background:var(--danger);border-radius:50%;font-size:9px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;}
+.btn{width:100%;padding:16px;border-radius:14px;border:none;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;}
+.btn-p{background:var(--primary);color:#fff;}
+.btn-s{background:var(--surface2);color:var(--text);}
+.btn-o{background:transparent;border:1.5px solid var(--border);color:var(--text);}
+.input-field{background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;font-family:inherit;font-size:15px;color:var(--text);width:100%;}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:100px;font-size:11px;font-weight:700;}
+.chip-g{background:#D1FAE5;color:#065F46;}
+.chip-r{background:#FEE2E2;color:#991B1B;}
+.chip-a{background:#FEF3C7;color:#92400E;}
+.chip-b{background:#EEF2FF;color:#3730A3;}
+.chip-gr{background:var(--surface2);color:var(--text2);}
+.progress-bar{height:8px;background:var(--surface2);border-radius:100px;overflow:hidden;}
+.progress-fill{height:100%;border-radius:100px;}
+.avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.toggle{width:44px;height:24px;border-radius:12px;background:var(--primary);position:relative;flex-shrink:0;}
+.toggle::after{content:'';position:absolute;width:20px;height:20px;background:#fff;border-radius:50%;top:2px;right:2px;box-shadow:0 2px 4px rgba(0,0,0,0.2);}
+/* Onboarding */
+.ob-bg{background:linear-gradient(160deg,#1A1830 0%,#2D2B52 50%,#1A1830 100%);min-height:100%;display:flex;flex-direction:column;}
+.ob-logo{width:72px;height:72px;background:var(--primary);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 16px;box-shadow:0 8px 32px rgba(79,70,229,0.5);}
+.ob-bottom{flex:1;background:var(--surface);border-radius:32px 32px 0 0;padding:32px 24px 40px;display:flex;flex-direction:column;gap:14px;}
+.social-btn{width:100%;padding:14px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--text);}
+.role-card{border:1.5px solid var(--border);border-radius:14px;padding:16px;display:flex;align-items:center;gap:12px;cursor:pointer;}
+.role-card.sel{border-color:var(--primary);background:#EEF2FF;}
+.role-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;}
+.otp-inputs{display:flex;gap:10px;justify-content:center;}
+.otp-box{width:46px;height:56px;border:2px solid var(--border);border-radius:12px;text-align:center;font-size:24px;font-weight:700;font-family:inherit;background:var(--surface2);}
+.otp-box.f{border-color:var(--primary);background:#EEF2FF;color:var(--primary);}
+.step-dots{display:flex;gap:6px;justify-content:center;align-items:center;margin-bottom:20px;}
+.step-dot{width:8px;height:8px;border-radius:50%;background:var(--border);}
+.step-dot.active{background:var(--primary);width:24px;border-radius:4px;}
+/* Teacher */
+.att-btn{width:36px;height:36px;border-radius:10px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit;}
+.att-p{background:#D1FAE5;border-color:#10B981;color:#065F46;}
+.att-l{background:#FEF3C7;border-color:#F59E0B;color:#92400E;}
+.att-a{background:#FEE2E2;border-color:#EF4444;color:#991B1B;}
+/* Student */
+.hw-card{border:1.5px solid var(--border);border-radius:14px;padding:14px;display:flex;align-items:flex-start;gap:12px;}
+.hw-left{width:4px;align-self:stretch;border-radius:2px;flex-shrink:0;}
+.video-thumb{border-radius:12px;overflow:hidden;background:#111;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;position:relative;margin-bottom:4px;}
+.play-btn{width:44px;height:44px;background:rgba(255,255,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-day{aspect-ratio:1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;}
+.cal-p{background:#D1FAE5;color:#065F46;}
+.cal-a{background:#FEE2E2;color:#991B1B;}
+.cal-l{background:#FEF3C7;color:#92400E;}
+.cal-h{color:var(--text3);font-size:10px;font-weight:700;}
+.cal-t{border:2px solid var(--primary);color:var(--primary);background:#EEF2FF;}
+/* Parent */
+.reason-chip{padding:10px 16px;border-radius:100px;border:1.5px solid var(--border);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;background:var(--surface);color:var(--text);}
+.reason-chip.sel{background:var(--amber);border-color:var(--amber);color:#fff;}
+/* Settings */
+.set-item{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);}
+.set-item:last-child{border-bottom:none;}
+.list-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.list-item:last-child{border-bottom:none;}
+/* Scan */
+.scan-line{position:absolute;width:180px;height:2px;background:linear-gradient(90deg,transparent,#4ADE80,transparent);top:30%;animation:scan 2s ease-in-out infinite;}
+@keyframes scan{0%,100%{top:20%;}50%{top:75%;}}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="logo">Edu<span>One</span>Pass <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.3);margin-left:6px;">UI v4.5</span></div>
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-role="onboarding">0. 온보딩</button>
+    <button class="tab-btn" data-role="teacher">1. 선생님</button>
+    <button class="tab-btn" data-role="student">2. 학생</button>
+    <button class="tab-btn" data-role="parent">3. 학부모</button>
+    <button class="tab-btn" data-role="admin">4. admin</button>
+  </nav>
+</header>
+
+<!-- 0. 온보딩 -->
+<section id="s-onboarding" class="role-section active">
+  <div class="section-hero">
+    <div class="section-tag tag-onboard">🚀 Onboarding</div>
+    <div class="section-title">온보딩 · 인증 · 역할 선택</div>
+    <div class="section-desc">시작화면 → 로그인 → 회원가입 → 휴대폰인증 → 역할선택 → 코드입력 → 승인대기</div>
+  </div>
+  <div class="screens-grid">
+
+    <!-- 시작화면 -->
+    <div class="screen-wrap">
+      <div class="screen-label">시작화면</div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div class="ob-bg" style="min-height:780px;">
+            <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;">
+              <div style="position:absolute;top:-60px;right:-60px;width:260px;height:260px;border-radius:50%;background:rgba(79,70,229,0.2);filter:blur(60px);"></div>
+              <div style="position:absolute;bottom:200px;left:-40px;width:180px;height:180px;border-radius:50%;background:rgba(16,185,129,0.15);filter:blur(40px);"></div>
+            </div>
+            <div style="padding:80px 32px 40px;text-align:center;position:relative;z-index:1;">
+              <div class="ob-logo">📚</div>
+              <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-1px;">EduOnePass</div>
+              <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:6px;">선생님 퇴근 시간을 앞당기다</div>
+              <div style="margin-top:48px;display:flex;flex-direction:column;gap:12px;align-items:center;">
+                <div style="display:flex;align-items:center;gap:10px;color:rgba(255,255,255,0.7);"><span style="font-size:20px;">📋</span><span style="font-size:13px;">숙제 스캔 제출 · 실시간 피드백</span></div>
+                <div style="display:flex;align-items:center;gap:10px;color:rgba(255,255,255,0.7);"><span style="font-size:20px;">✅</span><span style="font-size:13px;">원터치 출결 · 학부모 즉시 알림</span></div>
+                <div style="display:flex;align-items:center;gap:10px;color:rgba(255,255,255,0.7);"><span style="font-size:20px;">📊</span><span style="font-size:13px;">법정 출석부 엑셀 자동 생성</span></div>
+              </div>
+            </div>
+            <div class="ob-bottom" style="position:relative;z-index:1;margin-top:auto;">
+              <button class="btn btn-p" style="font-size:16px;">시작하기</button>
+              <button class="btn btn-o">이미 계정이 있어요</button>
+              <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:4px;">계속 진행하면 <span style="color:var(--primary);">이용약관</span>에 동의합니다</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 로그인 -->
+    <div class="screen-wrap">
+      <div class="screen-label">로그인</div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div style="background:var(--surface);min-height:780px;padding:20px 24px;">
+            <div style="height:20px;"></div>
+            <div style="margin-bottom:32px;">
+              <div style="font-size:26px;font-weight:800;color:var(--text);letter-spacing:-0.5px;">다시 만나요! 👋</div>
+              <div style="font-size:13px;color:var(--text2);margin-top:6px;">로그인하여 계속하세요</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">
+              <div>
+                <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">이메일</div>
+                <input class="input-field" value="teacher@example.com" readonly>
+              </div>
+              <div>
+                <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">비밀번호</div>
+                <div style="position:relative;">
+                  <input class="input-field" type="password" value="password" readonly>
+                  <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:18px;">👁</span>
+                </div>
+              </div>
+              <div style="text-align:right;"><span style="font-size:12px;color:var(--primary);font-weight:700;">비밀번호 찾기</span></div>
+            </div>
+            <button class="btn btn-p" style="margin-bottom:20px;">로그인</button>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;font-size:12px;color:var(--text3);font-weight:600;">
+              <div style="flex:1;height:1px;background:var(--border);"></div>소셜 로그인<div style="flex:1;height:1px;background:var(--border);"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px;">
+              <button class="social-btn" style="background:#FEE500;border-color:#FEE500;color:#000;">💬 카카오로 로그인</button>
+              <button class="social-btn">🌐 Google로 로그인</button>
+              <button class="social-btn" style="background:#000;border-color:#000;color:#fff;">🍎 Apple로 로그인</button>
+            </div>
+            <div style="text-align:center;font-size:13px;color:var(--text2);">계정이 없으신가요? <span style="color:var(--primary);font-weight:700;">회원가입</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 회원가입 -->
+    <div class="screen-wrap">
+      <div class="screen-label">회원가입</div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div style="background:var(--surface);min-height:780px;padding:20px 24px;">
+            <div style="height:20px;"></div>
+            <div class="step-dots"><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div></div>
+            <div style="margin-bottom:24px;">
+              <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">계정 만들기</div>
+              <div style="font-size:13px;color:var(--text2);margin-top:4px;">기본 정보를 입력해주세요</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <div><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">이름</div><input class="input-field" value="이윤형" readonly></div>
+              <div><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">이메일</div><input class="input-field" value="teacher@academy.com" readonly></div>
+              <div><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">비밀번호</div><input class="input-field" type="password" value="password" readonly></div>
+              <div><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">비밀번호 확인</div><input class="input-field" type="password" value="password" readonly><div style="font-size:11px;color:var(--green);margin-top:4px;font-weight:600;">✓ 비밀번호가 일치합니다</div></div>
+            </div>
+            <div style="margin-top:24px;"><button class="btn btn-p">다음 →</button></div>
+            <div style="margin-top:20px;padding:14px;background:var(--surface2);border-radius:12px;">
+              <div style="font-size:11px;color:var(--text2);text-align:center;">또는 소셜 계정으로 빠르게 시작</div>
+              <div style="display:flex;justify-content:center;gap:14px;margin-top:12px;">
+                <div style="width:44px;height:44px;background:#FEE500;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;">💬</div>
+                <div style="width:44px;height:44px;background:#fff;border:1.5px solid var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#4285F4;">G</div>
+                <div style="width:44px;height:44px;background:#000;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;">🍎</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 휴대폰 인증 -->
+    <div class="screen-wrap">
+      <div class="screen-label">휴대폰 인증</div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div style="background:var(--surface);min-height:780px;padding:20px 24px;">
+            <div style="height:20px;"></div>
+            <div class="step-dots"><div class="step-dot"></div><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div></div>
+            <div style="margin-bottom:28px;">
+              <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">휴대폰 인증</div>
+              <div style="font-size:13px;color:var(--text2);margin-top:4px;">모든 역할에 필수로 진행돼요</div>
+            </div>
+            <div style="text-align:center;margin-bottom:28px;">
+              <div style="width:64px;height:64px;background:#EEF2FF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;">📱</div>
+              <div style="font-size:14px;color:var(--text2);">010-1234-5678 으로<br>인증번호를 발송했어요</div>
+            </div>
+            <div style="margin-bottom:24px;">
+              <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px;text-align:center;">인증번호 6자리 입력</div>
+              <div class="otp-inputs">
+                <input class="otp-box f" value="4" readonly>
+                <input class="otp-box f" value="2" readonly>
+                <input class="otp-box f" value="7" readonly>
+                <input class="otp-box" style="border-color:var(--primary);" value="" readonly>
+                <input class="otp-box" value="" readonly>
+                <input class="otp-box" value="" readonly>
+              </div>
+            </div>
+            <div style="padding:14px;background:var(--surface2);border-radius:12px;margin-bottom:20px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:13px;color:var(--text2);">재발송까지</span>
+                <span style="font-size:15px;font-weight:800;color:var(--primary);">1:47</span>
+              </div>
+              <div class="progress-bar" style="margin-top:10px;"><div class="progress-fill" style="width:70%;background:var(--primary);"></div></div>
+            </div>
+            <button class="btn btn-p">인증 확인</button>
+            <div style="margin-top:12px;text-align:center;"><span style="font-size:12px;color:var(--text3);">번호 오류? </span><span style="font-size:12px;color:var(--primary);font-weight:700;">다시 입력하기</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 역할 선택 -->
+    <div class="screen-wrap">
+      <div class="screen-label">역할 선택</div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div style="background:var(--surface);min-height:780px;padding:20px 24px;">
+            <div style="height:20px;"></div>
+            <div class="step-dots"><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot active"></div><div class="step-dot"></div></div>
+            <div style="margin-bottom:28px;">
+              <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">어떤 분이세요?</div>
+              <div style="font-size:13px;color:var(--text2);margin-top:4px;">역할에 맞는 화면을 보여드릴게요</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:28px;">
+              <div class="role-card sel">
+                <div class="role-icon" style="background:#EEF2FF;">👩‍🏫</div>
+                <div><div style="font-weight:700;font-size:15px;">선생님</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">숙제 출제, 출결 관리, 피드백</div></div>
+                <div style="margin-left:auto;width:22px;height:22px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;">✓</div>
+              </div>
+              <div class="role-card">
+                <div class="role-icon" style="background:#ECFDF5;">👧</div>
+                <div><div style="font-weight:700;font-size:15px;">학생</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">숙제 제출, 수업 영상, 출결 확인</div></div>
+              </div>
+              <div class="role-card">
+                <div class="role-icon" style="background:#FFFBEB;">👨‍👩‍👧</div>
+                <div><div style="font-weight:700;font-size:15px;">학부모</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">자녀 숙제 확인, 결석 사유 전송</div></div>
+              </div>
+              <div class="role-card">
+                <div class="role-icon" style="background:#F5F3FF;">🏫</div>
+                <div><div style="font-weight:700;font-size:15px;">원장님 (admin)</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">학원 전체 관리, 통계</div></div>
+              </div>
+            </div>
+            <button class="btn btn-p">다음 →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 코드 입력 -->
+    <div class="screen-wrap">
+      <div class="screen-label">코드 입력</div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div style="background:var(--surface);min-height:780px;padding:20px 24px;">
+            <div style="height:20px;"></div>
+            <div class="step-dots"><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot active"></div></div>
+            <div style="margin-bottom:28px;">
+              <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">학원 코드 입력</div>
+              <div style="font-size:13px;color:var(--text2);margin-top:4px;">원장님께 받은 6자리 코드를 입력해주세요</div>
+            </div>
+            <div style="margin-bottom:28px;">
+              <input style="background:var(--surface2);border:2px solid var(--primary);border-radius:16px;padding:18px;text-align:center;font-size:28px;font-weight:800;letter-spacing:8px;color:var(--primary);font-family:monospace;width:100%;" value="AB12CD" readonly>
+              <div style="text-align:center;font-size:12px;color:var(--green);margin-top:12px;font-weight:600;">✓ 올바른 학원 코드예요</div>
+            </div>
+            <div style="padding:16px;background:#EEF2FF;border-radius:14px;margin-bottom:24px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="font-size:28px;">🏫</div>
+                <div><div style="font-weight:700;font-size:14px;">초등부 영어학원</div><div style="font-size:12px;color:var(--text2);">선생님 4명 · 학생 87명</div></div>
+              </div>
+            </div>
+            <button class="btn btn-p" style="margin-bottom:12px;">이 학원에 참여하기</button>
+            <button class="btn btn-s">다시 입력하기</button>
+            <div style="margin-top:24px;padding:14px;background:var(--surface2);border-radius:12px;">
+              <div style="font-size:12px;color:var(--text2);text-align:center;">5회 오류 시 30초 대기 (브루트포스 방지)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 승인 대기 -->
+    <div class="screen-wrap">
+      <div class="screen-label">승인 대기 (admin)</div>
+      <div class="phone">
+        <div class="phone-inner">
+          <div style="background:var(--surface);min-height:780px;padding:24px;">
+            <div style="height:20px;"></div>
+            <div style="text-align:center;padding:40px 0 28px;">
+              <div style="width:80px;height:80px;background:#FEF3C7;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 20px;">⏳</div>
+              <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;margin-bottom:8px;">승인 대기 중</div>
+              <div style="font-size:14px;color:var(--text2);line-height:1.6;">운영자가 학원 정보를 확인 중이에요.<br>보통 1~2 영업일 내 연락드려요!</div>
+            </div>
+            <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:14px;padding:16px;margin-bottom:20px;">
+              <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#92400E;">📋 신청 정보</div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--text2);">학원 유형</span><span style="font-weight:600;">학원</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--text2);">학원명</span><span style="font-weight:600;">초등부 영어학원</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--text2);">대표자</span><span style="font-weight:600;">이윤형</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--text2);">신청일</span><span style="font-weight:600;">2026.04.10</span></div>
+              </div>
+            </div>
+            <div style="background:var(--surface2);border-radius:14px;padding:14px;margin-bottom:20px;">
+              <div style="font-size:12px;color:var(--text2);text-align:center;margin-bottom:10px;font-weight:600;">승인 전 사용 가능한 기능</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;justify-content:space-between;font-size:12px;"><span>학생 등록</span><span style="color:var(--amber);font-weight:700;">최대 3명</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;"><span>반 생성</span><span style="color:var(--amber);font-weight:700;">1개</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;"><span>선생님 초대</span><span style="color:var(--danger);font-weight:700;">불가</span></div>
+              </div>
+            </div>
+            <button class="btn btn-o" style="margin-bottom:10px;">카카오톡으로 문의</button>
+            <button class="btn btn-p">미리 탐색해보기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+<!-- 1. 선생님 -->
+<section id="s-teacher" class="role-section">
+  <div class="section-hero">
+    <div class="section-tag tag-teacher">👩‍🏫 Teacher</div>
+    <div class="section-title">선생님 화면</div>
+    <div class="section-desc">홈 대시보드 · 숙제 검사 · 출결 명렬표 · 공지 작성 · 내 정보</div>
+  </div>
+  <div class="screens-grid">
+
+    <!-- 홈 -->
+    <div class="screen-wrap">
+      <div class="screen-label">홈 대시보드</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px;background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border-radius:0 0 28px 28px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+              <div><div style="font-size:13px;opacity:0.8;">좋은 아침이에요 ☀️</div><div style="font-size:20px;font-weight:800;margin-top:4px;">이윤형 선생님</div></div>
+              <div style="position:relative;"><div style="width:42px;height:42px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;">🔔</div><div style="position:absolute;top:0;right:0;width:14px;height:14px;background:#EF4444;border-radius:50%;border:2px solid #4F46E5;font-size:8px;color:#fff;display:flex;align-items:center;justify-content:center;">3</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+              <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:12px;text-align:center;"><div style="font-size:24px;font-weight:800;">7</div><div style="font-size:10px;opacity:0.8;margin-top:2px;">미검사 숙제</div></div>
+              <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:12px;text-align:center;"><div style="font-size:24px;font-weight:800;">3</div><div style="font-size:10px;opacity:0.8;margin-top:2px;">오늘 결석</div></div>
+              <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:12px;text-align:center;"><div style="font-size:24px;font-weight:800;">92%</div><div style="font-size:10px;opacity:0.8;margin-top:2px;">이번달 출석률</div></div>
+            </div>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:16px;">
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div style="font-size:14px;font-weight:700;">📌 담당 반</div><span style="font-size:12px;color:var(--primary);font-weight:700;">전체</span></div>
+              <div style="display:flex;gap:10px;">
+                <div style="background:#EEF2FF;border-radius:14px;padding:12px 16px;min-width:120px;"><div style="font-weight:700;font-size:14px;">초등 A반</div><div style="font-size:11px;color:var(--text2);margin-top:2px;">학생 15명</div><div style="font-size:11px;color:var(--green);font-weight:600;margin-top:4px;">출석 13명 ●</div></div>
+                <div style="background:var(--surface2);border-radius:14px;padding:12px 16px;min-width:120px;"><div style="font-weight:700;font-size:14px;">중등 B반</div><div style="font-size:11px;color:var(--text2);margin-top:2px;">학생 12명</div><div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:4px;">입력 대기 ○</div></div>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div style="font-size:14px;font-weight:700;">📝 숙제 검사 현황</div><span style="font-size:12px;color:var(--primary);font-weight:700;">전체</span></div>
+              <div style="border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;"><div><div style="font-weight:700;font-size:14px;">Chapter 5 Review</div><div style="font-size:11px;color:var(--text2);margin-top:2px;">초등 A반 · 마감 오늘 6PM</div></div><span class="chip chip-a">D-0</span></div>
+                <div><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px;"><span style="color:var(--text2);">제출 현황</span><span style="font-weight:700;">8 / 15명</span></div><div class="progress-bar"><div class="progress-fill" style="width:53%;background:var(--amber);"></div></div></div>
+                <div style="display:flex;gap:6px;"><span class="chip chip-g">✓ 제출 8</span><span class="chip chip-r">✗ 미제출 7</span></div>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div style="font-size:14px;font-weight:700;">📢 최근 공지</div><span style="font-size:12px;color:var(--primary);font-weight:700;">작성</span></div>
+              <div class="card" style="display:flex;gap:10px;align-items:flex-start;"><div style="width:6px;align-self:stretch;border-radius:3px;background:var(--danger);flex-shrink:0;"></div><div><div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;"><span class="chip chip-r" style="font-size:10px;">중요</span></div><div style="font-weight:700;font-size:13px;">4월 시험 일정 안내</div><div style="font-size:11px;color:var(--text2);margin-top:2px;">읽음 12/15명 · 2시간 전</div></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label" style="color:var(--primary);">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label">숙제</div><div class="nav-badge">7</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 숙제 검사 -->
+    <div class="screen-wrap">
+      <div class="screen-label">숙제 검사 + 피드백</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;">
+            <div><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">숙제 검사</div><div style="font-size:13px;color:var(--text2);">Chapter 5 Review · 초등 A반</div></div>
+            <span class="chip chip-a">D-0</span>
+          </div>
+          <div style="padding:0 20px 14px;">
+            <div style="background:var(--primary);border-radius:16px;padding:16px;color:#fff;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:10px;"><span style="font-size:13px;opacity:0.85;">제출 현황</span><span style="font-weight:800;font-size:15px;">8 / 15</span></div>
+              <div style="height:8px;background:rgba(255,255,255,0.25);border-radius:100px;overflow:hidden;"><div style="height:100%;width:53%;background:#fff;border-radius:100px;"></div></div>
+              <div style="display:flex;gap:12px;margin-top:12px;font-size:11px;"><span>✓ 제출 8</span><span>⏰ 지각 1</span><span>✗ 미제출 7</span></div>
+            </div>
+          </div>
+          <div style="padding:0 20px;display:flex;gap:8px;margin-bottom:12px;">
+            <button style="flex:1;padding:8px;border-radius:10px;border:none;background:var(--primary);color:#fff;font-family:inherit;font-size:12px;font-weight:700;">제출 (8)</button>
+            <button style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;">미제출 (7)</button>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:10px;">
+            <!-- 제출 완료 학생 -->
+            <div style="border:1.5px solid var(--border);border-radius:14px;padding:12px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                <div class="avatar" style="background:#EEF2FF;">👧</div>
+                <div style="flex:1;"><div style="font-weight:700;font-size:14px;">김서연</div><div style="font-size:11px;color:var(--text2);">오늘 오후 3:24 제출</div></div>
+                <span class="chip chip-g">제출완료</span>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <div style="width:64px;height:72px;background:var(--surface2);border-radius:10px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;">📄</div>
+                <div style="width:64px;height:72px;background:var(--surface2);border-radius:10px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;">📄</div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #10B981;background:#D1FAE5;color:#065F46;font-family:inherit;font-size:13px;font-weight:700;">👍 잘했어요</button>
+                <button style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #60A5FA;background:#DBEAFE;color:#1E40AF;font-family:inherit;font-size:13px;font-weight:700;">💧 다시해봐요</button>
+              </div>
+            </div>
+            <!-- 지각 학생 -->
+            <div style="border:1.5px solid #FEF3C7;border-radius:14px;padding:12px;background:#FFFBEB;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                <div class="avatar" style="background:#FEF3C7;">👦</div>
+                <div style="flex:1;"><div style="font-weight:700;font-size:14px;">박민준</div><div style="font-size:11px;color:var(--text2);">오늘 오후 7:12 제출</div></div>
+                <span class="chip chip-a">⏰ 지각</span>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <div style="width:64px;height:72px;background:var(--surface2);border-radius:10px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;">📄</div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #10B981;background:#D1FAE5;color:#065F46;font-family:inherit;font-size:13px;font-weight:700;">👍 잘했어요</button>
+                <button style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #60A5FA;background:#DBEAFE;color:#1E40AF;font-family:inherit;font-size:13px;font-weight:700;">💧 다시해봐요</button>
+              </div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label" style="color:var(--primary);">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 출결 명렬표 -->
+    <div class="screen-wrap">
+      <div class="screen-label">출결 명렬표</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;">
+            <div><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">출결 명렬표</div><div style="font-size:13px;color:var(--text2);">2026.04.10 금요일</div></div>
+            <span style="font-size:20px;">📊</span>
+          </div>
+          <div style="padding:0 20px 10px;display:flex;gap:8px;overflow-x:auto;">
+            <button style="flex-shrink:0;padding:8px 16px;border-radius:100px;border:none;background:var(--primary);color:#fff;font-family:inherit;font-size:12px;font-weight:700;">초등 A반</button>
+            <button style="flex-shrink:0;padding:8px 16px;border-radius:100px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;">중등 B반</button>
+            <button style="flex-shrink:0;padding:8px 16px;border-radius:100px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;">고등 C반</button>
+          </div>
+          <div style="padding:0 20px 12px;">
+            <div style="background:#EEF2FF;border-radius:14px;padding:12px 16px;display:flex;">
+              <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--primary);">13</div><div style="font-size:10px;color:var(--text2);font-weight:600;">출석</div></div>
+              <div style="width:1px;background:rgba(79,70,229,0.2);"></div>
+              <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--amber);">1</div><div style="font-size:10px;color:var(--text2);font-weight:600;">지각</div></div>
+              <div style="width:1px;background:rgba(79,70,229,0.2);"></div>
+              <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--danger);">1</div><div style="font-size:10px;color:var(--text2);font-weight:600;">결석</div></div>
+              <div style="width:1px;background:rgba(79,70,229,0.2);"></div>
+              <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--text3);">0</div><div style="font-size:10px;color:var(--text2);font-weight:600;">미입력</div></div>
+            </div>
+          </div>
+          <!-- 학생 목록 -->
+          <div style="padding:0 20px;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+              <div class="avatar" style="background:#EEF2FF;">👧</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">김서연</div></div>
+              <div style="display:flex;gap:6px;"><button class="att-btn att-p">○</button><button class="att-btn">△</button><button class="att-btn">✕</button></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+              <div class="avatar" style="background:#FFFBEB;">👦</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">박민준</div></div>
+              <div style="display:flex;gap:6px;"><button class="att-btn">○</button><button class="att-btn att-l">△</button><button class="att-btn">✕</button></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+              <div class="avatar" style="background:#FEE2E2;">👧</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">이지아</div><div style="font-size:11px;color:var(--danger);">📋 병원</div></div>
+              <div style="display:flex;gap:6px;"><button class="att-btn">○</button><button class="att-btn">△</button><button class="att-btn att-a">✕</button></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+              <div class="avatar" style="background:#EEF2FF;">👦</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">최준서</div></div>
+              <div style="display:flex;gap:6px;"><button class="att-btn att-p">○</button><button class="att-btn">△</button><button class="att-btn">✕</button></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;">
+              <div class="avatar" style="background:#EEF2FF;">👧</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">정하은</div></div>
+              <div style="display:flex;gap:6px;"><button class="att-btn att-p">○</button><button class="att-btn">△</button><button class="att-btn">✕</button></div>
+            </div>
+          </div>
+          <div style="padding:12px 20px;"><button class="btn btn-s" style="font-size:13px;border:1.5px solid var(--border);">📥 출결 엑셀 내보내기</button></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label" style="color:var(--primary);">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 공지 작성 -->
+    <div class="screen-wrap">
+      <div class="screen-label">공지 작성</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">공지사항</div>
+            <button style="background:var(--primary);color:#fff;border:none;padding:8px 16px;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;">+ 작성</button>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:10px;">
+            <div style="border:1.5px solid #FCA5A5;border-radius:14px;padding:14px;background:#FEF2F2;">
+              <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;"><span class="chip chip-r" style="font-size:10px;">🔴 중요</span><span style="font-size:10px;color:var(--text3);">2시간 전</span></div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px;">4월 시험 일정 안내</div>
+              <div style="font-size:12px;color:var(--text2);line-height:1.5;">4월 22일(수) 월말평가 진행됩니다.</div>
+              <div style="display:flex;gap:8px;margin-top:10px;align-items:center;"><div class="progress-bar" style="flex:1;height:6px;"><div class="progress-fill" style="width:80%;"></div></div><span style="font-size:11px;color:var(--text2);white-space:nowrap;">읽음 12/15</span></div>
+            </div>
+            <div style="border:1.5px solid var(--border);border-radius:14px;padding:14px;">
+              <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;"><span class="chip chip-b" style="font-size:10px;">일반</span><span style="font-size:10px;color:var(--text3);">어제</span></div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px;">교재 챕터 변경 안내</div>
+              <div style="font-size:12px;color:var(--text2);">다음 주부터 Chapter 6부터 진행합니다.</div>
+              <div style="display:flex;gap:8px;margin-top:10px;align-items:center;"><div class="progress-bar" style="flex:1;height:6px;"><div class="progress-fill" style="width:100%;"></div></div><span style="font-size:11px;color:var(--green);white-space:nowrap;">전체 읽음 ✓</span></div>
+            </div>
+          </div>
+          <!-- 작성 폼 예시 -->
+          <div style="margin:14px 20px;background:var(--surface2);border-radius:16px;padding:16px;border:1.5px dashed var(--border);">
+            <div style="font-size:11px;font-weight:700;color:var(--text3);text-align:center;margin-bottom:12px;">공지 작성 예시</div>
+            <div style="margin-bottom:10px;"><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">제목</div><input class="input-field" value="5월 수업 일정 변경 안내" readonly style="font-size:14px;"></div>
+            <div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;">내용</div><div style="background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px;font-size:13px;color:var(--text2);min-height:60px;">어린이날 연휴로 인해 5월 5일(월) 수업이 휴강입니다...</div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="display:flex;gap:8px;align-items:center;"><span style="font-size:12px;font-weight:600;color:var(--text2);">중요 공지</span><div class="toggle"></div></div>
+              <button style="padding:8px 16px;border-radius:10px;background:var(--primary);color:#fff;border:none;font-family:inherit;font-size:12px;font-weight:700;">발송</button>
+            </div>
+          </div>
+          <div style="height:10px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label" style="color:var(--primary);">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 내 정보 (선생님) -->
+    <div class="screen-wrap">
+      <div class="screen-label">내 정보</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="background:linear-gradient(135deg,#4F46E5,#7C3AED);padding:24px 20px 36px;color:#fff;text-align:center;">
+            <div style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 12px;border:3px solid rgba(255,255,255,0.4);">👩‍🏫</div>
+            <div style="font-size:20px;font-weight:800;">이윤형 선생님</div>
+            <div style="font-size:13px;opacity:0.8;margin-top:4px;">초등부 영어학원</div>
+            <div style="display:flex;justify-content:center;gap:8px;margin-top:10px;"><span class="chip" style="background:rgba(255,255,255,0.2);color:#fff;font-size:11px;">선생님</span><span class="chip" style="background:rgba(255,255,255,0.2);color:#fff;font-size:11px;">담당반 2개</span></div>
+          </div>
+          <div style="margin:-16px 20px 16px;background:var(--surface);border-radius:20px;padding:16px;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
+              <div><div style="font-size:22px;font-weight:800;color:var(--primary);">87</div><div style="font-size:10px;color:var(--text2);">담당 학생</div></div>
+              <div style="border-left:1px solid var(--border);border-right:1px solid var(--border);"><div style="font-size:22px;font-weight:800;color:var(--green);">342</div><div style="font-size:10px;color:var(--text2);">검사 완료</div></div>
+              <div><div style="font-size:22px;font-weight:800;color:var(--amber);">92%</div><div style="font-size:10px;color:var(--text2);">출석률</div></div>
+            </div>
+          </div>
+          <div style="padding:0 20px;">
+            <div class="card">
+              <div class="set-item"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🔔</span><span style="font-weight:600;font-size:14px;">푸시 알림</span></div><div class="toggle"></div></div>
+              <div class="set-item"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🔐</span><span style="font-weight:600;font-size:14px;">비밀번호 변경</span></div><span style="color:var(--text3);font-size:18px;">›</span></div>
+              <div class="set-item"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">📱</span><span style="font-weight:600;font-size:14px;">소셜 계정 연결</span></div><span style="color:var(--text3);font-size:18px;">›</span></div>
+              <div class="set-item" style="border-bottom:none;"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">❓</span><span style="font-weight:600;font-size:14px;">문의하기</span></div><span style="color:var(--text3);font-size:18px;">›</span></div>
+            </div>
+            <div style="margin-top:12px;"><button class="btn" style="background:transparent;border:1.5px solid var(--danger);color:var(--danger);font-size:13px;">로그아웃</button></div>
+          </div>
+          <div style="height:20px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label" style="color:var(--primary);">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- 2. 학생 -->
+<section id="s-student" class="role-section">
+  <div class="section-hero">
+    <div class="section-tag tag-student">👧 Student</div>
+    <div class="section-title">학생 화면</div>
+    <div class="section-desc">홈 · 스캔 제출 · 수업 영상 · 출결 캘린더 · 내 정보</div>
+  </div>
+  <div class="screens-grid">
+
+    <!-- 학생 홈 -->
+    <div class="screen-wrap">
+      <div class="screen-label">홈</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 0;display:flex;justify-content:space-between;align-items:center;">
+            <div><div style="font-size:13px;color:var(--text2);">안녕하세요! 👋</div><div style="font-size:20px;font-weight:800;letter-spacing:-0.5px;">김서연</div></div>
+            <div style="width:40px;height:40px;background:#ECFDF5;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">🔔</div>
+          </div>
+          <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;">
+            <!-- 스트릭 -->
+            <div style="background:linear-gradient(135deg,#10B981,#059669);border-radius:16px;padding:16px 18px;color:#fff;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+                <div><div style="font-size:12px;opacity:0.85;">연속 제출 스트릭</div><div style="font-size:28px;font-weight:800;margin-top:2px;">🔥 7일</div></div>
+                <div style="text-align:right;"><div style="font-size:11px;opacity:0.75;">마감 전 제출 기준</div><div style="font-size:11px;opacity:0.75;">지각 시 초기화</div></div>
+              </div>
+              <div style="display:flex;gap:3px;align-items:flex-end;">
+                <div style="height:16px;width:8px;background:rgba(255,255,255,0.3);border-radius:2px 2px 0 0;"></div>
+                <div style="height:24px;width:8px;background:rgba(255,255,255,0.3);border-radius:2px 2px 0 0;"></div>
+                <div style="height:12px;width:8px;background:rgba(255,255,255,0.3);border-radius:2px 2px 0 0;"></div>
+                <div style="height:28px;width:8px;background:rgba(255,255,255,0.3);border-radius:2px 2px 0 0;"></div>
+                <div style="height:20px;width:8px;background:rgba(255,255,255,0.3);border-radius:2px 2px 0 0;"></div>
+                <div style="height:32px;width:8px;background:rgba(255,255,255,0.3);border-radius:2px 2px 0 0;"></div>
+                <div style="height:16px;width:8px;background:rgba(255,255,255,0.3);border-radius:2px 2px 0 0;"></div>
+                <div style="height:24px;width:8px;background:#fff;border-radius:2px 2px 0 0;"></div>
+                <div style="height:28px;width:8px;background:#fff;border-radius:2px 2px 0 0;"></div>
+                <div style="height:12px;width:8px;background:#fff;border-radius:2px 2px 0 0;"></div>
+                <div style="height:32px;width:8px;background:#fff;border-radius:2px 2px 0 0;"></div>
+                <div style="height:24px;width:8px;background:#fff;border-radius:2px 2px 0 0;"></div>
+                <div style="height:28px;width:8px;background:#fff;border-radius:2px 2px 0 0;"></div>
+                <div style="height:32px;width:8px;background:#fff;border-radius:2px 2px 0 0;"></div>
+              </div>
+            </div>
+            <!-- 숙제 목록 -->
+            <div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-size:14px;font-weight:700;">📝 내 숙제</div><span style="font-size:12px;color:var(--primary);font-weight:700;">전체</span></div>
+            <div class="hw-card"><div class="hw-left" style="background:var(--danger);"></div><div style="flex:1;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;"><div style="font-weight:700;font-size:14px;">Chapter 5 Review</div><span class="chip chip-r">D-0</span></div><div style="font-size:12px;color:var(--text2);margin-bottom:8px;">초등 A반 · 이윤형 선생님</div><button class="btn btn-p" style="padding:10px;font-size:13px;border-radius:10px;">📷 지금 제출하기</button></div></div>
+            <div class="hw-card"><div class="hw-left" style="background:var(--primary);"></div><div style="flex:1;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;"><div style="font-weight:700;font-size:14px;">단어 시험 준비</div><span class="chip chip-b">D-3</span></div><div style="font-size:12px;color:var(--text2);margin-bottom:6px;">초등 A반 · 이윤형 선생님</div><span class="chip chip-gr">미제출</span></div></div>
+            <div class="hw-card" style="border-color:#D1FAE5;background:#F0FDF4;"><div class="hw-left" style="background:var(--green);"></div><div style="flex:1;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;"><div style="font-weight:700;font-size:14px;">Chapter 4 Review</div><span class="chip chip-g">완료 👍</span></div><div style="font-size:12px;color:var(--text2);margin-bottom:4px;">3일 전 제출 완료</div><div style="font-size:12px;color:var(--green);font-weight:600;">선생님: 👍 잘했어요!</div></div></div>
+            <!-- 공지 -->
+            <div style="background:#FEF2F2;border:1.5px solid #FECACA;border-radius:14px;padding:14px;"><div style="display:flex;gap:8px;align-items:flex-start;"><span style="font-size:18px;">🔴</span><div><div style="font-size:12px;font-weight:700;color:var(--danger);margin-bottom:4px;">중요 공지</div><div style="font-weight:700;font-size:13px;">4월 시험 일정 안내</div><div style="font-size:12px;color:var(--text2);margin-top:4px;">4월 22일(수) 월말평가 진행</div></div></div></div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label" style="color:var(--green);">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📷</div><div class="nav-label">제출</div></div>
+          <div class="nav-item"><div class="nav-icon">🎬</div><div class="nav-label">영상</div></div>
+          <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 스캔 제출 -->
+    <div class="screen-wrap">
+      <div class="screen-label">숙제 스캔 제출</div>
+      <div class="phone">
+        <div class="status-bar" style="background:#000;color:#fff;"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner" style="background:#000;">
+          <div style="height:460px;background:#111;display:flex;align-items:center;justify-content:center;position:relative;">
+            <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.04) 1px,transparent 1px);background-size:60px 60px;"></div>
+            <!-- 엣지 감지 프레임 -->
+            <div style="position:absolute;width:200px;height:260px;border:2px solid rgba(74,222,128,0.3);border-radius:4px;background:rgba(74,222,128,0.05);">
+              <div style="position:absolute;top:-1px;left:-1px;width:24px;height:24px;border-top:3px solid #4ADE80;border-left:3px solid #4ADE80;border-radius:4px 0 0 0;"></div>
+              <div style="position:absolute;top:-1px;right:-1px;width:24px;height:24px;border-top:3px solid #4ADE80;border-right:3px solid #4ADE80;border-radius:0 4px 0 0;"></div>
+              <div style="position:absolute;bottom:-1px;left:-1px;width:24px;height:24px;border-bottom:3px solid #4ADE80;border-left:3px solid #4ADE80;border-radius:0 0 0 4px;"></div>
+              <div style="position:absolute;bottom:-1px;right:-1px;width:24px;height:24px;border-bottom:3px solid #4ADE80;border-right:3px solid #4ADE80;border-radius:0 0 4px 0;"></div>
+              <div class="scan-line"></div>
+            </div>
+            <div style="position:absolute;top:20px;width:100%;text-align:center;font-size:12px;color:rgba(255,255,255,0.7);font-weight:600;">문서를 프레임 안에 놓아주세요</div>
+            <div style="position:absolute;top:12px;right:20px;display:flex;flex-direction:column;gap:10px;">
+              <div style="width:36px;height:36px;background:rgba(0,0,0,0.5);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">⚡</div>
+              <div style="width:36px;height:36px;background:rgba(0,0,0,0.5);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;">🎨</div>
+            </div>
+          </div>
+          <div style="background:#111;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+            <div style="display:flex;gap:6px;">
+              <div style="width:48px;height:56px;background:#333;border-radius:8px;border:2px solid #4ADE80;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>
+              <div style="width:48px;height:56px;background:#333;border-radius:8px;border:1.5px dashed #555;display:flex;align-items:center;justify-content:center;font-size:11px;color:#777;">+4</div>
+            </div>
+            <div style="width:72px;height:72px;border-radius:50%;border:4px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <div style="width:58px;height:58px;background:#fff;border-radius:50%;"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+              <div style="width:40px;height:22px;border-radius:11px;background:#4ADE80;display:flex;align-items:center;padding:2px 4px;"><div style="width:18px;height:18px;background:#fff;border-radius:50%;margin-left:auto;"></div></div>
+              <div style="font-size:9px;color:#aaa;">흑백</div>
+            </div>
+          </div>
+          <div style="background:#1A1A1A;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;">
+            <div><div style="color:#fff;font-weight:700;font-size:13px;">Chapter 5 Review</div><div style="color:#aaa;font-size:11px;margin-top:2px;">마감: 오늘 오후 6:00</div></div>
+            <span style="background:#EF4444;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:100px;">D-0 마감임박</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 수업 영상 -->
+    <div class="screen-wrap">
+      <div class="screen-label">수업 영상</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;font-size:22px;font-weight:800;letter-spacing:-0.5px;">수업 영상</div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:16px;">
+            <div>
+              <div class="video-thumb" style="background:#1A1A2E;"><div style="font-size:48px;">📚</div><div class="play-btn">▶</div><div style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">48분</div></div>
+              <div style="font-weight:700;font-size:14px;margin-top:6px;">Chapter 5 문법 총정리</div>
+              <div style="font-size:12px;color:var(--text2);">이윤형 선생님 · 48분</div>
+            </div>
+            <div>
+              <div class="video-thumb" style="background:#1A2A1E;"><div style="font-size:48px;">✏️</div><div class="play-btn">▶</div><div style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">35분</div></div>
+              <div style="font-weight:700;font-size:14px;margin-top:6px;">Chapter 4 복습 & 핵심 문제</div>
+              <div style="font-size:12px;color:var(--text2);">이윤형 선생님 · 35분</div>
+            </div>
+            <div>
+              <div class="video-thumb" style="background:#2A1A1A;"><div style="font-size:48px;">📖</div><div class="play-btn">▶</div><div style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">22분</div></div>
+              <div style="font-weight:700;font-size:14px;margin-top:6px;">단어 암기법 특강</div>
+              <div style="font-size:12px;color:var(--text2);">이윤형 선생님 · 22분</div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📷</div><div class="nav-label">제출</div></div>
+          <div class="nav-item"><div class="nav-icon">🎬</div><div class="nav-label" style="color:var(--green);">영상</div></div>
+          <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 출결 캘린더 -->
+    <div class="screen-wrap">
+      <div class="screen-label">출결 캘린더</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;font-size:22px;font-weight:800;letter-spacing:-0.5px;">내 출결</div>
+          <div style="padding:0 20px 14px;">
+            <div style="background:var(--surface2);border-radius:16px;padding:16px;">
+              <div style="font-size:14px;font-weight:700;margin-bottom:12px;">2026년 4월</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;">
+                <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--primary);">18</div><div style="font-size:10px;color:var(--text2);">출석</div></div>
+                <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--amber);">1</div><div style="font-size:10px;color:var(--text2);">지각</div></div>
+                <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--danger);">1</div><div style="font-size:10px;color:var(--text2);">결석</div></div>
+                <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--green);">90%</div><div style="font-size:10px;color:var(--text2);">출석률</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:0 20px;">
+            <div class="cal-grid">
+              <div class="cal-day cal-h">월</div><div class="cal-day cal-h">화</div><div class="cal-day cal-h">수</div><div class="cal-day cal-h">목</div><div class="cal-day cal-h">금</div><div class="cal-day cal-h">토</div><div class="cal-day cal-h">일</div>
+              <div></div><div class="cal-day cal-p">1</div><div class="cal-day cal-p">2</div><div class="cal-day cal-a">3</div><div class="cal-day cal-p">4</div><div></div><div></div>
+              <div class="cal-day cal-p">7</div><div class="cal-day cal-l">8</div><div class="cal-day cal-p">9</div><div class="cal-day cal-t">10</div><div></div><div></div><div></div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:6px;"><div style="width:14px;height:14px;border-radius:3px;background:#D1FAE5;"></div><span style="font-size:11px;color:var(--text2);">출석</span></div>
+              <div style="display:flex;align-items:center;gap:6px;"><div style="width:14px;height:14px;border-radius:3px;background:#FEF3C7;"></div><span style="font-size:11px;color:var(--text2);">지각</span></div>
+              <div style="display:flex;align-items:center;gap:6px;"><div style="width:14px;height:14px;border-radius:3px;background:#FEE2E2;"></div><span style="font-size:11px;color:var(--text2);">결석</span></div>
+              <div style="display:flex;align-items:center;gap:6px;"><div style="width:14px;height:14px;border-radius:3px;border:2px solid var(--primary);background:#EEF2FF;"></div><span style="font-size:11px;color:var(--text2);">오늘</span></div>
+            </div>
+          </div>
+          <div style="padding:14px 20px;">
+            <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text2);">최근 출결 기록</div>
+            <div class="card" style="padding:0 16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--text2);">4/10 금</span><span style="font-size:13px;font-weight:700;color:var(--green);">○ 출석</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--text2);">4/9 목</span><span style="font-size:13px;font-weight:700;color:var(--green);">○ 출석</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--text2);">4/8 수</span><span style="font-size:13px;font-weight:700;color:var(--amber);">△ 지각 (+8분)</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;"><span style="font-size:13px;color:var(--text2);">4/3 금</span><span style="font-size:13px;font-weight:700;color:var(--danger);">✕ 결석 (병원)</span></div>
+            </div>
+          </div>
+          <div style="height:10px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📷</div><div class="nav-label">제출</div></div>
+          <div class="nav-item"><div class="nav-icon">🎬</div><div class="nav-label">영상</div></div>
+          <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label" style="color:var(--green);">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 내 정보 (학생) -->
+    <div class="screen-wrap">
+      <div class="screen-label">내 정보</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="background:linear-gradient(135deg,#10B981,#059669);padding:24px 20px 36px;color:#fff;text-align:center;">
+            <div style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 12px;border:3px solid rgba(255,255,255,0.4);">👧</div>
+            <div style="font-size:20px;font-weight:800;">김서연</div>
+            <div style="font-size:13px;opacity:0.8;margin-top:4px;">초등 A반 · 초등부 영어학원</div>
+            <div style="display:flex;justify-content:center;gap:6px;margin-top:10px;"><span class="chip" style="background:rgba(255,255,255,0.25);color:#fff;font-size:11px;">🔥 7일 스트릭</span><span class="chip" style="background:rgba(255,255,255,0.25);color:#fff;font-size:11px;">출석률 90%</span></div>
+          </div>
+          <div style="margin:-16px 20px 16px;background:var(--surface);border-radius:20px;padding:16px;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
+              <div><div style="font-size:22px;font-weight:800;color:var(--green);">47</div><div style="font-size:10px;color:var(--text2);">제출 완료</div></div>
+              <div style="border-left:1px solid var(--border);border-right:1px solid var(--border);"><div style="font-size:22px;font-weight:800;color:var(--primary);">🔥7</div><div style="font-size:10px;color:var(--text2);">스트릭</div></div>
+              <div><div style="font-size:22px;font-weight:800;color:var(--amber);">90%</div><div style="font-size:10px;color:var(--text2);">출석률</div></div>
+            </div>
+          </div>
+          <div style="padding:0 20px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">연동코드 (학부모에게 공유)</div>
+            <div style="background:#ECFDF5;border:1.5px solid #6EE7B7;border-radius:12px;padding:14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+              <div style="font-size:24px;font-weight:800;letter-spacing:6px;color:var(--green);font-family:monospace;">A7B2C9</div>
+              <button style="padding:8px 14px;background:var(--green);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;">복사</button>
+            </div>
+            <div class="card">
+              <div class="set-item"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🔔</span><span style="font-weight:600;font-size:14px;">알림 설정</span></div><div class="toggle" style="background:var(--green);"></div></div>
+              <div class="set-item"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🔐</span><span style="font-weight:600;font-size:14px;">비밀번호 변경</span></div><span style="color:var(--text3);font-size:18px;">›</span></div>
+              <div class="set-item" style="border-bottom:none;"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">❓</span><span style="font-weight:600;font-size:14px;">문의하기</span></div><span style="color:var(--text3);font-size:18px;">›</span></div>
+            </div>
+          </div>
+          <div style="height:20px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📷</div><div class="nav-label">제출</div></div>
+          <div class="nav-item"><div class="nav-icon">🎬</div><div class="nav-label">영상</div></div>
+          <div class="nav-item"><div class="nav-icon">📅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label" style="color:var(--green);">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+<!-- 3. 학부모 -->
+<section id="s-parent" class="role-section">
+  <div class="section-hero">
+    <div class="section-tag tag-parent">👨‍👩‍👧 Parent</div>
+    <div class="section-title">학부모 화면</div>
+    <div class="section-desc">홈 · 자녀 숙제 현황 · 공지 수신 · 내 정보</div>
+  </div>
+  <div class="screens-grid">
+
+    <!-- 학부모 홈 -->
+    <div class="screen-wrap">
+      <div class="screen-label">홈</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+            <div><div style="font-size:13px;color:var(--text2);">자녀 현황을 확인하세요</div><div style="font-size:20px;font-weight:800;">박민준 부모님 👋</div></div>
+            <div style="position:relative;"><div style="width:40px;height:40px;background:#FFFBEB;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">🔔</div><div style="position:absolute;top:0;right:0;width:14px;height:14px;background:var(--danger);border-radius:50%;border:2px solid #fff;font-size:8px;color:#fff;display:flex;align-items:center;justify-content:center;">2</div></div>
+          </div>
+          <!-- 자녀 탭 -->
+          <div style="padding:0 20px 12px;display:flex;gap:8px;">
+            <button style="padding:8px 16px;border-radius:100px;border:none;background:var(--amber);color:#fff;font-family:inherit;font-size:13px;font-weight:700;">박민준 (초등 A반)</button>
+            <button style="padding:8px 16px;border-radius:100px;border:none;background:var(--surface2);color:var(--text2);font-family:inherit;font-size:13px;font-weight:700;">+ 자녀 추가</button>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:14px;">
+            <!-- 출결 -->
+            <div style="background:linear-gradient(135deg,#F59E0B,#D97706);border-radius:16px;padding:16px 18px;color:#fff;">
+              <div style="font-size:12px;opacity:0.85;margin-bottom:6px;">오늘 출결 상황</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:10px;"><div style="font-size:36px;">✅</div><div><div style="font-size:18px;font-weight:800;">출석</div><div style="font-size:11px;opacity:0.8;">오후 3:02 확인</div></div></div>
+                <div style="text-align:right;"><div style="font-size:11px;opacity:0.8;">이번달 출석률</div><div style="font-size:22px;font-weight:800;">88%</div></div>
+              </div>
+            </div>
+            <!-- 오늘 숙제 -->
+            <div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:8px;">📝 오늘 숙제</div>
+              <div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:14px;padding:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;"><div><div style="font-weight:700;font-size:14px;">Chapter 5 Review</div><div style="font-size:12px;color:var(--text2);">마감 오늘 오후 6:00</div></div><span class="chip chip-r">미제출</span></div>
+                <div class="progress-bar" style="margin-bottom:6px;"><div class="progress-fill" style="width:0%;"></div></div>
+                <div style="font-size:12px;color:var(--danger);font-weight:600;">⚠️ 아직 제출하지 않았어요</div>
+              </div>
+            </div>
+            <!-- 결석 사유 -->
+            <div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:8px;">📋 결석 사유 전송</div>
+              <div class="card">
+                <div style="font-size:13px;color:var(--text2);margin-bottom:12px;">오늘 결석하나요? 선생님께 사유를 보내주세요.</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                  <button class="reason-chip sel">🏥 병원</button>
+                  <button class="reason-chip">👨‍👩‍👧 가족행사</button>
+                  <button class="reason-chip">📝 기타</button>
+                </div>
+                <button class="btn" style="background:var(--amber);color:#fff;font-size:13px;padding:12px;">선생님께 전송하기</button>
+              </div>
+            </div>
+            <!-- 피드백 -->
+            <div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:8px;">💬 최근 피드백</div>
+              <div class="card"><div style="font-size:13px;font-weight:700;margin-bottom:4px;">Chapter 4 Review</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span class="chip chip-g">👍 잘했어요</span><span style="font-size:11px;color:var(--text3);">3일 전</span></div><div style="font-size:12px;color:var(--text2);">이윤형 선생님이 피드백을 남겼어요</div></div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label" style="color:var(--amber);">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div><div class="nav-badge">1</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 자녀 숙제 현황 -->
+    <div class="screen-wrap">
+      <div class="screen-label">자녀 숙제 현황</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;"><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">숙제 현황</div><div style="font-size:13px;color:var(--text2);">박민준 · 초등 A반</div></div>
+          <div style="padding:0 20px 12px;display:flex;gap:8px;">
+            <button style="flex:1;padding:8px;border-radius:10px;border:none;background:var(--amber);color:#fff;font-family:inherit;font-size:12px;font-weight:700;">미제출 (2)</button>
+            <button style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;">완료 (5)</button>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:12px;">
+            <div style="border:1.5px solid #FCA5A5;border-radius:14px;padding:14px;background:#FEF2F2;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;"><div><div style="font-weight:700;font-size:14px;">Chapter 5 Review</div><div style="font-size:12px;color:var(--text2);">이윤형 선생님</div></div><span class="chip chip-r">D-0 마감</span></div>
+              <div class="progress-bar" style="margin-bottom:6px;"><div class="progress-fill" style="width:0%;"></div></div>
+              <div style="font-size:12px;color:var(--danger);font-weight:600;">⚠️ 오늘 6시까지 제출해야 해요</div>
+            </div>
+            <div style="border:1.5px solid #FDE68A;border-radius:14px;padding:14px;background:#FFFBEB;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;"><div><div style="font-weight:700;font-size:14px;">단어 시험 준비</div><div style="font-size:12px;color:var(--text2);">이윤형 선생님</div></div><span class="chip chip-a">D-3</span></div>
+              <div class="progress-bar"><div class="progress-fill" style="width:0%;"></div></div>
+            </div>
+            <div style="border:1.5px solid #6EE7B7;border-radius:14px;padding:14px;background:#F0FDF4;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;"><div><div style="font-weight:700;font-size:14px;">Chapter 4 Review</div><div style="font-size:12px;color:var(--text2);">3일 전 제출 완료</div></div><span class="chip chip-g">완료</span></div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px;background:rgba(16,185,129,0.1);border-radius:8px;"><span style="font-size:16px;">👍</span><span style="font-size:12px;font-weight:700;color:var(--green);">선생님: 잘했어요!</span></div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label" style="color:var(--amber);">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 공지 수신 -->
+    <div class="screen-wrap">
+      <div class="screen-label">공지 수신</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;"><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">공지사항</div><span style="font-size:20px;">🔔</span></div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:12px;">
+            <div style="border:1.5px solid #FCA5A5;border-radius:14px;padding:14px;background:#FEF2F2;">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;"><span class="chip chip-r" style="font-size:10px;">🔴 중요</span><span style="font-size:10px;color:var(--text3);">2시간 전</span><div style="width:8px;height:8px;border-radius:50%;background:var(--danger);margin-left:auto;"></div></div>
+              <div style="font-weight:800;font-size:15px;margin-bottom:6px;">4월 시험 일정 안내</div>
+              <div style="font-size:13px;color:var(--text2);line-height:1.6;">4월 22일(수) 월말평가. 교재 1~5장 범위이며, 충분히 준비해주세요!</div>
+            </div>
+            <div style="border:1.5px solid var(--border);border-radius:14px;padding:14px;">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;"><span class="chip chip-b" style="font-size:10px;">일반</span><span style="font-size:10px;color:var(--text3);">어제</span></div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px;">교재 챕터 변경 안내</div>
+              <div style="font-size:12px;color:var(--text2);">다음 주부터 Chapter 6부터 진행합니다.</div>
+            </div>
+          </div>
+          <!-- 알림 인박스 -->
+          <div style="padding:14px 20px;">
+            <div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:10px;">📬 알림 인박스</div>
+            <div class="card" style="padding:0 16px;">
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);">
+                <div style="width:36px;height:36px;background:#EEF2FF;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">📝</div>
+                <div style="flex:1;"><div style="font-size:12px;font-weight:700;">Chapter 5 숙제 마감이 2시간 후예요</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">2시간 전</div></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:4px;"></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);">
+                <div style="width:36px;height:36px;background:var(--surface2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">👍</div>
+                <div style="flex:1;"><div style="font-size:12px;">Chapter 4 숙제에 피드백이 등록됐어요</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">3일 전</div></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;">
+                <div style="width:36px;height:36px;background:var(--surface2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">📢</div>
+                <div style="flex:1;"><div style="font-size:12px;">새 공지사항이 등록됐어요</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">3일 전</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="height:10px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label" style="color:var(--amber);">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 내 정보 (학부모) -->
+    <div class="screen-wrap">
+      <div class="screen-label">내 정보</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="background:linear-gradient(135deg,#F59E0B,#D97706);padding:24px 20px 36px;color:#fff;text-align:center;">
+            <div style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 12px;border:3px solid rgba(255,255,255,0.4);">👨</div>
+            <div style="font-size:20px;font-weight:800;">박○○ 부모님</div>
+            <div style="font-size:13px;opacity:0.8;margin-top:4px;">학부모 · 자녀 1명 연동</div>
+          </div>
+          <div style="margin:-16px 20px 16px;background:var(--surface);border-radius:20px;padding:16px;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px;">연동된 자녀</div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px;background:#FFFBEB;border-radius:12px;margin-bottom:10px;">
+              <div style="width:40px;height:40px;background:var(--amber);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">👦</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">박민준</div><div style="font-size:11px;color:var(--text2);">초등 A반 · 초등부 영어학원</div></div>
+              <button style="padding:6px 12px;background:transparent;border:1.5px solid var(--border);border-radius:8px;font-size:11px;font-weight:700;color:var(--text2);font-family:inherit;">연동해제</button>
+            </div>
+            <button style="width:100%;padding:10px;background:var(--surface2);border:1.5px dashed var(--border);border-radius:12px;font-family:inherit;font-size:12px;color:var(--text2);font-weight:700;">+ 자녀 추가 연동</button>
+          </div>
+          <div style="padding:0 20px;">
+            <div class="card">
+              <div class="set-item"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🔔</span><span style="font-weight:600;font-size:14px;">숙제 알림</span></div><div class="toggle" style="background:var(--amber);"></div></div>
+              <div class="set-item"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">📢</span><span style="font-weight:600;font-size:14px;">공지 알림</span></div><div class="toggle" style="background:var(--amber);"></div></div>
+              <div class="set-item" style="border-bottom:none;"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">❓</span><span style="font-weight:600;font-size:14px;">문의하기</span></div><span style="color:var(--text3);font-size:18px;">›</span></div>
+            </div>
+            <div style="margin-top:12px;"><button class="btn" style="background:transparent;border:1.5px solid var(--danger);color:var(--danger);font-size:13px;">로그아웃</button></div>
+          </div>
+          <div style="height:20px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">📝</div><div class="nav-label">숙제</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-label" style="color:var(--amber);">내정보</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- 4. admin -->
+<section id="s-admin" class="role-section">
+  <div class="section-hero">
+    <div class="section-tag tag-admin">🏫 Admin</div>
+    <div class="section-title">원장님 (admin) 화면</div>
+    <div class="section-desc">홈 대시보드 · 출결 관리 · 학생 관리 · 공지 · 학원 설정</div>
+  </div>
+  <div class="screens-grid">
+
+    <!-- admin 홈 -->
+    <div class="screen-wrap">
+      <div class="screen-label">홈 대시보드</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px;background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;border-radius:0 0 28px 28px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+              <div><div style="font-size:13px;opacity:0.8;">원장님 대시보드 👑</div><div style="font-size:20px;font-weight:800;">초등부 영어학원</div></div>
+              <div style="width:42px;height:42px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;">🔔</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+              <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:12px;"><div style="font-size:11px;opacity:0.8;">전체 학생</div><div style="font-size:26px;font-weight:800;margin-top:2px;">87명</div></div>
+              <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:12px;"><div style="font-size:11px;opacity:0.8;">오늘 출석률</div><div style="font-size:26px;font-weight:800;margin-top:2px;">92%</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+              <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:800;">4</div><div style="font-size:10px;opacity:0.75;">반 수</div></div>
+              <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:800;">5</div><div style="font-size:10px;opacity:0.75;">선생님</div></div>
+              <div style="background:rgba(255,255,255,0.12);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:800;">Pro</div><div style="font-size:10px;opacity:0.75;">플랜</div></div>
+            </div>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:16px;">
+            <div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:8px;">🚨 오늘 확인 필요</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:#FEE2E2;border-radius:14px;padding:12px;text-align:center;"><div style="font-size:24px;font-weight:800;color:var(--danger);">5</div><div style="font-size:11px;color:#991B1B;font-weight:600;">오늘 결석</div></div>
+                <div style="background:#FEF3C7;border-radius:14px;padding:12px;text-align:center;"><div style="font-size:24px;font-weight:800;color:var(--amber);">3</div><div style="font-size:11px;color:#92400E;font-weight:600;">미입력</div></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:8px;">📊 반별 출석률</div>
+              <div class="card" style="display:flex;flex-direction:column;gap:10px;">
+                <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="font-weight:600;">초등 A반</span><span style="color:var(--text2);">15명 · <strong style="color:var(--green);">93%</strong></span></div><div class="progress-bar"><div class="progress-fill" style="width:93%;background:var(--green);"></div></div></div>
+                <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="font-weight:600;">초등 B반</span><span style="color:var(--text2);">18명 · <strong style="color:var(--amber);">87%</strong></span></div><div class="progress-bar"><div class="progress-fill" style="width:87%;background:var(--amber);"></div></div></div>
+                <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="font-weight:600;">중등 A반</span><span style="color:var(--text2);">20명 · <strong style="color:var(--green);">95%</strong></span></div><div class="progress-bar"><div class="progress-fill" style="width:95%;background:var(--green);"></div></div></div>
+                <div><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="font-weight:600;">중등 B반</span><span style="color:var(--text2);">34명 · <strong style="color:var(--amber);">88%</strong></span></div><div class="progress-bar"><div class="progress-fill" style="width:88%;background:var(--amber);"></div></div></div>
+              </div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label" style="color:var(--purple);">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👥</div><div class="nav-label">학생</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">설정</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- admin 출결 -->
+    <div class="screen-wrap">
+      <div class="screen-label">출결 관리</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;"><div><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">출결 관리</div><div style="font-size:13px;color:var(--text2);">전체 반 통합 현황</div></div><button style="background:var(--purple);color:#fff;border:none;padding:8px 14px;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;">📥 엑셀</button></div>
+          <div style="padding:0 20px 12px;display:flex;gap:8px;overflow-x:auto;">
+            <button style="flex-shrink:0;padding:8px 14px;border-radius:10px;border:none;background:var(--purple);color:#fff;font-family:inherit;font-size:12px;font-weight:700;">오늘</button>
+            <button style="flex-shrink:0;padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;">04/09</button>
+            <button style="flex-shrink:0;padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;">04/08</button>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:10px;">
+            <div style="border:1.5px solid var(--border);border-radius:14px;padding:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div><div style="font-weight:700;font-size:14px;">초등 A반</div><div style="font-size:11px;color:var(--text2);">이윤형 선생님</div></div><span style="font-size:13px;font-weight:800;color:var(--purple);">93%</span></div>
+              <div style="display:flex;gap:6px;">
+                <div style="flex:1;background:#D1FAE5;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#065F46;">13</div><div style="font-size:9px;color:#065F46;">출석</div></div>
+                <div style="flex:1;background:#FEF3C7;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#92400E;">1</div><div style="font-size:9px;color:#92400E;">지각</div></div>
+                <div style="flex:1;background:#FEE2E2;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#991B1B;">1</div><div style="font-size:9px;color:#991B1B;">결석</div></div>
+              </div>
+            </div>
+            <div style="border:1.5px solid var(--border);border-radius:14px;padding:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div><div style="font-weight:700;font-size:14px;">초등 B반</div><div style="font-size:11px;color:var(--text2);">김소영 선생님</div></div><span style="font-size:13px;font-weight:800;color:var(--purple);">89%</span></div>
+              <div style="display:flex;gap:6px;">
+                <div style="flex:1;background:#D1FAE5;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#065F46;">16</div><div style="font-size:9px;color:#065F46;">출석</div></div>
+                <div style="flex:1;background:#FEF3C7;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#92400E;">0</div><div style="font-size:9px;color:#92400E;">지각</div></div>
+                <div style="flex:1;background:#FEE2E2;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#991B1B;">2</div><div style="font-size:9px;color:#991B1B;">결석</div></div>
+              </div>
+            </div>
+            <div style="border:1.5px solid var(--border);border-radius:14px;padding:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div><div style="font-weight:700;font-size:14px;">중등 A반</div><div style="font-size:11px;color:var(--text2);">박지수 선생님</div></div><span style="font-size:13px;font-weight:800;color:var(--purple);">95%</span></div>
+              <div style="display:flex;gap:6px;">
+                <div style="flex:1;background:#D1FAE5;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#065F46;">19</div><div style="font-size:9px;color:#065F46;">출석</div></div>
+                <div style="flex:1;background:#FEF3C7;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#92400E;">1</div><div style="font-size:9px;color:#92400E;">지각</div></div>
+                <div style="flex:1;background:#FEE2E2;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:#991B1B;">0</div><div style="font-size:9px;color:#991B1B;">결석</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label" style="color:var(--purple);">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👥</div><div class="nav-label">학생</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">설정</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 학생 관리 -->
+    <div class="screen-wrap">
+      <div class="screen-label">학생 관리</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;"><div><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">학생 관리</div><div style="font-size:13px;color:var(--text2);">전체 87명</div></div><button style="background:var(--purple);color:#fff;border:none;padding:8px 14px;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;">+ 추가</button></div>
+          <div style="padding:0 20px 10px;"><div style="position:relative;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;">🔍</span><input class="input-field" value="학생 검색..." readonly style="padding-left:42px;font-size:13px;"></div></div>
+          <div style="padding:0 20px 10px;display:flex;gap:8px;">
+            <button style="flex-shrink:0;padding:6px 14px;border-radius:100px;border:none;background:var(--purple);color:#fff;font-family:inherit;font-size:11px;font-weight:700;">전체</button>
+            <button style="flex-shrink:0;padding:6px 14px;border-radius:100px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:inherit;font-size:11px;font-weight:700;">초등 A반</button>
+            <button style="flex-shrink:0;padding:6px 14px;border-radius:100px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:inherit;font-size:11px;font-weight:700;">초등 B반</button>
+          </div>
+          <div style="padding:0 20px;">
+            <div class="list-item">
+              <div style="width:40px;height:40px;background:#F5F3FF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">👧</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">김서연</div><div style="font-size:11px;color:var(--text2);">초등 A반 · 출석률 92%</div></div>
+              <div style="display:flex;gap:6px;"><button style="padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);background:transparent;font-family:inherit;font-size:11px;font-weight:700;color:var(--text2);">반이동</button><button style="padding:5px 10px;border-radius:8px;border:1.5px solid #FCA5A5;background:transparent;font-family:inherit;font-size:11px;font-weight:700;color:var(--danger);">비활성</button></div>
+            </div>
+            <div class="list-item">
+              <div style="width:40px;height:40px;background:#F5F3FF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">👦</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">박민준</div><div style="font-size:11px;color:var(--text2);">초등 A반 · 출석률 88%</div></div>
+              <div style="display:flex;gap:6px;"><button style="padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);background:transparent;font-family:inherit;font-size:11px;font-weight:700;color:var(--text2);">반이동</button><button style="padding:5px 10px;border-radius:8px;border:1.5px solid #FCA5A5;background:transparent;font-family:inherit;font-size:11px;font-weight:700;color:var(--danger);">비활성</button></div>
+            </div>
+            <div class="list-item">
+              <div style="width:40px;height:40px;background:#F5F3FF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">👧</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;">이지아</div><div style="font-size:11px;color:var(--text2);">초등 B반 · 출석률 95%</div></div>
+              <div style="display:flex;gap:6px;"><button style="padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);background:transparent;font-family:inherit;font-size:11px;font-weight:700;color:var(--text2);">반이동</button><button style="padding:5px 10px;border-radius:8px;border:1.5px solid #FCA5A5;background:transparent;font-family:inherit;font-size:11px;font-weight:700;color:var(--danger);">비활성</button></div>
+            </div>
+            <div class="list-item">
+              <div style="width:40px;height:40px;background:var(--surface2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;filter:grayscale(1);opacity:0.5;">👧</div>
+              <div style="flex:1;"><div style="font-weight:700;font-size:14px;color:var(--text3);">정하은 <span style="font-size:10px;">(퇴원)</span></div><div style="font-size:11px;color:var(--text3);">중등 A반 · 비활성</div></div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👥</div><div class="nav-label" style="color:var(--purple);">학생</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">설정</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- admin 공지 -->
+    <div class="screen-wrap">
+      <div class="screen-label">전체 공지 발송</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;"><div><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;">공지사항</div><div style="font-size:13px;color:var(--text2);">전체 학원 대상</div></div><button style="background:var(--purple);color:#fff;border:none;padding:8px 14px;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;">+ 작성</button></div>
+          <div style="padding:0 20px 12px;">
+            <div style="background:#F5F3FF;border-radius:14px;padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:var(--purple);margin-bottom:10px;">📣 발송 대상</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button style="padding:6px 14px;border-radius:100px;border:none;background:var(--purple);color:#fff;font-family:inherit;font-size:11px;font-weight:700;">전체</button>
+                <button style="padding:6px 14px;border-radius:100px;border:1.5px solid var(--border);background:#fff;color:var(--text2);font-family:inherit;font-size:11px;font-weight:700;">초등부</button>
+                <button style="padding:6px 14px;border-radius:100px;border:1.5px solid var(--border);background:#fff;color:var(--text2);font-family:inherit;font-size:11px;font-weight:700;">중등부</button>
+                <button style="padding:6px 14px;border-radius:100px;border:1.5px solid var(--border);background:#fff;color:var(--text2);font-family:inherit;font-size:11px;font-weight:700;">선생님만</button>
+              </div>
+            </div>
+          </div>
+          <div style="padding:0 20px;display:flex;flex-direction:column;gap:10px;">
+            <div style="border:1.5px solid #FCA5A5;border-radius:14px;padding:14px;background:#FEF2F2;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;"><div style="display:flex;gap:6px;align-items:center;"><span class="chip chip-r" style="font-size:10px;">🔴 중요</span><span style="font-size:10px;color:var(--text3);">오늘</span></div><div style="display:flex;gap:6px;"><button style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:10px;font-family:inherit;">수정</button><button style="padding:4px 8px;border:1px solid #FCA5A5;border-radius:6px;background:#fff;font-size:10px;font-family:inherit;color:var(--danger);">삭제</button></div></div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px;">4월 시험 일정 안내</div>
+              <div style="font-size:12px;color:var(--text2);">4월 22일(수) 월말평가 진행</div>
+              <div style="display:flex;gap:8px;margin-top:10px;align-items:center;"><div class="progress-bar" style="flex:1;height:6px;"><div class="progress-fill" style="width:80%;"></div></div><span style="font-size:11px;color:var(--text2);white-space:nowrap;">읽음 70/87</span></div>
+              <div style="margin-top:6px;font-size:11px;color:var(--danger);">미읽음: 박민준 외 16명</div>
+            </div>
+            <div style="border:1.5px solid var(--border);border-radius:14px;padding:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;"><div style="display:flex;gap:6px;align-items:center;"><span class="chip chip-b" style="font-size:10px;">일반</span><span style="font-size:10px;color:var(--text3);">어제</span></div><div style="display:flex;gap:6px;"><button style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:10px;font-family:inherit;">수정</button><button style="padding:4px 8px;border:1px solid #FCA5A5;border-radius:6px;background:#fff;font-size:10px;font-family:inherit;color:var(--danger);">삭제</button></div></div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px;">5월 수업료 납부 안내</div>
+              <div style="font-size:12px;color:var(--text2);">4월 25일까지 납부 부탁드립니다</div>
+              <div style="display:flex;gap:8px;margin-top:10px;align-items:center;"><div class="progress-bar" style="flex:1;height:6px;"><div class="progress-fill" style="width:100%;"></div></div><span style="font-size:11px;color:var(--green);white-space:nowrap;">전체 읽음 ✓</span></div>
+            </div>
+          </div>
+          <div style="height:16px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👥</div><div class="nav-label">학생</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label" style="color:var(--purple);">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label">설정</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 학원 설정 -->
+    <div class="screen-wrap">
+      <div class="screen-label">학원 설정</div>
+      <div class="phone">
+        <div class="status-bar"><span class="status-time">9:41</span><span class="status-icons">📶 🔋</span></div>
+        <div class="phone-inner">
+          <div style="padding:16px 20px 8px;font-size:22px;font-weight:800;letter-spacing:-0.5px;">학원 설정</div>
+          <div style="padding:0 20px 14px;">
+            <div style="background:linear-gradient(135deg,#7C3AED,#4F46E5);border-radius:16px;padding:16px;color:#fff;display:flex;gap:12px;align-items:center;">
+              <div style="width:52px;height:52px;background:rgba(255,255,255,0.2);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;">🏫</div>
+              <div><div style="font-size:16px;font-weight:800;">초등부 영어학원</div><div style="font-size:12px;opacity:0.8;margin-top:2px;">학원 · Pro 플랜 · 갱신일 5/10</div><div style="margin-top:6px;"><span class="chip" style="background:rgba(255,255,255,0.25);color:#fff;font-size:10px;">✓ 승인 완료</span></div></div>
+            </div>
+          </div>
+          <div style="padding:0 20px 12px;">
+            <div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:8px;">📚 반 관리</div>
+            <div class="card" style="padding:0 16px;">
+              <div class="list-item"><div style="width:36px;height:36px;background:#F5F3FF;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;">📌</div><div style="flex:1;"><div style="font-weight:700;font-size:13px;">초등 A반</div><div style="font-size:11px;color:var(--text2);">이윤형 · 15명 · AB12CD</div></div><button style="padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);background:transparent;font-family:inherit;font-size:10px;font-weight:700;color:var(--text2);">설정</button></div>
+              <div class="list-item"><div style="width:36px;height:36px;background:#F5F3FF;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;">📌</div><div style="flex:1;"><div style="font-weight:700;font-size:13px;">초등 B반</div><div style="font-size:11px;color:var(--text2);">김소영 · 18명 · EF34GH</div></div><button style="padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);background:transparent;font-family:inherit;font-size:10px;font-weight:700;color:var(--text2);">설정</button></div>
+              <div style="padding:10px 0;"><button style="width:100%;padding:10px;border-radius:10px;border:1.5px dashed var(--border);background:transparent;font-family:inherit;font-size:12px;font-weight:700;color:var(--purple);">+ 새 반 만들기</button></div>
+            </div>
+          </div>
+          <div style="padding:0 20px;">
+            <div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:8px;">👩‍🏫 선생님 관리</div>
+            <div class="card" style="padding:0 16px;">
+              <div class="list-item"><div style="width:36px;height:36px;background:#EEF2FF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;">👩‍🏫</div><div style="flex:1;"><div style="font-weight:700;font-size:13px;">이윤형</div><div style="font-size:11px;color:var(--text2);">담당반 2개</div></div><button style="padding:5px 10px;border-radius:8px;border:1.5px solid #FCA5A5;background:transparent;font-family:inherit;font-size:10px;font-weight:700;color:var(--danger);">삭제</button></div>
+              <div class="list-item" style="border-bottom:none;"><div style="width:36px;height:36px;background:#EEF2FF;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;">👩‍🏫</div><div style="flex:1;"><div style="font-weight:700;font-size:13px;">김소영</div><div style="font-size:11px;color:var(--text2);">담당반 1개</div></div><button style="padding:5px 10px;border-radius:8px;border:1.5px solid #FCA5A5;background:transparent;font-family:inherit;font-size:10px;font-weight:700;color:var(--danger);">삭제</button></div>
+              <div style="padding:10px 0;">
+                <div style="background:#F5F3FF;border-radius:10px;padding:10px 12px;">
+                  <div style="font-size:11px;color:var(--purple);font-weight:600;margin-bottom:6px;">선생님 초대 코드</div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-size:18px;font-weight:800;letter-spacing:4px;color:var(--purple);font-family:monospace;">SCHOOL01</div><button style="padding:6px 12px;background:var(--purple);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:700;">복사</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="height:20px;"></div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item"><div class="nav-icon">🏠</div><div class="nav-label">홈</div></div>
+          <div class="nav-item"><div class="nav-icon">✅</div><div class="nav-label">출결</div></div>
+          <div class="nav-item"><div class="nav-icon">👥</div><div class="nav-label">학생</div></div>
+          <div class="nav-item"><div class="nav-icon">📢</div><div class="nav-label">공지</div></div>
+          <div class="nav-item"><div class="nav-icon">⚙️</div><div class="nav-label" style="color:var(--purple);">설정</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<script>
+(function() {
+  var btns = document.querySelectorAll('.tab-btn');
+  btns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var role = this.getAttribute('data-role');
+      document.querySelectorAll('.role-section').forEach(function(s) { s.classList.remove('active'); });
+      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      var target = document.getElementById('s-' + role);
+      if (target) target.classList.add('active');
+      btn.classList.add('active');
+    });
+  });
+})();
+</script>
+</body>
+</html>
