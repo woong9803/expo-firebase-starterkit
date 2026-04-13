@@ -373,13 +373,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
     marginTop: 4,
   },
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   lockedText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#92400E',
     fontWeight: '600',
   },
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#991B1B',
     lineHeight: 18,
   },
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   // 가짜 placeholder — letterSpacing 적용, 입력값 없을 때만 표시
   fakePlaceholder: {
     position: 'absolute',
-    fontSize: 22,
+    fontSize: 24,
     color: '#C4B5FD',
     textAlign: 'center',
     letterSpacing: 8,
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   input: {
     width: '100%',
     height: '100%',
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
     color: '#5B50E8',
     letterSpacing: 8,
@@ -448,13 +448,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   codeHint: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#94A3B8',
     textAlign: 'center',
     marginTop: 8,
   },
   validText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#10B981',
     textAlign: 'center',
@@ -475,15 +475,15 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   previewEmoji: {
-    fontSize: 28,
+    fontSize: 30,
   },
   previewName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
   },
   previewInfo: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
     marginTop: 2,
   },
@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   btnPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnSecondaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#475569',
   },
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   securityText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#94A3B8',
     textAlign: 'center',
   },

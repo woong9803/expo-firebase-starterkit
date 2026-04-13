@@ -16,22 +16,42 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { query, where, getDocs, getCountFromServer } from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
-import { Class } from '../../../types';
+import { Class, AttendanceRecord } from '../../../types';
+
+// 오늘 날짜 문자열 (YYYY-MM-DD)
+function getTodayStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
 
 export default function AdminHomeScreen() {
-  const router = useRouter();
   const { user, academy } = useAuthStore();
   const isPending = academy?.status === 'pending';
+
+  const { top } = useSafeAreaInsets();
 
   // ── 통계 상태 ──────────────────────────────────────────────────────
   const [studentCount, setStudentCount] = useState<number | null>(null);
   const [teacherCount, setTeacherCount] = useState<number | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // 반별 학생 수 { classId: count }
+  const [classStudentCounts, setClassStudentCounts] = useState<Record<string, number>>({});
+
+  // 오늘 출결 관련 통계
+  const [todayRate, setTodayRate]           = useState<number | null>(null);
+  const [absentToday, setAbsentToday]       = useState<number | null>(null);
+  const [notEnteredToday, setNotEnteredToday] = useState<number | null>(null);
+  // 반별 출석률 { classId: rate(0~100) }
+  const [classRates, setClassRates]         = useState<Record<string, number>>({});
+  const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
 
   // Firestore에서 학생 수·선생님 수·반 목록 로드
   useEffect(() => {
@@ -67,9 +87,29 @@ export default function AdminHomeScreen() {
           ),
         ]);
 
+        const classList = classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         setStudentCount(studentSnap.data().count);
         setTeacherCount(teacherSnap.data().count);
-        setClasses(classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class)));
+        setClasses(classList);
+
+        // 반별 학생 수 병렬 집계
+        const countResults = await Promise.all(
+          classList.map(async cls => {
+            const snap = await getCountFromServer(
+              query(
+                Collections.users(),
+                where('academy_id', '==', user.academy_id),
+                where('class_id', '==', cls.id),
+                where('role', '==', 'student'),
+                where('is_active', '==', true),
+              )
+            );
+            return { classId: cls.id, count: snap.data().count };
+          })
+        );
+        const cMap: Record<string, number> = {};
+        countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
+        setClassStudentCounts(cMap);
       } catch (e) {
         console.error('[AdminHome] 통계 조회 실패:', e);
       } finally {
@@ -77,6 +117,68 @@ export default function AdminHomeScreen() {
       }
     })();
   }, [user?.academy_id]);
+
+  // ── 반 목록 로드 완료 후 오늘 출결 통계 집계 ──
+  useEffect(() => {
+    if (classes.length === 0 || !user?.academy_id) return;
+
+    const todayStr = getTodayStr();
+    setIsLoadingAttendance(true);
+
+    // 모든 반에 대해 학생 수 + 오늘 출결 records를 병렬 조회
+    Promise.all(
+      classes.map(async (cls) => {
+        const [studentSnap, recordsSnap] = await Promise.all([
+          getCountFromServer(
+            query(
+              Collections.users(),
+              where('academy_id', '==', user.academy_id),
+              where('class_id', '==', cls.id),
+              where('role', '==', 'student'),
+              where('is_active', '==', true),
+            )
+          ),
+          getDocs(Collections.attendanceRecords(cls.id, todayStr)),
+        ]);
+
+        const total = studentSnap.data().count;
+        let present = 0, absent = 0, late = 0;
+
+        recordsSnap.forEach((d) => {
+          const r = d.data() as AttendanceRecord;
+          if (r.status === 'present') present++;
+          else if (r.status === 'absent') absent++;
+          else if (r.status === 'late') late++;
+        });
+
+        const entered = present + absent + late;
+        const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+
+        return { classId: cls.id, total, present, absent, entered, rate };
+      })
+    ).then((results) => {
+      // 반별 출석률 맵 저장
+      const rates: Record<string, number> = {};
+      let totalStudents = 0, totalPresent = 0, totalAbsent = 0, totalEntered = 0;
+
+      results.forEach(({ classId, total, present, absent, entered, rate }) => {
+        rates[classId] = rate;
+        totalStudents += total;
+        totalPresent  += present;
+        totalAbsent   += absent;
+        totalEntered  += entered;
+      });
+
+      setClassRates(rates);
+      setAbsentToday(totalAbsent);
+      setNotEnteredToday(Math.max(0, totalStudents - totalEntered));
+      setTodayRate(totalStudents > 0 ? Math.round((totalPresent / totalStudents) * 100) : 0);
+    }).catch((e) => {
+      console.error('[AdminHome] 출결 통계 조회 실패:', e);
+    }).finally(() => {
+      setIsLoadingAttendance(false);
+    });
+  }, [classes]);
 
   return (
     <ScrollView
@@ -89,7 +191,7 @@ export default function AdminHomeScreen() {
         colors={['#7C3AED', '#5B50E8']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.headerCard}
+        style={[styles.headerCard, { paddingTop: top + 16 }]}
       >
         {/* 상단 Row: 학원명 + 알림 아이콘 */}
         <View style={styles.headerTop}>
@@ -113,7 +215,11 @@ export default function AdminHomeScreen() {
             <Text style={styles.statLbl2}>전체 학생</Text>
           </View>
           <View style={styles.statBox2}>
-            <Text style={styles.statNum2}>0%</Text>
+            {isLoadingAttendance ? (
+              <ActivityIndicator color="#fff" size="small" style={{ marginBottom: 4 }} />
+            ) : (
+              <Text style={styles.statNum2}>{todayRate ?? 0}%</Text>
+            )}
             <Text style={styles.statLbl2}>오늘 출석률</Text>
           </View>
         </View>
@@ -155,49 +261,24 @@ export default function AdminHomeScreen() {
         </View>
       )}
 
-      {/* ── 빠른 이동 ── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>빠른 이동</Text>
-        <View style={styles.quickGrid}>
-          <TouchableOpacity
-            style={styles.quickBtn}
-            onPress={() => router.push('/(app)/(admin)/teachers')}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.quickIcon, { backgroundColor: '#EEEDF9' }]}>
-              <Ionicons name="person-circle-outline" size={22} color="#5B50E8" />
-            </View>
-            <Text style={styles.quickLabel}>선생님 관리</Text>
-            <Text style={styles.quickCount}>
-              {isLoading ? '-' : `${teacherCount ?? 0}명`}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickBtn}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.quickIcon, { backgroundColor: '#ECFDF5' }]}>
-              <Ionicons name="people-outline" size={22} color="#10B981" />
-            </View>
-            <Text style={styles.quickLabel}>학생 관리</Text>
-            <Text style={styles.quickCount}>
-              {isLoading ? '-' : `${studentCount ?? 0}명`}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
       {/* ── 오늘 확인 필요 ── */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>🚨 오늘 확인 필요</Text>
         <View style={styles.alertGrid}>
           <View style={[styles.alertTile, styles.alertRed]}>
-            <Text style={styles.alertNum_red}>0</Text>
+            {isLoadingAttendance ? (
+              <ActivityIndicator color="#EF4444" size="small" style={{ marginBottom: 4 }} />
+            ) : (
+              <Text style={styles.alertNum_red}>{absentToday ?? 0}</Text>
+            )}
             <Text style={styles.alertLbl_red}>오늘 결석</Text>
           </View>
           <View style={[styles.alertTile, styles.alertAmber]}>
-            <Text style={styles.alertNum_amber}>0</Text>
+            {isLoadingAttendance ? (
+              <ActivityIndicator color="#F59E0B" size="small" style={{ marginBottom: 4 }} />
+            ) : (
+              <Text style={styles.alertNum_amber}>{notEnteredToday ?? 0}</Text>
+            )}
             <Text style={styles.alertLbl_amber}>미입력</Text>
           </View>
         </View>
@@ -213,17 +294,37 @@ export default function AdminHomeScreen() {
         ) : classes.length === 0 ? (
           <Text style={styles.emptyText}>반 데이터가 없어요</Text>
         ) : (
-          classes.map((c) => (
-            <View key={c.id} style={styles.classRow}>
-              <View style={styles.classInfo}>
-                <Text style={styles.className}>{c.name}</Text>
-                <Text style={styles.classRate}>0%</Text>
+          classes.map((c) => {
+            const rate = classRates[c.id] ?? null;
+            return (
+              <View key={c.id} style={styles.classRow}>
+                <View style={styles.classInfo}>
+                  <Text style={styles.className}>
+                    {c.name}
+                    <Text style={styles.classStudentCount}>
+                      {'  '}{classStudentCounts[c.id] ?? '-'}명
+                    </Text>
+                  </Text>
+                  {isLoadingAttendance || rate === null ? (
+                    <ActivityIndicator size="small" color="#94A3B8" />
+                  ) : (
+                    <Text style={styles.classRate}>{rate}%</Text>
+                  )}
+                </View>
+                <View style={styles.barTrack}>
+                  <View style={[
+                    styles.barFill,
+                    {
+                      width: `${rate ?? 0}%`,
+                      backgroundColor: (rate ?? 0) >= 90 ? '#10B981'
+                        : (rate ?? 0) >= 70 ? '#F59E0B'
+                        : '#EF4444',
+                    },
+                  ]} />
+                </View>
               </View>
-              <View style={styles.barTrack}>
-                <View style={[styles.barFill, { width: '0%', backgroundColor: '#10B981' }]} />
-              </View>
-            </View>
-          ))
+            );
+          })
         )}
       </View>
     </ScrollView>
@@ -231,7 +332,7 @@ export default function AdminHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F7FF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { paddingBottom: 32 },
 
   // ── 그라데이션 헤더 카드 ──
@@ -239,8 +340,8 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     paddingHorizontal: 20,
-    paddingTop: 56,
     paddingBottom: 20,
+    // paddingTop은 JSX에서 top + 16으로 동적 적용
   },
   headerTop: {
     flexDirection: 'row',
@@ -248,8 +349,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 16,
   },
-  headerLabel: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginBottom: 4 },
-  headerAcademy: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  headerLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginBottom: 4 },
+  headerAcademy: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
   bellBtn: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: 'rgba(255,255,255,0.2)',
@@ -263,8 +364,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 12, padding: 12,
   },
-  statNum2: { fontSize: 28, fontWeight: '800', color: '#fff', marginBottom: 2 },
-  statLbl2: { fontSize: 11, color: 'rgba(255,255,255,0.8)' },
+  statNum2: { fontSize: 30, fontWeight: '800', color: '#fff', marginBottom: 2 },
+  statLbl2: { fontSize: 12, color: 'rgba(255,255,255,0.8)' },
 
   // 3칸 그리드
   statGrid3: { flexDirection: 'row', gap: 8 },
@@ -274,8 +375,8 @@ const styles = StyleSheet.create({
     borderRadius: 10, padding: 10,
     alignItems: 'center',
   },
-  statNum3: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 2 },
-  statLbl3: { fontSize: 10, color: 'rgba(255,255,255,0.75)' },
+  statNum3: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 2 },
+  statLbl3: { fontSize: 11, color: 'rgba(255,255,255,0.75)' },
 
   // ── 승인 대기 배너 ──
   pendingBanner: {
@@ -283,12 +384,12 @@ const styles = StyleSheet.create({
     borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14,
     marginHorizontal: 16, marginTop: 16,
   },
-  pendingTitle: { fontSize: 13, fontWeight: '700', color: '#78350F', marginBottom: 2 },
-  pendingDesc: { fontSize: 12, color: '#92400E', lineHeight: 17 },
+  pendingTitle: { fontSize: 14, fontWeight: '700', color: '#78350F', marginBottom: 2 },
+  pendingDesc: { fontSize: 13, color: '#92400E', lineHeight: 17 },
 
   // ── 섹션 ──
   section: { paddingHorizontal: 16, marginTop: 20 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 10 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#475569', marginBottom: 10 },
 
   // 빠른 이동 버튼 그리드
   quickGrid: { flexDirection: 'row', gap: 10 },
@@ -302,18 +403,18 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 2,
   },
-  quickLabel: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
-  quickCount: { fontSize: 11, color: '#64748B' },
+  quickLabel: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  quickCount: { fontSize: 12, color: '#64748B' },
 
   // 오늘 확인 필요 타일
   alertGrid: { flexDirection: 'row', gap: 10 },
   alertTile: { flex: 1, borderRadius: 14, padding: 14, alignItems: 'center' },
   alertRed: { backgroundColor: '#FEE2E2' },
   alertAmber: { backgroundColor: '#FEF3C7' },
-  alertNum_red: { fontSize: 28, fontWeight: '800', color: '#EF4444', marginBottom: 4 },
-  alertLbl_red: { fontSize: 11, fontWeight: '600', color: '#991B1B' },
-  alertNum_amber: { fontSize: 28, fontWeight: '800', color: '#F59E0B', marginBottom: 4 },
-  alertLbl_amber: { fontSize: 11, fontWeight: '600', color: '#92400E' },
+  alertNum_red: { fontSize: 30, fontWeight: '800', color: '#EF4444', marginBottom: 4 },
+  alertLbl_red: { fontSize: 12, fontWeight: '600', color: '#991B1B' },
+  alertNum_amber: { fontSize: 30, fontWeight: '800', color: '#F59E0B', marginBottom: 4 },
+  alertLbl_amber: { fontSize: 12, fontWeight: '600', color: '#92400E' },
 
   // ── 카드 ──
   card: {
@@ -325,14 +426,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 14,
   },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  emptyText: { fontSize: 13, color: '#94A3B8', textAlign: 'center', paddingVertical: 8 },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: '#475569' },
+  emptyText: { fontSize: 14, color: '#94A3B8', textAlign: 'center', paddingVertical: 8 },
 
   // 반별 출석률
   classRow: { marginBottom: 12 },
-  classInfo: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  className: { fontSize: 12, fontWeight: '600', color: '#334155' },
-  classRate: { fontSize: 12, color: '#64748B' },
+  classInfo: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5, alignItems: 'center' },
+  className: { fontSize: 13, fontWeight: '600', color: '#334155' },
+  classStudentCount: { fontSize: 12, fontWeight: '400', color: '#94A3B8' },
+  classRate: { fontSize: 13, color: '#64748B' },
   barTrack: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 3 },
 });

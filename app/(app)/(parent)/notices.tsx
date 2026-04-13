@@ -12,6 +12,6 @@ export default function ParentNoticesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center' },
-  text: { fontSize: 15, fontWeight: '600', color: '#334155' },
-  sub: { fontSize: 12, color: '#94A3B8', marginTop: 6 },
+  text: { fontSize: 16, fontWeight: '600', color: '#334155' },
+  sub: { fontSize: 13, color: '#94A3B8', marginTop: 6 },
 });

@@ -58,8 +58,8 @@ const styles = StyleSheet.create({
   btnActivePass: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
   // 💧 선택 상태 — 노랑 계열
   btnActiveRetry: { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
-  emoji: { fontSize: 16 },
-  label: { fontSize: 13, fontWeight: '700', color: '#64748B' },
+  emoji: { fontSize: 17 },
+  label: { fontSize: 14, fontWeight: '700', color: '#64748B' },
   labelActivePass: { color: '#065F46' },
   labelActiveRetry: { color: '#78350F' },
 });

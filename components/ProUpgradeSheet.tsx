@@ -127,21 +127,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   proBadgeText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#5B50E8',
   },
 
   // 제목
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F172A',
     marginBottom: 8,
     textAlign: 'center',
   },
   desc: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 22,
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   benefitText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#334155',
   },
 
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   upgradeBtnText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cancelBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#94A3B8',
   },
 });

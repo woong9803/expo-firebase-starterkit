@@ -236,13 +236,13 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   title: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
     marginTop: 6,
   },
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#991B1B',
     lineHeight: 18,
   },
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#475569',
     marginBottom: 5,
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    fontSize: 15,
+    fontSize: 16,
     color: '#0F172A',
   },
 
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    fontSize: 15,
+    fontSize: 16,
     color: '#0F172A',
   },
   eyeBtn: {
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   forgotText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#5B50E8',
   },
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   btnPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
   },
   dividerText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#94A3B8',
   },
 
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnKakaoText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#191919',
   },
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnGoogleText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#333333',
   },
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnAppleText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#ffffff',
   },
@@ -409,11 +409,11 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   signupPrompt: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
   },
   signupLink: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#5B50E8',
   },

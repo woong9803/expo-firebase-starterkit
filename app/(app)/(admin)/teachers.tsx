@@ -180,7 +180,7 @@ export default function AdminTeachersScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F7FF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
 
   // ── 헤더 ──
   header: {
@@ -199,14 +199,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-  headerSub: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: '#64748B', marginTop: 1 },
 
   // ── 빈 화면 ──
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
   emptyEmoji: { fontSize: 40, marginBottom: 4 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  emptyDesc: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 18 },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
+  emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 18 },
 
   // ── 목록 ──
   list: { padding: 16, gap: 10, paddingBottom: 32 },
@@ -230,11 +230,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  avatarText: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  avatarText: { fontSize: 17, fontWeight: '800', color: '#fff' },
 
   // 이름 + 반
   info: { flex: 1, gap: 4 },
-  name: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  name: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 
   classTag: {
@@ -243,9 +243,9 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 8,
   },
-  classTagText: { fontSize: 11, fontWeight: '700', color: '#5B50E8' },
-  noClass: { fontSize: 11, color: '#94A3B8' },
-  phone: { fontSize: 11, color: '#64748B' },
+  classTagText: { fontSize: 12, fontWeight: '700', color: '#5B50E8' },
+  noClass: { fontSize: 12, color: '#94A3B8' },
+  phone: { fontSize: 12, color: '#64748B' },
 
   // 내보내기 버튼
   removeBtn: {

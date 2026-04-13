@@ -208,14 +208,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   permissionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     color: '#fff',
     marginBottom: 8,
     textAlign: 'center',
   },
   permissionDesc: {
-    fontSize: 14,
+    fontSize: 15,
     color: 'rgba(255,255,255,0.6)',
     textAlign: 'center',
     lineHeight: 22,
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   permissionBtnText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   },
   guideText: {
     marginTop: 16,
-    fontSize: 12,
+    fontSize: 13,
     color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
   },
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   toggleText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#fff',
   },
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   counterText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#fff',
   },
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   maxReachedText: {
-    fontSize: 11,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
   },

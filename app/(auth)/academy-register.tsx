@@ -268,14 +268,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.5,
     marginBottom: 3,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#64748B',
   },
 
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#991B1B',
     lineHeight: 18,
   },
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#334155', // g700
     marginBottom: 10,
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEEDF9',
   },
   typeCardText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#64748B',
   },
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   label: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: '#334155', // g700
   },
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 12,
     paddingHorizontal: 16,
-    fontSize: 15,
+    fontSize: 16,
     color: '#0F172A',
     backgroundColor: '#F1F0FB',
   },
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   btnPrimaryText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#fff',
   },

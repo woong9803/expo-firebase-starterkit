@@ -466,8 +466,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 8,
   },
-  doneTitle: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
-  doneDesc: { fontSize: 15, color: '#64748B', textAlign: 'center', lineHeight: 22 },
+  doneTitle: { fontSize: 26, fontWeight: '800', color: '#0F172A' },
+  doneDesc: { fontSize: 16, color: '#64748B', textAlign: 'center', lineHeight: 22 },
   doneBtn: {
     marginTop: 16,
     backgroundColor: '#5B50E8',
@@ -476,11 +476,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     alignItems: 'center', justifyContent: 'center',
   },
-  doneBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  doneBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 
   // ── 업로드 중
-  uploadingText: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  uploadingProgress: { fontSize: 28, fontWeight: '800', color: '#5B50E8' },
+  uploadingText: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
+  uploadingProgress: { fontSize: 30, fontWeight: '800', color: '#5B50E8' },
   uploadProgressTrack: {
     width: 200, height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden',
   },
@@ -500,8 +500,8 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  headerSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
+  headerSub: { fontSize: 13, color: '#64748B', marginTop: 2 },
 
   // ── 미리보기 그리드
   previewGrid: {
@@ -518,13 +518,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
   },
-  previewIndexText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  previewIndexText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   addMoreBtn: {
     width: '47%', aspectRatio: 1,
     borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center', gap: 4,
   },
-  addMoreText: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
+  addMoreText: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
 
   // ── 미리보기 하단 버튼
   previewFooter: {
@@ -548,7 +548,7 @@ const styles = StyleSheet.create({
     borderColor: '#5B50E8',
     backgroundColor: '#fff',
   },
-  retakeBtnText: { fontSize: 14, fontWeight: '700', color: '#5B50E8' },
+  retakeBtnText: { fontSize: 15, fontWeight: '700', color: '#5B50E8' },
   submitBtn: {
     flex: 2,
     flexDirection: 'row',
@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#5B50E8',
   },
   submitBtnDisabled: { backgroundColor: '#CBD5E1' },
-  submitBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  submitBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 
   // ── 카메라
   cameraContainer: { flex: 1, backgroundColor: '#000' },
@@ -579,8 +579,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   cameraInfo: { alignItems: 'flex-end' },
-  cameraTitle: { fontSize: 14, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
-  cameraCount: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  cameraTitle: { fontSize: 15, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  cameraCount: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
 
   // 썸네일 바
   thumbnailBar: { position: 'absolute', bottom: 160, left: 0, right: 0 },
@@ -601,7 +601,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 18,
   },
-  previewGoBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  previewGoBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   shutterBtn: {
     width: 72, height: 72, borderRadius: 36,
     backgroundColor: '#fff',
@@ -614,5 +614,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 2, borderColor: '#E2E8F0',
   },
-  shutterHint: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
+  shutterHint: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
 });

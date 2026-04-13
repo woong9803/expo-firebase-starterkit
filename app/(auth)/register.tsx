@@ -264,13 +264,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#64748B',
     marginTop: 4,
   },
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#991B1B',
     lineHeight: 18,
   },
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#475569',
     marginBottom: 5,
@@ -310,11 +310,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    fontSize: 15,
+    fontSize: 16,
     color: '#0F172A',
   },
   matchText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     color: '#10B981',
     marginTop: 4,
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   btnPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
@@ -346,11 +346,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   loginPrompt: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#64748B',
   },
   loginLink: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#5B50E8',
   },
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   socialLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#6B6B8A',
   },
   socialRow: {
@@ -393,10 +393,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F172A',
   },
   socialEmoji: {
-    fontSize: 22,
+    fontSize: 24,
   },
   socialGoogle_G: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     color: '#4285F4',
   },

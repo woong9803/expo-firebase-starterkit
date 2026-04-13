@@ -290,13 +290,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#64748B',
     marginTop: 4,
   },
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#991B1B',
     lineHeight: 18,
   },
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     fontSize: 30,
   },
   sentText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
     textAlign: 'center',
   },
@@ -348,7 +348,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   otpLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#475569',
     textAlign: 'center',
@@ -379,12 +379,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEEDF9',
   },
   otpText: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     color: '#0F172A',
   },
   otpTextFilled: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     color: '#3730A3',
   },
@@ -407,11 +407,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   timerLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#64748B',
   },
   timerValue: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
     color: '#5B50E8',
   },
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   btnConfirmText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
@@ -451,11 +451,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   retryText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#64748B',
   },
   retryLink: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#5B50E8',
   },

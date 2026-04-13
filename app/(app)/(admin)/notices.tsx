@@ -26,9 +26,9 @@ const styles = StyleSheet.create({
     paddingTop: 52,
     paddingBottom: 14,
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   emoji: { fontSize: 40 },
-  text: { fontSize: 15, fontWeight: '600', color: '#334155' },
-  sub: { fontSize: 12, color: '#94A3B8' },
+  text: { fontSize: 16, fontWeight: '600', color: '#334155' },
+  sub: { fontSize: 13, color: '#94A3B8' },
 });

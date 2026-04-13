@@ -1,82 +1,542 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+/**
+ * app/(app)/(parent)/profile.tsx — 학부모 내정보 화면
+ *
+ * 주황 그라데이션 프로필 + 연동된 자녀 관리 + 알림 설정 + 문의하기 + 로그아웃
+ */
+
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Switch,
+  Alert,
+  ActivityIndicator,
+  Linking,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { signOut } from 'firebase/auth';
+import { getDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { auth } from '../../../lib/firebase';
+import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
-import { Colors, FontSize, FontWeight, Radius } from '../../../constants/theme';
+import { strings } from '../../../constants/strings';
+import type { User, Class } from '../../../types';
+
+// AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
+const NOTIF_HOMEWORK_KEY = 'parent_notif_homework';
+const NOTIF_NOTICE_KEY = 'parent_notif_notice';
+
+// 자녀 표시용 데이터 타입
+interface ChildInfo {
+  uid: string;
+  name: string;
+  className: string; // 반 이름 (예: "초등 A반")
+}
 
 export default function ParentProfileScreen() {
-  const { user, academy, clearUser } = useAuthStore();
+  const { user, academy, setUser, clearUser } = useAuthStore();
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    clearUser();
-  };
+  // ── 자녀 목록 ──────────────────────────────────────────
+  const [children, setChildren] = useState<ChildInfo[]>([]);
+  const [isLoadingChildren, setIsLoadingChildren] = useState(true);
+
+  // ── 알림 설정 ──────────────────────────────────────────
+  const [homeworkNotif, setHomeworkNotif] = useState(true);
+  const [noticeNotif, setNoticeNotif] = useState(true);
+
+  // ── 알림 설정 불러오기 ─────────────────────────────────
+  useEffect(() => {
+    const loadNotifSettings = async () => {
+      try {
+        const hw = await AsyncStorage.getItem(NOTIF_HOMEWORK_KEY);
+        const nt = await AsyncStorage.getItem(NOTIF_NOTICE_KEY);
+        // 저장된 값이 없으면 기본 ON
+        if (hw !== null) setHomeworkNotif(hw === 'true');
+        if (nt !== null) setNoticeNotif(nt === 'true');
+      } catch (err) {
+        console.error('[ParentProfile] 알림 설정 불러오기 실패:', err);
+      }
+    };
+    loadNotifSettings();
+  }, []);
+
+  // 알림 토글 처리
+  const handleHomeworkNotifToggle = useCallback(async (value: boolean) => {
+    setHomeworkNotif(value);
+    await AsyncStorage.setItem(NOTIF_HOMEWORK_KEY, String(value));
+  }, []);
+
+  const handleNoticeNotifToggle = useCallback(async (value: boolean) => {
+    setNoticeNotif(value);
+    await AsyncStorage.setItem(NOTIF_NOTICE_KEY, String(value));
+  }, []);
+
+  // ── 자녀 데이터 조회 ────────────────────────────────────
+  useEffect(() => {
+    const childUids = user?.children ?? [];
+    if (childUids.length === 0) {
+      setIsLoadingChildren(false);
+      return;
+    }
+
+    const fetchChildren = async () => {
+      try {
+        const results = await Promise.all(
+          childUids.map(async (childUid) => {
+            // 자녀 사용자 문서 조회
+            const childSnap = await getDoc(Collections.user(childUid));
+            if (!childSnap.exists()) return null;
+            const childData = childSnap.data() as User;
+
+            // 자녀가 속한 반 이름 조회
+            let className = strings.profile.noClass;
+            if (childData.class_id) {
+              const classSnap = await getDoc(Collections.class(childData.class_id));
+              if (classSnap.exists()) {
+                className = (classSnap.data() as Class).name;
+              }
+            }
+
+            return { uid: childUid, name: childData.name, className } as ChildInfo;
+          })
+        );
+        setChildren(results.filter((c): c is ChildInfo => c !== null));
+      } catch (err) {
+        console.error('[ParentProfile] 자녀 데이터 조회 실패:', err);
+      } finally {
+        setIsLoadingChildren(false);
+      }
+    };
+
+    fetchChildren();
+  }, [user?.children?.join(',')]);
+
+  // ── 자녀 연동 해제 ──────────────────────────────────────
+  const handleUnlink = useCallback(
+    (child: ChildInfo) => {
+      Alert.alert(
+        strings.profile.unlinkConfirmTitle,
+        strings.profile.unlinkConfirmDesc(child.name),
+        [
+          { text: strings.common.cancel, style: 'cancel' },
+          {
+            text: strings.profile.unlink,
+            style: 'destructive',
+            onPress: async () => {
+              if (!user) return;
+              try {
+                // Firestore에서 parent.children 배열에서 해당 uid 제거
+                await updateDoc(Collections.user(user.uid), {
+                  children: arrayRemove(child.uid),
+                });
+                // 로컬 상태 즉시 반영
+                setChildren((prev) => prev.filter((c) => c.uid !== child.uid));
+                const updatedChildren = (user.children ?? []).filter((uid) => uid !== child.uid);
+                setUser({ ...user, children: updatedChildren });
+              } catch (err) {
+                console.error('[ParentProfile] 연동 해제 실패:', err);
+                Alert.alert(strings.common.error, strings.profile.unlinkFailed);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [user, setUser]
+  );
+
+  // ── 자녀 추가 연동 (준비 중) ────────────────────────────
+  const handleAddChild = useCallback(() => {
+    Alert.alert('준비 중', '자녀 추가 연동 기능은 곧 업데이트될 예정이에요.', [
+      { text: strings.common.confirm },
+    ]);
+  }, []);
+
+  // ── 문의하기 ───────────────────────────────────────────
+  const handleInquiry = useCallback(() => {
+    Alert.alert(
+      strings.profile.inquiry,
+      `이메일로 문의해 주세요.\n${strings.profile.inquiryEmail}`,
+      [
+        { text: strings.common.cancel, style: 'cancel' },
+        {
+          text: '이메일 보내기',
+          onPress: () => Linking.openURL(`mailto:${strings.profile.inquiryEmail}`),
+        },
+      ]
+    );
+  }, []);
+
+  // ── 로그아웃 ───────────────────────────────────────────
+  const handleLogout = useCallback(() => {
+    Alert.alert(strings.auth.logout, '정말 로그아웃 하시겠어요?', [
+      { text: strings.common.cancel, style: 'cancel' },
+      {
+        text: strings.auth.logout,
+        style: 'destructive',
+        onPress: async () => {
+          await signOut(auth);
+          clearUser();
+          // app/_layout.tsx의 onAuthStateChanged가 /(auth)로 자동 이동
+        },
+      },
+    ]);
+  }, [clearUser]);
+
+  const childrenCount = children.length;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>내정보</Text>
+    <ScrollView style={styles.container} bounces={false} showsVerticalScrollIndicator={false}>
+
+      {/* ── 주황 그라데이션 프로필 영역 ── */}
+      <LinearGradient
+        colors={['#F59E0B', '#D97706']}
+        style={styles.gradientHeader}
+      >
+        {/* 타이틀 */}
+        <Text style={styles.headerTitle}>{strings.profile.title}</Text>
+
+        {/* 아바타 원형 */}
+        <View style={styles.avatarWrapper}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarEmoji}>👨‍👦</Text>
+          </View>
+        </View>
+
+        {/* 이름 + 역할/자녀수 */}
+        <Text style={styles.profileName}>{user?.name ?? '부모님'}</Text>
+        <Text style={styles.profileSubtitle}>
+          {strings.profile.childrenCount(childrenCount)}
+        </Text>
+      </LinearGradient>
+
+      {/* ── 연동된 자녀 카드 ── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{strings.profile.linkedChildren}</Text>
+        <View style={styles.card}>
+          {isLoadingChildren ? (
+            <ActivityIndicator color="#F59E0B" style={{ paddingVertical: 20 }} />
+          ) : children.length === 0 ? (
+            <Text style={styles.emptyText}>{strings.profile.noChildren}</Text>
+          ) : (
+            children.map((child, idx) => (
+              <View key={child.uid}>
+                <View style={styles.childRow}>
+                  {/* 자녀 아바타 */}
+                  <View style={styles.childAvatar}>
+                    <Text style={styles.childAvatarEmoji}>👦</Text>
+                  </View>
+
+                  {/* 자녀 이름 + 반·학원 정보 */}
+                  <View style={styles.childInfo}>
+                    <Text style={styles.childName}>{child.name}</Text>
+                    <Text style={styles.childDetail}>
+                      {child.className} · {academy?.name ?? ''}
+                    </Text>
+                  </View>
+
+                  {/* 연동해제 버튼 */}
+                  <TouchableOpacity
+                    style={styles.unlinkBtn}
+                    onPress={() => handleUnlink(child)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.unlinkText}>{strings.profile.unlink}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 자녀 사이 구분선 (마지막 제외) */}
+                {idx < children.length - 1 && <View style={styles.childDivider} />}
+              </View>
+            ))
+          )}
+
+          {/* 자녀 추가 연동 버튼 */}
+          <TouchableOpacity
+            style={styles.addChildBtn}
+            onPress={handleAddChild}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addChildText}>{strings.profile.addChild}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{user?.name?.charAt(0) ?? '학'}</Text>
+      {/* ── 알림 설정 + 문의하기 카드 ── */}
+      <View style={styles.menuCard}>
+        {/* 숙제 알림 토글 */}
+        <View style={styles.menuItem}>
+          <View style={styles.menuLeft}>
+            <Text style={styles.menuIcon}>🔔</Text>
+            <Text style={styles.menuLabel}>{strings.profile.homeworkNotif}</Text>
+          </View>
+          <Switch
+            value={homeworkNotif}
+            onValueChange={handleHomeworkNotifToggle}
+            trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
+            thumbColor="#fff"
+          />
         </View>
-        <View>
-          <Text style={styles.name}>{user?.name ?? '학부모'}</Text>
-          <Text style={styles.role}>학부모 · {academy?.name ?? ''}</Text>
+
+        <View style={styles.menuDivider} />
+
+        {/* 공지 알림 토글 */}
+        <View style={styles.menuItem}>
+          <View style={styles.menuLeft}>
+            <Text style={styles.menuIcon}>📢</Text>
+            <Text style={styles.menuLabel}>{strings.profile.noticeNotif}</Text>
+          </View>
+          <Switch
+            value={noticeNotif}
+            onValueChange={handleNoticeNotifToggle}
+            trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
+            thumbColor="#fff"
+          />
         </View>
+
+        <View style={styles.menuDivider} />
+
+        {/* 문의하기 */}
+        <TouchableOpacity style={styles.menuItem} onPress={handleInquiry} activeOpacity={0.7}>
+          <View style={styles.menuLeft}>
+            <Text style={styles.menuIcon}>❓</Text>
+            <Text style={styles.menuLabel}>{strings.profile.inquiry}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+        </TouchableOpacity>
       </View>
 
+      {/* ── 로그아웃 버튼 ── */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
-        <Text style={styles.logoutText}>로그아웃</Text>
+        <Text style={styles.logoutText}>{strings.auth.logout}</Text>
       </TouchableOpacity>
-    </View>
+
+      {/* 하단 여백 */}
+      <View style={{ height: 32 }} />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.gray50 },
-  header: {
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray200,
-    paddingHorizontal: 16,
-    paddingTop: 52,
-    paddingBottom: 14,
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
   },
-  headerTitle: { fontSize: FontSize.xl4, fontWeight: FontWeight.extrabold, color: Colors.gray900 },
-  profileCard: {
-    flexDirection: 'row',
+
+  // ── 그라데이션 헤더 ──────────────────────────────────
+  gradientHeader: {
+    paddingTop: 56,
+    paddingBottom: 32,
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.white,
-    margin: 16,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.gray200,
+    paddingHorizontal: 24,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  avatarWrapper: {
+    marginBottom: 12,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.gray800,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
   },
-  avatarText: { fontSize: FontSize.xl3, fontWeight: FontWeight.bold, color: Colors.white },
-  name: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.gray900 },
-  role: { fontSize: FontSize.base, color: Colors.gray500, marginTop: 2 },
-  logoutBtn: {
-    marginHorizontal: 16,
-    height: 44,
-    backgroundColor: Colors.white,
-    borderRadius: Radius.lg,
+  avatarEmoji: {
+    fontSize: 36,
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 6,
+  },
+  profileSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+  },
+
+  // ── 섹션 ──────────────────────────────────────────────
+  section: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 10,
+  },
+
+  // ── 자녀 카드 ──────────────────────────────────────────
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.gray200,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    // 그림자
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#94A3B8',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+
+  // 자녀 행
+  childRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  childAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
-  logoutText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.redText },
+  childAvatarEmoji: {
+    fontSize: 22,
+  },
+  childInfo: {
+    flex: 1,
+  },
+  childName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  childDetail: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  unlinkBtn: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  unlinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  childDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginHorizontal: 16,
+  },
+
+  // 자녀 추가 연동 버튼
+  addChildBtn: {
+    margin: 12,
+    height: 44,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderStyle: 'dashed',
+  },
+  addChildText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+
+  // ── 설정 메뉴 카드 ──────────────────────────────────────
+  menuCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    // 그림자
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+  },
+  menuLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuIcon: {
+    fontSize: 22,
+    width: 28,
+    textAlign: 'center',
+  },
+  menuLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginLeft: 58, // 아이콘 너비만큼 들여쓰기
+  },
+
+  // ── 로그아웃 버튼 ──────────────────────────────────────
+  logoutBtn: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    height: 52,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // 그림자
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  logoutText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
 });

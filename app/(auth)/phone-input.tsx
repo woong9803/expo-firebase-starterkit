@@ -188,13 +188,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#64748B',
     marginTop: 4,
   },
@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#991B1B',
     lineHeight: 18,
   },
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   fieldLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#475569',
     marginBottom: 5,
@@ -249,11 +249,11 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 12,
     paddingHorizontal: 16,
-    fontSize: 15,
+    fontSize: 16,
     color: '#0F172A',
   },
   hint: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#94A3B8',
     textAlign: 'center',
     lineHeight: 17,
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   btnPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },

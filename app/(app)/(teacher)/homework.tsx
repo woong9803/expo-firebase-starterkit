@@ -267,7 +267,7 @@ export default function TeacherHomeworkScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F7FF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
 
   // 헤더
   header: {
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
   createBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 12,
   },
-  createBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  createBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   // 반 필터
   filterBar: {
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 12,
   },
-  filterBtnText: { fontSize: 13, fontWeight: '700', color: '#5B50E8' },
+  filterBtnText: { fontSize: 14, fontWeight: '700', color: '#5B50E8' },
 
   // 반 선택 Modal
   modalOverlay: {
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   modalTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#94A3B8',
     marginBottom: 8,
@@ -344,14 +344,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   modalItemActive: { backgroundColor: '#EEEDF9' },
-  modalItemText: { fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  modalItemText: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
   modalItemTextActive: { color: '#5B50E8' },
 
   // 로딩 / 빈 화면
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
   emptyEmoji: { fontSize: 40, marginBottom: 4 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  emptyDesc: { fontSize: 13, color: '#64748B', textAlign: 'center' },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
+  emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center' },
   emptyBtn: {
     marginTop: 8,
     backgroundColor: '#5B50E8',
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
-  emptyBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  emptyBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   // 목록
   list: { padding: 16, gap: 12, paddingBottom: 32 },

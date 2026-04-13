@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   },
 
   appName: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: FontWeight.extrabold,  // 800
     color: '#ffffff',
     letterSpacing: -1,
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   featureIcon: {
-    fontSize: 20,
+    fontSize: 22,
   },
   featureText: {
     fontSize: FontSize.lg,             // 13px
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: FontWeight.bold,       // 700
     color: Colors.white,
   },
@@ -210,20 +210,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnOutlineText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: FontWeight.bold,
     color: '#1A1830',
   },
 
   // 약관 텍스트
   termsText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#A0A0BC',
     textAlign: 'center',
     marginTop: 4,
   },
   termsLink: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#4F46E5',
   },
 });

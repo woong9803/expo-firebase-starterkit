@@ -434,7 +434,7 @@ function ImagePreviewModal({ visible, images, initialIndex, onClose }: ImagePrev
 // ── 스타일 ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F7FF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
 
   // ── 헤더
   header: {
@@ -455,13 +455,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerCenter: { flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', letterSpacing: -0.4 },
-  headerSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: '#64748B', marginTop: 2 },
 
   // ── 로딩 / 빈 화면
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
   emptyEmoji: { fontSize: 40 },
-  emptyText: { fontSize: 15, color: '#64748B', fontWeight: '600' },
+  emptyText: { fontSize: 16, color: '#64748B', fontWeight: '600' },
 
   // ── 스크롤 콘텐츠
   scrollContent: { padding: 16, gap: 16, paddingBottom: 40 },
@@ -476,16 +476,16 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statusLabel: { fontSize: 13, fontWeight: '700', color: '#475569' },
-  statusCount: { fontSize: 14, color: '#64748B' },
-  statusCountHighlight: { fontSize: 20, fontWeight: '800', color: '#5B50E8' },
+  statusLabel: { fontSize: 14, fontWeight: '700', color: '#475569' },
+  statusCount: { fontSize: 15, color: '#64748B' },
+  statusCountHighlight: { fontSize: 22, fontWeight: '800', color: '#5B50E8' },
   progressTrack: { height: 8, backgroundColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#5B50E8', borderRadius: 4 },
-  checkedLabel: { fontSize: 12, color: '#64748B' },
+  checkedLabel: { fontSize: 13, color: '#64748B' },
 
   // ── 섹션
   section: { gap: 10 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#475569', paddingLeft: 2 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#475569', paddingLeft: 2 },
 
   // ── 제출물 카드
   submissionCard: {
@@ -506,11 +506,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#5B50E8',
     alignItems: 'center', justifyContent: 'center',
   },
-  submissionAvatarText: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  submissionAvatarText: { fontSize: 17, fontWeight: '800', color: '#fff' },
   submissionInfo: { flex: 1, gap: 3 },
   submissionNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  submissionName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  submittedAt: { fontSize: 11, color: '#94A3B8' },
+  submissionName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  submittedAt: { fontSize: 12, color: '#94A3B8' },
 
   // 지각 칩
   lateChip: {
@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
-  lateChipText: { fontSize: 10, fontWeight: '700', color: '#991B1B' },
+  lateChipText: { fontSize: 11, fontWeight: '700', color: '#991B1B' },
 
   // 검사 완료 칩
   checkedChip: {
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
-  checkedChipText: { fontSize: 10, fontWeight: '700', color: '#065F46' },
+  checkedChipText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
 
   // 썸네일
   thumbnailScroll: { marginHorizontal: -14, paddingHorizontal: 14 },
@@ -539,7 +539,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2,
   },
-  imageCountText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  imageCountText: { fontSize: 11, fontWeight: '700', color: '#fff' },
 
   // 피드백 버튼 행 (버튼 자체 스타일은 FeedbackButton.tsx로 이동)
   feedbackRow: { flexDirection: 'row', gap: 8 },
@@ -573,15 +573,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#CBD5E1',
     alignItems: 'center', justifyContent: 'center',
   },
-  nonSubmitAvatarText: { fontSize: 13, fontWeight: '800', color: '#fff' },
-  nonSubmitName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  nonSubmitAvatarText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  nonSubmitName: { flex: 1, fontSize: 15, fontWeight: '600', color: '#0F172A' },
   nonSubmitChip: {
     backgroundColor: '#F1F5F9',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  nonSubmitChipText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  nonSubmitChipText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
 
   // ── 이미지 전체보기 모달
   previewOverlay: {
@@ -600,7 +600,7 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 64,
     alignSelf: 'center',
     zIndex: 10,
-    fontSize: 13, fontWeight: '600', color: '#fff',
+    fontSize: 14, fontWeight: '600', color: '#fff',
   },
   previewImageWrapper: {
     width: 375,

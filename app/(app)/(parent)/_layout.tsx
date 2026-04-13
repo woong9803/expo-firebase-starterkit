@@ -47,6 +47,15 @@ export default function ParentTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="attendance"
+        options={{
+          title: '출결',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'calendar' : 'calendar-outline'} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="notices"
         options={{
           title: '공지',
@@ -78,7 +87,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
     marginTop: 2,
   },

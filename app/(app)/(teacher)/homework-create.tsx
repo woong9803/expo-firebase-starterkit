@@ -381,12 +381,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
 
   // ── 폼 ──
   content: { padding: 20, gap: 20, paddingBottom: 40 },
   fieldGroup: { gap: 6 },
-  label: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  label: { fontSize: 12, fontWeight: '700', color: '#475569' },
   required: { color: '#EF4444' },
 
   input: {
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    fontSize: 15,
+    fontSize: 16,
     color: '#0F172A',
   },
   inputMultiline: { minHeight: 100, paddingTop: 14 },
@@ -410,10 +410,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#E2E8F0',
   },
   classChipActive: { backgroundColor: '#EEEDF9', borderColor: '#5B50E8' },
-  classChipText: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  classChipText: { fontSize: 14, fontWeight: '700', color: '#334155' },
   classChipTextActive: { color: '#5B50E8' },
   emptyClass: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, alignItems: 'center' },
-  emptyClassText: { fontSize: 13, color: '#94A3B8' },
+  emptyClassText: { fontSize: 14, color: '#94A3B8' },
 
   // ── 날짜 선택 버튼 ──
   dateBtn: {
@@ -428,11 +428,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   dateBtnSelected: { borderColor: '#5B50E8', backgroundColor: '#EEEDF9' },
-  dateBtnText: { fontSize: 15, color: '#94A3B8', fontWeight: '500' },
+  dateBtnText: { fontSize: 16, color: '#94A3B8', fontWeight: '500' },
   dateBtnTextSelected: { color: '#5B50E8', fontWeight: '700' },
 
   // D-Day
-  dDayText: { fontSize: 12, fontWeight: '600', color: '#5B50E8', marginTop: 4 },
+  dDayText: { fontSize: 13, fontWeight: '600', color: '#5B50E8', marginTop: 4 },
   dDayPast: { color: '#EF4444' },
 
   // ── 출제 버튼 ──
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   submitBtnDisabled: { opacity: 0.45 },
-  submitBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  submitBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 
   // ── iOS 달력 모달 ──
   modalOverlay: {
@@ -473,9 +473,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   modalSideBtn: { minWidth: 44 },
-  modalTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  modalCancel: { fontSize: 15, color: '#94A3B8', fontWeight: '600' },
-  modalConfirm: { fontSize: 15, color: '#5B50E8', fontWeight: '700' },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  modalCancel: { fontSize: 16, color: '#94A3B8', fontWeight: '600' },
+  modalConfirm: { fontSize: 16, color: '#5B50E8', fontWeight: '700' },
   calendarWrapper: {
     paddingHorizontal: 8,
     alignItems: 'center',

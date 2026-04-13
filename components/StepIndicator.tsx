@@ -109,12 +109,12 @@ const styles = StyleSheet.create({
 
   // ── 텍스트 ──
   checkMark: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#fff',
   },
   stepNumber: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
   },
   stepNumberActive: {

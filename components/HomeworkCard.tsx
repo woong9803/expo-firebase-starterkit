@@ -129,15 +129,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', flex: 1 },
-  cardSub: { fontSize: 12, color: '#64748B' },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', flex: 1 },
+  cardSub: { fontSize: 13, color: '#64748B' },
 
   // D-Day 칩
   dDayChip: { borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8, flexShrink: 0 },
   chipRed:  { backgroundColor: '#FEE2E2' },
   chipBlue: { backgroundColor: '#EEEDF9' },
   chipGray: { backgroundColor: '#F1F5F9' },
-  dDayText: { fontSize: 10, fontWeight: '700' },
+  dDayText: { fontSize: 11, fontWeight: '700' },
   textRed:  { color: '#991B1B' },
   textBlue: { color: '#5B50E8' },
   textGray: { color: '#64748B' },
@@ -148,8 +148,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 4,
   },
-  submitLabel: { fontSize: 11, color: '#64748B' },
-  submitCount: { fontSize: 11, fontWeight: '600', color: '#0F172A' },
+  submitLabel: { fontSize: 12, color: '#64748B' },
+  submitCount: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
   progressTrack: { height: 5, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   progressFill:  { height: '100%', backgroundColor: '#5B50E8', borderRadius: 3 },
 
@@ -162,5 +162,5 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     marginTop: 2,
   },
-  statusChipText: { fontSize: 10, fontWeight: '700' },
+  statusChipText: { fontSize: 11, fontWeight: '700' },
 });

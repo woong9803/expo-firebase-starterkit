@@ -1,145 +1,714 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
+  Share,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
+import {
+  query, where, getDocs, addDoc, updateDoc, deleteDoc, getCountFromServer,
+} from 'firebase/firestore';
 import { auth } from '../../../lib/firebase';
+import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
-import { Colors, FontSize, FontWeight, Radius } from '../../../constants/theme';
+import { User, Class } from '../../../types';
+
+// ─────────────────────────────────────────────────────────────
+// 유틸
+// ─────────────────────────────────────────────────────────────
+
+// 6자리 랜덤 영숫자 초대코드 생성
+function generateCode(length = 6): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+
+// Timestamp → MM/DD 형식 날짜 문자열
+function toMonthDay(ts: any): string {
+  if (!ts) return '-';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// 플랜 표시 이름
+function planLabel(plan: string): string {
+  if (plan === 'pro') return 'Pro 플랜';
+  if (plan === 'trial') return 'Trial 플랜';
+  return 'Free 플랜';
+}
+
+// ─────────────────────────────────────────────────────────────
+// AdminSettingsScreen
+// ─────────────────────────────────────────────────────────────
 
 export default function AdminSettingsScreen() {
+  const { top } = useSafeAreaInsets();
   const { user, academy, clearUser } = useAuthStore();
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    clearUser();
+  // ── 데이터 상태 ──
+  const [classes, setClasses]               = useState<Class[]>([]);
+  const [teachers, setTeachers]             = useState<User[]>([]);
+  // { classId: studentCount }
+  const [studentCounts, setStudentCounts]   = useState<Record<string, number>>({});
+  // { classId: teacherName } — 선생님 역매핑
+  const [classTeacherMap, setClassTeacherMap] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading]           = useState(true);
+
+  // ── 새 반 만들기 모달 ──
+  const [isNewClassModalVisible, setIsNewClassModalVisible] = useState(false);
+  const [newClassName, setNewClassName]   = useState('');
+  const [isCreatingClass, setIsCreatingClass] = useState(false);
+
+  // ── 반 설정 모달 (이름 편집 / 삭제) ──
+  const [editClass, setEditClass]           = useState<Class | null>(null);
+  const [isClassSettingVisible, setIsClassSettingVisible] = useState(false);
+  const [editClassName, setEditClassName]   = useState('');
+  const [isSavingClass, setIsSavingClass]   = useState(false);
+
+  // ── 1. 반 + 선생님 목록 로드 ──
+  useEffect(() => {
+    if (!user?.academy_id) return;
+
+    (async () => {
+      try {
+        const [classSnap, teacherSnap] = await Promise.all([
+          getDocs(query(Collections.classes(), where('academy_id', '==', user.academy_id))),
+          getDocs(
+            query(
+              Collections.users(),
+              where('academy_id', '==', user.academy_id),
+              where('role', '==', 'teacher'),
+              where('is_active', '==', true),
+            )
+          ),
+        ]);
+
+        const classList = classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
+        const teacherList = teacherSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+
+        setClasses(classList);
+        setTeachers(teacherList);
+
+        // 선생님 역매핑: classId → 첫 번째 담당 선생님 이름
+        const tMap: Record<string, string> = {};
+        teacherList.forEach(t => {
+          (t.assigned_class_ids ?? []).forEach(cid => {
+            if (!tMap[cid]) tMap[cid] = t.name;
+          });
+        });
+        setClassTeacherMap(tMap);
+
+        // 반별 학생 수 병렬 집계
+        const countResults = await Promise.all(
+          classList.map(async cls => {
+            const snap = await getCountFromServer(
+              query(
+                Collections.users(),
+                where('academy_id', '==', user.academy_id),
+                where('class_id', '==', cls.id),
+                where('role', '==', 'student'),
+                where('is_active', '==', true),
+              )
+            );
+            return { classId: cls.id, count: snap.data().count };
+          })
+        );
+
+        const cMap: Record<string, number> = {};
+        countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
+        setStudentCounts(cMap);
+      } catch (e) {
+        console.error('[AdminSettings] 데이터 로드 실패:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [user?.academy_id]);
+
+  // ── 새 반 만들기 ──
+  const handleCreateClass = async () => {
+    const trimmed = newClassName.trim();
+    if (!trimmed) {
+      Alert.alert('알림', '반 이름을 입력해주세요.');
+      return;
+    }
+    if (!user?.academy_id) return;
+
+    setIsCreatingClass(true);
+    try {
+      const newCode = generateCode();
+      const docRef = await addDoc(Collections.classes(), {
+        name: trimmed,
+        academy_id: user.academy_id,
+        invite_code: newCode,
+      });
+      const newClass: Class = { id: docRef.id, name: trimmed, academy_id: user.academy_id, invite_code: newCode };
+      setClasses(prev => [...prev, newClass]);
+      setStudentCounts(prev => ({ ...prev, [docRef.id]: 0 }));
+      setIsNewClassModalVisible(false);
+      setNewClassName('');
+    } catch (e) {
+      console.error('[AdminSettings] 반 생성 실패:', e);
+      Alert.alert('오류', '반 생성에 실패했어요. 다시 시도해주세요.');
+    } finally {
+      setIsCreatingClass(false);
+    }
   };
 
+  // ── 반 이름 수정 ──
+  const handleSaveClassName = async () => {
+    if (!editClass) return;
+    const trimmed = editClassName.trim();
+    if (!trimmed) { Alert.alert('알림', '반 이름을 입력해주세요.'); return; }
+
+    setIsSavingClass(true);
+    try {
+      await updateDoc(Collections.class(editClass.id), { name: trimmed });
+      setClasses(prev => prev.map(c => c.id === editClass.id ? { ...c, name: trimmed } : c));
+      setIsClassSettingVisible(false);
+      setEditClass(null);
+    } catch (e) {
+      Alert.alert('오류', '반 이름 수정에 실패했어요.');
+    } finally {
+      setIsSavingClass(false);
+    }
+  };
+
+  // ── 반 삭제 ──
+  const handleDeleteClass = () => {
+    if (!editClass) return;
+    Alert.alert(
+      '반 삭제',
+      `"${editClass.name}" 반을 삭제할까요?\n삭제하면 복구할 수 없어요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(Collections.class(editClass.id));
+              setClasses(prev => prev.filter(c => c.id !== editClass.id));
+              setIsClassSettingVisible(false);
+              setEditClass(null);
+            } catch (e) {
+              Alert.alert('오류', '반 삭제에 실패했어요.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ── 선생님 삭제 (비활성화) ──
+  const handleDeleteTeacher = (teacher: User) => {
+    Alert.alert(
+      '선생님 삭제',
+      `${teacher.name} 선생님을 삭제할까요?\n삭제하면 앱에 접속할 수 없어요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await updateDoc(Collections.user(teacher.uid), { is_active: false });
+              setTeachers(prev => prev.filter(t => t.uid !== teacher.uid));
+            } catch (e) {
+              Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ── 초대코드 공유 ──
+  const handleShareCode = async (code: string, label: string) => {
+    try {
+      await Share.share({ message: `${label} 초대 코드: ${code}` });
+    } catch {
+      Alert.alert('초대 코드', code);
+    }
+  };
+
+  // ── 로그아웃 ──
+  const handleLogout = async () => {
+    Alert.alert('로그아웃', '정말 로그아웃하실 건가요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '로그아웃',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut(auth);
+          clearUser();
+        },
+      },
+    ]);
+  };
+
+  // 선생님별 담당반 수
+  const getAssignedCount = (teacher: User) =>
+    (teacher.assigned_class_ids ?? []).filter(cid => classes.some(c => c.id === cid)).length;
+
+  if (isLoading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color="#5B50E8" />
+      </View>
+    );
+  }
+
+  const approvedDate = academy?.approved_at
+    ? toMonthDay(academy.approved_at)
+    : toMonthDay(academy?.created_at);
+
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>내정보</Text>
-      </View>
+    <ScrollView
+      style={[styles.container, { paddingTop: top }]}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ── 헤더 ── */}
+      <Text style={styles.pageTitle}>학원 설정</Text>
 
-      {/* 프로필 카드 */}
-      <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{user?.name?.charAt(0) ?? '원'}</Text>
-        </View>
-        <View style={styles.profileInfo}>
-          <Text style={styles.name}>{user?.name ?? '원장님'}</Text>
-          <Text style={styles.role}>원장님 · {academy?.name ?? ''}</Text>
-          {academy?.plan === 'pro' && (
-            <View style={styles.proBadge}>
-              <Text style={styles.proBadgeText}>Pro</Text>
+      {/* ── 학원 정보 카드 (보라 그라데이션) ── */}
+      <LinearGradient
+        colors={['#7C3AED', '#5B50E8']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.academyCard}
+      >
+        <View style={styles.academyCardInner}>
+          {/* 학원 아이콘 */}
+          <View style={styles.academyIconBox}>
+            <Text style={styles.academyIconEmoji}>🏫</Text>
+          </View>
+
+          {/* 학원 정보 */}
+          <View style={styles.academyInfo}>
+            <Text style={styles.academyName}>{academy?.name ?? '학원'}</Text>
+            <Text style={styles.academySub}>
+              학원 · {planLabel(academy?.plan ?? 'free')} · 갱신일 {approvedDate}
+            </Text>
+            {/* 승인 상태 뱃지 */}
+            <View style={[
+              styles.statusBadge,
+              academy?.status === 'active' ? styles.statusBadgeActive : styles.statusBadgePending,
+            ]}>
+              <Text style={styles.statusBadgeText}>
+                {academy?.status === 'active' ? '✓ 승인 완료' :
+                 academy?.status === 'pending' ? '⏳ 승인 대기' : '❌ 반려'}
+              </Text>
             </View>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* ── 반 관리 ── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📚 반 관리</Text>
+        <View style={styles.card}>
+          {classes.length === 0 ? (
+            <Text style={styles.emptyText}>등록된 반이 없어요</Text>
+          ) : (
+            classes.map((cls, idx) => (
+              <View key={cls.id}>
+                {idx > 0 && <View style={styles.divider} />}
+                <View style={styles.classRow}>
+                  {/* 핀 아이콘 */}
+                  <View style={styles.classIconBox}>
+                    <Text style={styles.classIconEmoji}>📌</Text>
+                  </View>
+
+                  {/* 반 정보 */}
+                  <View style={styles.classInfo}>
+                    <Text style={styles.className}>{cls.name}</Text>
+                    <Text style={styles.classSub}>
+                      {classTeacherMap[cls.id] ?? '선생님 미배정'} · {studentCounts[cls.id] ?? 0}명 · {cls.invite_code}
+                    </Text>
+                  </View>
+
+                  {/* 설정 버튼 */}
+                  <TouchableOpacity
+                    style={styles.settingBtn}
+                    onPress={() => {
+                      setEditClass(cls);
+                      setEditClassName(cls.name);
+                      setIsClassSettingVisible(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.settingBtnText}>설정</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
           )}
+
+          {/* 새 반 만들기 버튼 */}
+          <View style={classes.length > 0 ? styles.divider : undefined} />
+          <TouchableOpacity
+            style={styles.newClassBtn}
+            onPress={() => setIsNewClassModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.newClassBtnText}>+ 새 반 만들기</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* 학원 정보 카드 */}
-      <View style={styles.infoCard}>
-        <Text style={styles.infoCardTitle}>학원 정보</Text>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>학원명</Text>
-          <Text style={styles.infoValue}>{academy?.name ?? '-'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>학원 유형</Text>
-          <Text style={styles.infoValue}>{academy?.academy_type ?? '-'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>학원 코드</Text>
-          <Text style={[styles.infoValue, styles.infoCode]}>{academy?.academy_code ?? '-'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>승인 상태</Text>
-          <Text style={[styles.infoValue, academy?.status === 'active' ? styles.statusActive : styles.statusPending]}>
-            {academy?.status === 'active' ? '승인 완료' : academy?.status === 'pending' ? '승인 대기' : '반려'}
-          </Text>
+      {/* ── 선생님 관리 ── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>👑 선생님 관리</Text>
+        <View style={styles.card}>
+          {teachers.length === 0 ? (
+            <Text style={styles.emptyText}>등록된 선생님이 없어요</Text>
+          ) : (
+            teachers.map((t, idx) => (
+              <View key={t.uid}>
+                {idx > 0 && <View style={styles.divider} />}
+                <View style={styles.teacherRow}>
+                  {/* 왕관 아이콘 */}
+                  <View style={styles.teacherIconBox}>
+                    <Text style={styles.teacherIconEmoji}>👑</Text>
+                  </View>
+
+                  {/* 선생님 정보 */}
+                  <View style={styles.teacherInfo}>
+                    <Text style={styles.teacherName}>{t.name}</Text>
+                    <Text style={styles.teacherSub}>담당반 {getAssignedCount(t)}개</Text>
+                  </View>
+
+                  {/* 삭제 버튼 */}
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => handleDeleteTeacher(t)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.deleteBtnText}>삭제</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+
+          {/* 선생님 초대 코드 */}
+          <View style={[styles.divider, { marginBottom: 12 }]} />
+          <View style={styles.inviteCodeCard}>
+            <View>
+              <Text style={styles.inviteCodeLabel}>선생님 초대 코드</Text>
+              <Text style={styles.inviteCode}>{academy?.academy_code ?? '------'}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.copyBtn}
+              onPress={() => handleShareCode(academy?.academy_code ?? '', '선생님')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.copyBtnText}>복사</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {/* 로그아웃 */}
-      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
+      {/* ── 로그아웃 ── */}
+      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
         <Text style={styles.logoutText}>로그아웃</Text>
       </TouchableOpacity>
-    </View>
+
+      {/* ── 새 반 만들기 모달 ── */}
+      <Modal
+        visible={isNewClassModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsNewClassModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsNewClassModalVisible(false)}
+        />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>새 반 만들기</Text>
+
+          <TextInput
+            style={styles.modalInput}
+            placeholder="반 이름 (예: 초등 A반)"
+            placeholderTextColor="#94A3B8"
+            value={newClassName}
+            onChangeText={setNewClassName}
+            autoFocus
+          />
+
+          <TouchableOpacity
+            style={[styles.modalPrimaryBtn, isCreatingClass && { opacity: 0.6 }]}
+            onPress={handleCreateClass}
+            disabled={isCreatingClass}
+            activeOpacity={0.8}
+          >
+            {isCreatingClass ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.modalPrimaryBtnText}>만들기</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.modalCancelBtn}
+            onPress={() => { setIsNewClassModalVisible(false); setNewClassName(''); }}
+          >
+            <Text style={styles.modalCancelText}>취소</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ── 반 설정 모달 ── */}
+      <Modal
+        visible={isClassSettingVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsClassSettingVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsClassSettingVisible(false)}
+        />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>{editClass?.name} 설정</Text>
+
+          <TextInput
+            style={styles.modalInput}
+            placeholder="반 이름"
+            placeholderTextColor="#94A3B8"
+            value={editClassName}
+            onChangeText={setEditClassName}
+          />
+
+          <TouchableOpacity
+            style={[styles.modalPrimaryBtn, isSavingClass && { opacity: 0.6 }]}
+            onPress={handleSaveClassName}
+            disabled={isSavingClass}
+            activeOpacity={0.8}
+          >
+            {isSavingClass ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.modalPrimaryBtnText}>이름 저장</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.modalDangerBtn}
+            onPress={handleDeleteClass}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.modalDangerText}>반 삭제</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.modalCancelBtn}
+            onPress={() => setIsClassSettingVisible(false)}
+          >
+            <Text style={styles.modalCancelText}>취소</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.gray50 },
-  header: {
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray200,
-    paddingHorizontal: 16,
-    paddingTop: 52,
-    paddingBottom: 14,
-  },
-  headerTitle: { fontSize: FontSize.xl4, fontWeight: FontWeight.extrabold, color: Colors.gray900 },
+// ─────────────────────────────────────────────────────────────
+// 스타일
+// ─────────────────────────────────────────────────────────────
 
-  // 프로필
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.white,
-    margin: 16,
-    marginBottom: 10,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.gray200,
+const styles = StyleSheet.create({
+  container:     { flex: 1, backgroundColor: '#F8FAFC' },
+  scrollContent: { paddingBottom: 40 },
+  centered:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // 페이지 타이틀
+  pageTitle: {
+    fontSize: 22, fontWeight: '800', color: '#0F172A',
+    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16,
   },
-  avatar: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: Colors.gray800,
+
+  // 학원 정보 카드
+  academyCard: {
+    marginHorizontal: 16,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 24,
+  },
+  academyCardInner: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  academyIconBox: {
+    width: 52, height: 52, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { fontSize: FontSize.xl3, fontWeight: FontWeight.bold, color: Colors.white },
-  profileInfo: { flex: 1 },
-  name: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.gray900 },
-  role: { fontSize: FontSize.base, color: Colors.gray500, marginTop: 2 },
-  proBadge: {
+  academyIconEmoji: { fontSize: 28 },
+  academyInfo:      { flex: 1, gap: 3 },
+  academyName:      { fontSize: 20, fontWeight: '800', color: '#fff' },
+  academySub:       { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
+
+  // 승인 상태 뱃지
+  statusBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: Colors.greenBg,
-    borderWidth: 1,
-    borderColor: Colors.greenBorder,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 4,
     marginTop: 4,
   },
-  proBadgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.greenText },
+  statusBadgeActive:  { backgroundColor: '#10B981' },
+  statusBadgePending: { backgroundColor: '#F59E0B' },
+  statusBadgeText:    { fontSize: 13, fontWeight: '700', color: '#fff' },
 
-  // 학원 정보
-  infoCard: {
-    backgroundColor: Colors.white,
-    marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 16,
+  // 섹션
+  section:      { paddingHorizontal: 16, marginBottom: 20 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#475569', marginBottom: 10 },
+
+  // 카드 컨테이너
+  card: {
+    backgroundColor: '#fff',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.gray200,
-    gap: 10,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    paddingVertical: 4,
   },
-  infoCardTitle: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.gray700, marginBottom: 2 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  infoLabel: { fontSize: FontSize.base, color: Colors.gray500 },
-  infoValue: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Colors.gray900 },
-  infoCode: { fontFamily: 'monospace', letterSpacing: 2, color: Colors.blue500 },
-  statusActive: { color: Colors.green },
-  statusPending: { color: Colors.amber },
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginHorizontal: 16 },
+  emptyText: { fontSize: 14, color: '#94A3B8', textAlign: 'center', paddingVertical: 16 },
+
+  // 반 행
+  classRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  classIconBox: {
+    width: 40, height: 40, borderRadius: 10,
+    backgroundColor: '#F1F0FB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  classIconEmoji: { fontSize: 20 },
+  classInfo:  { flex: 1 },
+  className:  { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  classSub:   { fontSize: 13, color: '#64748B', marginTop: 2 },
+  settingBtn: {
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  settingBtnText: { fontSize: 14, fontWeight: '600', color: '#334155' },
+
+  // 새 반 만들기 버튼
+  newClassBtn: {
+    marginHorizontal: 16, marginVertical: 12,
+    borderRadius: 10, borderWidth: 1.5,
+    borderColor: '#5B50E8', borderStyle: 'dashed',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  newClassBtnText: { fontSize: 15, fontWeight: '700', color: '#5B50E8' },
+
+  // 선생님 행
+  teacherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  teacherIconBox: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  teacherIconEmoji: { fontSize: 20 },
+  teacherInfo:  { flex: 1 },
+  teacherName:  { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  teacherSub:   { fontSize: 13, color: '#64748B', marginTop: 2 },
+  deleteBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1.5,
+    borderColor: '#FECACA', backgroundColor: '#FEF2F2',
+  },
+  deleteBtnText: { fontSize: 14, fontWeight: '600', color: '#991B1B' },
+
+  // 선생님 초대코드 카드
+  inviteCodeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: '#F1F0FB',
+    borderRadius: 12, padding: 14,
+  },
+  inviteCodeLabel: { fontSize: 13, color: '#64748B', marginBottom: 4 },
+  inviteCode: {
+    fontSize: 24, fontWeight: '800',
+    color: '#5B50E8', letterSpacing: 4,
+  },
+  copyBtn: {
+    backgroundColor: '#5B50E8',
+    borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8,
+  },
+  copyBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   // 로그아웃
   logoutBtn: {
-    marginHorizontal: 16,
-    height: 44,
-    backgroundColor: Colors.white,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.gray200,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginHorizontal: 16, marginTop: 4,
+    paddingVertical: 14, borderRadius: 14,
+    borderWidth: 1, borderColor: '#E2E8F0',
+    alignItems: 'center', backgroundColor: '#fff',
   },
-  logoutText: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Colors.redText },
+  logoutText: { fontSize: 16, fontWeight: '600', color: '#EF4444' },
+
+  // 모달 공통
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 20, paddingBottom: 36, paddingTop: 16,
+  },
+  modalHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center', marginBottom: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 14 },
+  modalInput: {
+    backgroundColor: '#F1F0FB',
+    borderRadius: 12, borderWidth: 1.5, borderColor: '#E2E8F0',
+    paddingHorizontal: 16, paddingVertical: 13,
+    fontSize: 16, color: '#0F172A', marginBottom: 12,
+  },
+  modalPrimaryBtn: {
+    backgroundColor: '#5B50E8', borderRadius: 14,
+    paddingVertical: 14, alignItems: 'center', marginBottom: 8,
+  },
+  modalPrimaryBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  modalDangerBtn: {
+    backgroundColor: '#FEF2F2', borderRadius: 14, borderWidth: 1, borderColor: '#FECACA',
+    paddingVertical: 14, alignItems: 'center', marginBottom: 8,
+  },
+  modalDangerText: { fontSize: 16, fontWeight: '600', color: '#991B1B' },
+  modalCancelBtn: {
+    backgroundColor: '#F1F5F9', borderRadius: 14,
+    paddingVertical: 14, alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 16, fontWeight: '700', color: '#334155' },
 });

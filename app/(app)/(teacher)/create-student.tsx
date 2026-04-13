@@ -7,6 +7,7 @@ import {
 import { useRouter } from 'expo-router';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDocs, query, where, documentId } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { Class } from '../../../types';
@@ -101,8 +102,12 @@ export default function CreateStudentScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleReset} style={styles.backBtn}>
-            <Text style={styles.backText}>← 다시 만들기</Text>
+          <TouchableOpacity
+            onPress={handleReset}
+            style={styles.backBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="arrow-back" size={22} color="#0F172A" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>계정 생성 완료</Text>
         </View>
@@ -177,8 +182,12 @@ export default function CreateStudentScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← 뒤로</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>학생 계정 만들기</Text>
       </View>
@@ -272,9 +281,9 @@ export default function CreateStudentScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F7FF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
 
-  // 헤더
+  // 헤더 — homework-create.tsx와 동일한 구조 (아이콘 + 타이틀 인라인)
   header: {
     backgroundColor: '#fff',
     borderBottomWidth: 1,
@@ -282,27 +291,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 52,
     paddingBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  backBtn: { marginBottom: 4 },
-  backText: { fontSize: 13, color: '#5B50E8', fontWeight: '600' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
 
   // 입력 폼
   formContent: { padding: 20, gap: 20, paddingBottom: 40 },
-  formDesc: { fontSize: 13, color: '#64748B', lineHeight: 20 },
+  formDesc: { fontSize: 14, color: '#64748B', lineHeight: 20 },
 
   fieldGroup: { gap: 6 },
-  label: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  label: { fontSize: 12, fontWeight: '700', color: '#475569' },
   required: { color: '#EF4444' },
   optional: { color: '#94A3B8', fontWeight: '400' },
   input: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F0FB',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    fontSize: 15,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
     color: '#0F172A',
   },
 
@@ -317,46 +332,46 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   classChipActive: { backgroundColor: '#EEEDF9', borderColor: '#5B50E8' },
-  classChipText: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  classChipText: { fontSize: 14, fontWeight: '700', color: '#334155' },
   classChipTextActive: { color: '#5B50E8' },
   emptyClass: {
     backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 14,
     alignItems: 'center',
   },
-  emptyClassText: { fontSize: 13, color: '#94A3B8' },
+  emptyClassText: { fontSize: 14, color: '#94A3B8' },
 
   // 안내 카드
   infoCard: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 14,
   },
-  infoText: { fontSize: 12, color: '#64748B', lineHeight: 18 },
+  infoText: { fontSize: 13, color: '#64748B', lineHeight: 18 },
 
   // 생성 버튼
   createBtn: {
     height: 52,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: '#5B50E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
   createBtnDisabled: { opacity: 0.45 },
-  createBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  createBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 
   // 결과 화면
   resultContent: { padding: 20, gap: 16, paddingBottom: 40 },
-  resultDesc: { fontSize: 13, color: '#64748B', lineHeight: 20 },
+  resultDesc: { fontSize: 14, color: '#64748B', lineHeight: 20 },
 
   resultCard: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 16,
   },
   resultHeader: {
@@ -365,14 +380,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  resultCardTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  resultCardTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
   resultBadge: {
     backgroundColor: '#EEEDF9',
     borderRadius: 8,
     paddingVertical: 3,
     paddingHorizontal: 8,
   },
-  resultBadgeText: { fontSize: 10, fontWeight: '700', color: '#5B50E8' },
+  resultBadgeText: { fontSize: 11, fontWeight: '700', color: '#5B50E8' },
 
   resultRow: {
     flexDirection: 'row',
@@ -380,8 +395,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
   },
-  resultLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  resultValue: { fontSize: 14, fontWeight: '700', color: '#0F172A', textAlign: 'right', flex: 1, marginLeft: 16 },
+  resultLabel: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  resultValue: { fontSize: 15, fontWeight: '700', color: '#0F172A', textAlign: 'right', flex: 1, marginLeft: 16 },
   monoText: { fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace' },
   passwordText: { color: '#5B50E8', letterSpacing: 1 },
   linkCodeText: { color: '#10B981', letterSpacing: 2 },
@@ -390,10 +405,10 @@ const styles = StyleSheet.create({
   // 완료 버튼
   doneBtn: {
     height: 52,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: '#0F172A',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  doneBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  doneBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 });

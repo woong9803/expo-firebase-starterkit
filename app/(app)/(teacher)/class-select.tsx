@@ -220,16 +220,16 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   headerText: { flex: 1, gap: 4 },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-  headerSub: { fontSize: 12, color: '#64748B', lineHeight: 17 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: '#64748B', lineHeight: 17 },
   skipBtn: { paddingVertical: 6, paddingHorizontal: 2, marginTop: 4 },
-  skipText: { fontSize: 13, fontWeight: '600', color: '#94A3B8' },
+  skipText: { fontSize: 14, fontWeight: '600', color: '#94A3B8' },
 
   // ── 빈 화면 ──
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
   emptyEmoji: { fontSize: 40, marginBottom: 4 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  emptyDesc: { fontSize: 13, color: '#64748B', textAlign: 'center' },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
+  emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center' },
 
   // ── 목록 ──
   list: { padding: 16, gap: 10, paddingBottom: 16 },
@@ -250,9 +250,9 @@ const styles = StyleSheet.create({
     borderColor: '#5B50E8',
   },
   rowInfo: { flex: 1, gap: 3 },
-  rowName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  rowName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   rowNameSelected: { color: '#5B50E8' },
-  rowCode: { fontSize: 11, color: '#94A3B8' },
+  rowCode: { fontSize: 12, color: '#94A3B8' },
 
   // 체크 원
   check: {
@@ -281,5 +281,5 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   saveBtnDisabled: { opacity: 0.45 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 });

@@ -486,13 +486,13 @@ function SubmissionDetailModal({ item, previewIndex, onIndexChange, onClose, onR
 // ── 스타일 ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F7FF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
 
   header: {
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16, paddingTop: 52, paddingBottom: 14,
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
 
   // 탭 바
   tabBar: {
@@ -504,21 +504,21 @@ const styles = StyleSheet.create({
     gap: 4, paddingVertical: 11, borderBottomWidth: 2, borderBottomColor: 'transparent',
   },
   tabActive: { borderBottomColor: '#5B50E8' },
-  tabText: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#94A3B8' },
   tabTextActive: { color: '#5B50E8' },
   tabBadge: {
     backgroundColor: '#E2E8F0', borderRadius: 7,
     paddingHorizontal: 5, paddingVertical: 1, minWidth: 16, alignItems: 'center',
   },
   tabBadgeActive: { backgroundColor: '#EEEDF9' },
-  tabBadgeText: { fontSize: 9, fontWeight: '700', color: '#64748B' },
+  tabBadgeText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
   tabBadgeTextActive: { color: '#5B50E8' },
 
   // 공통
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
   emptyEmoji: { fontSize: 40, marginBottom: 4 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
-  emptyDesc: { fontSize: 13, color: '#64748B', textAlign: 'center' },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
+  emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center' },
   list: { padding: 16, gap: 12, paddingBottom: 32 },
 
   // 카드 공통
@@ -527,8 +527,8 @@ const styles = StyleSheet.create({
     gap: 8, borderWidth: 1, borderColor: '#E2E8F0',
   },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', flex: 1 },
-  cardDue: { fontSize: 12, color: '#94A3B8' },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', flex: 1 },
+  cardDue: { fontSize: 13, color: '#94A3B8' },
 
   // 카드 타입별
   cardNormal: { borderLeftWidth: 3, borderLeftColor: '#5B50E8' },
@@ -537,37 +537,37 @@ const styles = StyleSheet.create({
   cardChecked: { backgroundColor: '#F0FDF4', borderColor: '#A7F3D0' },
   cardRetry: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
 
-  submittedInfo: { fontSize: 12, color: '#78350F', fontWeight: '600' },
-  viewPhotoHint: { fontSize: 12, color: '#5B50E8', fontWeight: '600' },
+  submittedInfo: { fontSize: 13, color: '#78350F', fontWeight: '600' },
+  viewPhotoHint: { fontSize: 13, color: '#5B50E8', fontWeight: '600' },
 
   // D-Day 칩
   dDayChip: { borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 },
   dDayChipBlue: { backgroundColor: '#EEEDF9' },
   dDayChipRed: { backgroundColor: '#FEE2E2' },
-  dDayText: { fontSize: 11, fontWeight: '700' },
+  dDayText: { fontSize: 12, fontWeight: '700' },
   dDayTextBlue: { color: '#5B50E8' },
   dDayTextRed: { color: '#991B1B' },
 
   // 상태 칩
   chipDone: { backgroundColor: '#ECFDF5', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  chipDoneText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
+  chipDoneText: { fontSize: 12, fontWeight: '700', color: '#065F46' },
   chipPending: { backgroundColor: '#FFFBEB', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  chipPendingText: { fontSize: 11, fontWeight: '700', color: '#78350F' },
+  chipPendingText: { fontSize: 12, fontWeight: '700', color: '#78350F' },
   chipRetry: { backgroundColor: '#FEF3C7', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  chipRetryText: { fontSize: 11, fontWeight: '700', color: '#92400E' },
+  chipRetryText: { fontSize: 12, fontWeight: '700', color: '#92400E' },
 
   // 피드백
   feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  feedbackEmoji: { fontSize: 18 },
-  feedbackLabel: { fontSize: 13, fontWeight: '600', color: '#065F46' },
+  feedbackEmoji: { fontSize: 20 },
+  feedbackLabel: { fontSize: 14, fontWeight: '600', color: '#065F46' },
 
   // 수정하기 버튼
   editBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     borderRadius: 10, paddingVertical: 9, marginTop: 2,
-    borderWidth: 1.5, borderColor: '#5B50E8', backgroundColor: '#F8F7FF',
+    borderWidth: 1.5, borderColor: '#5B50E8', backgroundColor: '#EEEDF9',
   },
-  editBtnText: { fontSize: 13, fontWeight: '700', color: '#5B50E8' },
+  editBtnText: { fontSize: 14, fontWeight: '700', color: '#5B50E8' },
 
   // 다시 제출하기 버튼
   retrySubmitBtn: {
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     borderRadius: 10, paddingVertical: 10, marginTop: 2,
     backgroundColor: '#F59E0B',
   },
-  retrySubmitBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  retrySubmitBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   // 미제출 제출 버튼
   submitBtn: {
@@ -584,7 +584,7 @@ const styles = StyleSheet.create({
   },
   submitBtnNormal: { backgroundColor: '#F1F0FB', borderWidth: 1, borderColor: '#EEEDF9' },
   submitBtnUrgent: { backgroundColor: '#EF4444' },
-  submitBtnText: { fontSize: 13, fontWeight: '700' },
+  submitBtnText: { fontSize: 14, fontWeight: '700' },
   submitBtnTextNormal: { color: '#5B50E8' },
   submitBtnTextUrgent: { color: '#fff' },
 
@@ -596,9 +596,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
   modalCloseBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  modalTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
-  modalSub: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  modalPageIndicator: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  modalSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
+  modalPageIndicator: { fontSize: 13, color: '#64748B', fontWeight: '600' },
   modalImageWrapper: {
     width: SCREEN_WIDTH,
     flex: 1,
@@ -622,12 +622,12 @@ const styles = StyleSheet.create({
   },
   feedbackBannerPass: { backgroundColor: '#ECFDF5' },
   feedbackBannerRetry: { backgroundColor: '#FFFBEB' },
-  feedbackBannerEmoji: { fontSize: 22 },
-  feedbackBannerText: { fontSize: 14, fontWeight: '700' },
+  feedbackBannerEmoji: { fontSize: 24 },
+  feedbackBannerText: { fontSize: 15, fontWeight: '700' },
   modalActionBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, height: 52, borderRadius: 14, backgroundColor: '#5B50E8',
   },
   modalActionBtnRetry: { backgroundColor: '#F59E0B' },
-  modalActionBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  modalActionBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 });

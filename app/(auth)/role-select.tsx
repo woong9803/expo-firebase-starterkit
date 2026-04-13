@@ -175,13 +175,13 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
     marginTop: 4,
   },
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   iconEmoji: {
-    fontSize: 24,
+    fontSize: 26,
   },
 
   // 텍스트
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardLabel: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: '#0F172A',
   },
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   cardDesc: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
     marginTop: 2,
   },
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   checkMark: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#fff',
   },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
   },
   btnPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },

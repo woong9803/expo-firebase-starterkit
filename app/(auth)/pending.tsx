@@ -199,13 +199,13 @@ const styles = StyleSheet.create({
     fontSize: 40,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     color: '#0F172A',
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 22,
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   infoCardTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#92400E',
     marginBottom: 12,
@@ -239,11 +239,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   infoLabel: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
   },
   infoValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: '#0F172A',
   },
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   limitCardTitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#64748B',
     textAlign: 'center',
     marginBottom: 12,
@@ -270,16 +270,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   limitLabel: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#0F172A',
   },
   limitValueAmber: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#F59E0B',
   },
   limitValueRed: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#EF4444',
   },
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnOutlineText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
   },
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnPrimaryText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
