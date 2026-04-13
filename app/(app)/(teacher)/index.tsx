@@ -5,12 +5,42 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { query, where, getDocs, orderBy, limit, documentId } from 'firebase/firestore';
+import {
+  query, where, getDocs, getCountFromServer,
+  orderBy, limit, documentId,
+} from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { getAbsentCountToday } from '../../../lib/attendance';
 import { useAuthStore } from '../../../store/useAuthStore';
-import { Class, Notice } from '../../../types';
+import { Class, Homework, Notice, AttendanceRecord } from '../../../types';
 
+// 반별 오늘 출석 현황 타입
+interface ClassStat {
+  studentCount: number;
+  presentCount: number;
+}
+
+// 숙제 + 제출 통계 타입
+interface HwStat extends Homework {
+  submittedCount: number;
+  totalStudents: number;
+  dDays: number;
+}
+
+// D-day 계산 (날짜 기준, 시간 무시)
+function calcDDays(dueDate: Date): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  return Math.round((due.getTime() - today.getTime()) / 86400000);
+}
+
+// 오늘 날짜 문자열 (YYYY-MM-DD)
+function getTodayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function TeacherHomeScreen() {
   const router = useRouter();
@@ -21,18 +51,28 @@ export default function TeacherHomeScreen() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 홈 통계
+  // 헤더 통계
   const [pendingHomeworkCount, setPendingHomeworkCount] = useState(0);
   const [absentTodayCount, setAbsentTodayCount] = useState(0);
+  const [monthlyRate, setMonthlyRate] = useState<number | null>(null);
+
+  // 반별 학생 수 + 오늘 출석 수 { classId: { studentCount, presentCount } }
+  const [classStats, setClassStats] = useState<Record<string, ClassStat>>({});
+
+  // 숙제 검사 현황
+  const [hwStats, setHwStats] = useState<HwStat[]>([]);
+
+  // 전체 학생 수 (공지 읽음률 계산용)
+  const [totalStudents, setTotalStudents] = useState(0);
 
   useEffect(() => {
     if (!user?.uid || !user?.academy_id) return;
 
     const fetchData = async () => {
       try {
-        // assigned_class_ids 배열로 직접 반 문서 조회 (head_teacher_id 쿼리 제거)
         const classIds = user.assigned_class_ids ?? [];
         let classList: Class[] = [];
+
         if (classIds.length > 0) {
           const classSnap = await getDocs(
             query(Collections.classes(), where(documentId(), 'in', classIds))
@@ -42,6 +82,7 @@ export default function TeacherHomeScreen() {
         setClasses(classList);
         if (classList.length > 0) setSelectedClassId(classList[0].id);
 
+        // 공지 최신 3건
         const noticeSnap = await getDocs(
           query(
             Collections.notices(),
@@ -52,28 +93,110 @@ export default function TeacherHomeScreen() {
         );
         setNotices(noticeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Notice)));
 
-        // 미검사 숙제 수: 담당 반의 숙제 중 미제출 건수 (간소화 — 미완료 숙제 총 수)
         if (classIds.length > 0) {
-          const today = new Date();
+          const todayStr = getTodayStr();
+
+          // ① 오늘 결석 수
+          const absentCount = await getAbsentCountToday(classIds, todayStr);
+          setAbsentTodayCount(absentCount);
+
+          // ② 반별 학생 수 + 오늘 출석 수 병렬 집계
+          const statsResults = await Promise.all(
+            classList.map(async (cls) => {
+              const [studentSnap, recordsSnap] = await Promise.all([
+                getCountFromServer(
+                  query(
+                    Collections.users(),
+                    where('academy_id', '==', user.academy_id),
+                    where('class_id', '==', cls.id),
+                    where('role', '==', 'student'),
+                    where('is_active', '==', true),
+                  )
+                ),
+                getDocs(Collections.attendanceRecords(cls.id, todayStr)),
+              ]);
+              let presentCount = 0;
+              recordsSnap.forEach(d => {
+                if ((d.data() as AttendanceRecord).status === 'present') presentCount++;
+              });
+              return { classId: cls.id, studentCount: studentSnap.data().count, presentCount };
+            })
+          );
+
+          const statsMap: Record<string, ClassStat> = {};
+          let total = 0;
+          statsResults.forEach(({ classId, studentCount, presentCount }) => {
+            statsMap[classId] = { studentCount, presentCount };
+            total += studentCount;
+          });
+          setClassStats(statsMap);
+          setTotalStudents(total);
+
+          // ③ 이번달 출석률 계산 (1일~오늘까지 records 합산)
+          const now = new Date();
+          const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          const todayDay = now.getDate();
+          let totalPresent = 0, totalRec = 0;
+
+          await Promise.all(
+            classList.flatMap(cls =>
+              Array.from({ length: todayDay }, (_, i) => i + 1).map(async (day) => {
+                const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
+                const snap = await getDocs(Collections.attendanceRecords(cls.id, date));
+                snap.forEach(d => {
+                  totalRec++;
+                  if ((d.data() as AttendanceRecord).status === 'present') totalPresent++;
+                });
+              })
+            )
+          );
+          setMonthlyRate(totalRec > 0 ? Math.round((totalPresent / totalRec) * 100) : null);
+
+          // ④ 숙제 검사 현황 — 담당 반의 숙제 + 제출 수 집계
           const hwSnap = await getDocs(
             query(
               Collections.homeworks(),
-              where('class_id', 'in', classIds.slice(0, 10)), // Firestore in 한도 10개
+              where('class_id', 'in', classIds.slice(0, 10)),
             )
           );
-          // 마감이 지나지 않은 숙제 수 = 미검사 대상
-          const pending = hwSnap.docs.filter(d => {
-            const hw = d.data();
-            return hw.due_date?.toDate ? hw.due_date.toDate() >= today : false;
-          });
-          setPendingHomeworkCount(pending.length);
-        }
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-        // 오늘 결석 수: records는 서브컬렉션이므로 getAbsentCountToday 헬퍼로 조회
-        if (classIds.length > 0) {
-          const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-          const absentCount = await getAbsentCountToday(classIds, todayStr);
-          setAbsentTodayCount(absentCount);
+          const hwList = hwSnap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
+
+          const hwStatList = await Promise.all(
+            hwList.map(async (hw) => {
+              const [subCount, studentCount] = await Promise.all([
+                getCountFromServer(Collections.submissions(hw.id)),
+                getCountFromServer(
+                  query(
+                    Collections.users(),
+                    where('academy_id', '==', user.academy_id), // 복합 인덱스 사용을 위해 필수
+                    where('class_id', '==', hw.class_id),
+                    where('role', '==', 'student'),
+                    where('is_active', '==', true),
+                  )
+                ),
+              ]);
+              return {
+                ...hw,
+                submittedCount: subCount.data().count,
+                totalStudents: studentCount.data().count,
+                dDays: calcDDays(hw.due_date.toDate()),
+              } as HwStat;
+            })
+          );
+
+          // 정렬: D-0(오늘 마감) → D-n → 마감 초과
+          hwStatList.sort((a, b) => {
+            if (a.dDays === 0 && b.dDays !== 0) return -1;
+            if (b.dDays === 0 && a.dDays !== 0) return 1;
+            return a.dDays - b.dDays;
+          });
+          setHwStats(hwStatList);
+
+          // ⑤ 미검사(마감 전) 숙제 수
+          setPendingHomeworkCount(hwList.filter(hw => hw.due_date.toDate() >= today).length);
         }
       } catch (e) {
         console.error('[TeacherHome] 데이터 조회 실패:', e);
@@ -139,8 +262,9 @@ export default function TeacherHomeScreen() {
             <Text style={styles.statLbl}>오늘 결석</Text>
           </View>
           <View style={styles.statBox}>
-            {/* 이번달 출석률: TODO — 출결 집계 로직 구현 후 연결 */}
-            <Text style={styles.statNum}>-</Text>
+            <Text style={styles.statNum}>
+              {monthlyRate !== null ? `${monthlyRate}%` : '-'}
+            </Text>
             <Text style={styles.statLbl}>이번달 출석률</Text>
           </View>
         </View>
@@ -157,20 +281,27 @@ export default function TeacherHomeScreen() {
           <Text style={styles.emptyText}>담당 반이 없어요</Text>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.classScroll}>
-            {classes.map((c) => (
-              <TouchableOpacity
-                key={c.id}
-                style={[styles.classCard, selectedClassId === c.id && styles.classCardActive]}
-                onPress={() => setSelectedClassId(c.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.classCardName, selectedClassId === c.id && styles.classCardNameActive]}>
-                  {c.name}
-                </Text>
-                <Text style={styles.classCardSub}>학생 {c.student_count ?? 0}명</Text>
-                <Text style={styles.classCardStatus}>출석 {c.present_count ?? 0}명 ●</Text>
-              </TouchableOpacity>
-            ))}
+            {classes.map((c) => {
+              const stat = classStats[c.id];
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.classCard, selectedClassId === c.id && styles.classCardActive]}
+                  onPress={() => setSelectedClassId(c.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.classCardName, selectedClassId === c.id && styles.classCardNameActive]}>
+                    {c.name}
+                  </Text>
+                  <Text style={styles.classCardSub}>
+                    학생 {stat ? `${stat.studentCount}` : '-'}명
+                  </Text>
+                  <Text style={styles.classCardStatus}>
+                    출석 {stat ? `${stat.presentCount}` : '-'}명 ●
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         )}
       </View>
@@ -182,7 +313,51 @@ export default function TeacherHomeScreen() {
           <TouchableOpacity><Text style={styles.sectionLink}>전체</Text></TouchableOpacity>
         </View>
 
-        <Text style={styles.emptyText}>숙제 출제 후 현황이 표시됩니다</Text>
+        {hwStats.length === 0 ? (
+          <Text style={styles.emptyText}>출제된 숙제가 없어요</Text>
+        ) : (
+          hwStats.map((hw) => {
+            const submitRate = hw.totalStudents > 0
+              ? Math.round((hw.submittedCount / hw.totalStudents) * 100)
+              : 0;
+            const isDDay = hw.dDays === 0;
+            const isPast = hw.dDays < 0;
+            return (
+              <View key={hw.id} style={styles.hwCard}>
+                <View style={styles.hwTopRow}>
+                  <Text style={styles.hwTitle} numberOfLines={1}>{hw.title}</Text>
+                  <View style={[styles.dDayChip, isDDay || isPast ? styles.dDayRed : styles.dDayGray]}>
+                    <Text style={[styles.dDayText, isDDay || isPast ? styles.dDayTextRed : styles.dDayTextGray]}>
+                      {isPast ? `D${hw.dDays}` : isDDay ? 'D-0' : `D-${hw.dDays}`}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.hwSub}>
+                  마감 {hw.due_date.toDate().toLocaleDateString('ko-KR')}
+                </Text>
+                <View style={styles.hwStatusRow}>
+                  <Text style={styles.hwStatusLabel}>제출 현황</Text>
+                  <Text style={styles.hwStatusCount}>
+                    {hw.submittedCount}/{hw.totalStudents}명 ({submitRate}%)
+                  </Text>
+                </View>
+                <View style={styles.hwBarTrack}>
+                  <View style={[styles.hwBarFill, { width: `${submitRate}%` as any }]} />
+                </View>
+                <View style={styles.hwChipRow}>
+                  <View style={styles.chipGreen}>
+                    <Text style={styles.chipGreenText}>제출 {hw.submittedCount}명</Text>
+                  </View>
+                  <View style={styles.chipRed}>
+                    <Text style={styles.chipRedText}>
+                      미제출 {Math.max(0, hw.totalStudents - hw.submittedCount)}명
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
       </View>
 
       {/* ── 최근 공지 ── */}
@@ -207,10 +382,21 @@ export default function TeacherHomeScreen() {
                 )}
                 <Text style={styles.noticeTitle}>{n.title}</Text>
                 <View style={styles.noticeProgressRow}>
-                  <View style={styles.noticeBarTrack}>
-                    <View style={[styles.noticeBarFill, { width: '0%' as any }]} />
-                  </View>
-                  <Text style={styles.noticeReadCount}>읽음 현황</Text>
+                  {/* 읽음률 = read_by 명수 / 전체 학생 수 */}
+                  {(() => {
+                    const readCount = n.read_by?.length ?? 0;
+                    const rate = totalStudents > 0
+                      ? Math.round((readCount / totalStudents) * 100)
+                      : 0;
+                    return (
+                      <>
+                        <View style={styles.noticeBarTrack}>
+                          <View style={[styles.noticeBarFill, { width: `${rate}%` as any }]} />
+                        </View>
+                        <Text style={styles.noticeReadCount}>{readCount}/{totalStudents}명</Text>
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
             </View>
@@ -223,7 +409,7 @@ export default function TeacherHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F7FF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { paddingBottom: 32 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
@@ -241,8 +427,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 16,
   },
-  headerGreeting: { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
-  headerName: { fontSize: 22, fontWeight: '800', color: '#fff', marginTop: 4, letterSpacing: -0.5 },
+  headerGreeting: { fontSize: 14, color: 'rgba(255,255,255,0.8)' },
+  headerName: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 4, letterSpacing: -0.5 },
   headerActions: {
     flexDirection: 'row',
     gap: 8,
@@ -260,8 +446,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 12, padding: 12,
   },
-  statNum: { fontSize: 26, fontWeight: '800', color: '#fff' },
-  statLbl: { fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+  statNum: { fontSize: 28, fontWeight: '800', color: '#fff' },
+  statLbl: { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
 
   // ── 섹션 공통 ──
   section: { paddingHorizontal: 16, marginTop: 20 },
@@ -269,9 +455,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 10,
   },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  sectionLink: { fontSize: 12, fontWeight: '700', color: '#5B50E8' },
-  emptyText: { fontSize: 13, color: '#94A3B8', textAlign: 'center', paddingVertical: 16 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#475569' },
+  sectionLink: { fontSize: 13, fontWeight: '700', color: '#5B50E8' },
+  emptyText: { fontSize: 14, color: '#94A3B8', textAlign: 'center', paddingVertical: 16 },
 
   // ── 담당 반 ──
   classScroll: { flexDirection: 'row' },
@@ -284,10 +470,10 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   classCardActive: { backgroundColor: '#EEEDF9', borderWidth: 1, borderColor: '#5B50E8' },
-  classCardName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  classCardName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
   classCardNameActive: { color: '#5B50E8' },
-  classCardSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
-  classCardStatus: { fontSize: 11, color: '#10B981', fontWeight: '600', marginTop: 4 },
+  classCardSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  classCardStatus: { fontSize: 12, color: '#10B981', fontWeight: '600', marginTop: 4 },
 
   // ── 숙제 검사 카드 ──
   hwCard: {
@@ -298,20 +484,20 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   hwTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  hwTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A', flex: 1 },
+  hwTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', flex: 1 },
   dDayChip: { borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8 },
   dDayRed: { backgroundColor: '#FEE2E2' },
   dDayGray: { backgroundColor: '#F1F5F9' },
-  dDayText: { fontSize: 10, fontWeight: '700' },
+  dDayText: { fontSize: 11, fontWeight: '700' },
   dDayTextRed: { color: '#991B1B' },
   dDayTextGray: { color: '#334155' },
-  hwSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  hwSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
   hwStatusRow: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginTop: 10,
   },
-  hwStatusLabel: { fontSize: 11, color: '#64748B' },
-  hwStatusCount: { fontSize: 11, fontWeight: '700', color: '#0F172A' },
+  hwStatusLabel: { fontSize: 12, color: '#64748B' },
+  hwStatusCount: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
   hwBarTrack: {
     height: 6, backgroundColor: '#E2E8F0',
     borderRadius: 3, overflow: 'hidden', marginTop: 6,
@@ -322,12 +508,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#ECFDF5', borderRadius: 8,
     paddingVertical: 3, paddingHorizontal: 8,
   },
-  chipGreenText: { fontSize: 10, fontWeight: '700', color: '#065F46' },
+  chipGreenText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
   chipRed: {
     backgroundColor: '#FEE2E2', borderRadius: 8,
     paddingVertical: 3, paddingHorizontal: 8,
   },
-  chipRedText: { fontSize: 10, fontWeight: '700', color: '#991B1B' },
+  chipRedText: { fontSize: 11, fontWeight: '700', color: '#991B1B' },
 
   // ── 공지 카드 ──
   noticeCard: {
@@ -346,8 +532,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2, paddingHorizontal: 7,
     alignSelf: 'flex-start', marginBottom: 4,
   },
-  importantChipText: { fontSize: 10, fontWeight: '700', color: '#fff' },
-  noticeTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  importantChipText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  noticeTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   noticeProgressRow: {
     flexDirection: 'row', alignItems: 'center',
     gap: 8, marginTop: 8,
@@ -357,5 +543,5 @@ const styles = StyleSheet.create({
     borderRadius: 2, overflow: 'hidden',
   },
   noticeBarFill: { height: '100%', backgroundColor: '#5B50E8', borderRadius: 2 },
-  noticeReadCount: { fontSize: 10, color: '#64748B' },
+  noticeReadCount: { fontSize: 11, color: '#64748B' },
 });

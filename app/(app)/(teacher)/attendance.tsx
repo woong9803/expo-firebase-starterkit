@@ -7,64 +7,104 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { query, where, getDocs, documentId } from 'firebase/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useAttendanceStore } from '../../../store/useAttendanceStore';
 import { Collections } from '../../../lib/firestore';
-import { setAttendanceRecord, subscribeAttendanceRecords } from '../../../lib/attendance';
+import { setAttendanceRecord, subscribeAttendanceRecords, updateAttendanceReason } from '../../../lib/attendance';
+import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import AttendanceRow from '../../../components/AttendanceRow';
 import { strings } from '../../../constants/strings';
 import type { Class, User, AttendanceStatus } from '../../../types';
 
 // ─────────────────────────────────────────────────────────────
-// 날짜 유틸 함수
+// 날짜 유틸
 // ─────────────────────────────────────────────────────────────
 
-// Date → YYYY-MM-DD 문자열
 function toDateStr(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-// YYYY-MM-DD → 한국어 표시 (예: 4월 13일 (월))
-function formatDateKor(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('ko-KR', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
-  });
+function offsetDate(baseStr: string, offset: number): string {
+  const d = new Date(baseStr + 'T00:00:00');
+  d.setDate(d.getDate() + offset);
+  return toDateStr(d);
 }
+
+const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토'];
+function getWeekdayShort(dateStr: string): string {
+  return WEEKDAY_SHORT[new Date(dateStr + 'T00:00:00').getDay()];
+}
+
+function getDay(dateStr: string): number {
+  return new Date(dateStr + 'T00:00:00').getDate();
+}
+
+function formatDateHeader(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  return date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 날짜 스트립: 과거 20일 ~ 미래 9일 (총 30개)
+// ─────────────────────────────────────────────────────────────
+const TODAY = toDateStr(new Date());
+const DATE_LIST: string[] = Array.from({ length: 30 }, (_, i) => offsetDate(TODAY, i - 20));
+const TODAY_INDEX = 20;
 
 // ─────────────────────────────────────────────────────────────
 // TeacherAttendanceScreen
-// 선생님이 반·날짜를 선택해 실시간 출결 명렬표를 관리하는 화면
 // ─────────────────────────────────────────────────────────────
 
 export default function TeacherAttendanceScreen() {
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
   const {
     records,
     setRecords,
     setSelectedClassId: storeSetClassId,
     setSelectedDate: storeSetDate,
-    updateRecord,
     clearAttendance,
   } = useAttendanceStore();
 
-  const [classes, setClasses]               = useState<Class[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate]     = useState<string>(toDateStr(new Date()));
-  const [students, setStudents]             = useState<User[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(true);
+  // 네트워크 상태 감지
+  const { isOnline, justReconnected } = useNetworkStatus();
+
+  // 재연결 토스트 페이드 애니메이션
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (justReconnected) {
+      // 등장: 빠르게 나타났다가 천천히 사라짐
+      Animated.sequence([
+        Animated.timing(toastOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.delay(2000),
+        Animated.timing(toastOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [justReconnected]);
+
+  const [classes, setClasses]                     = useState<Class[]>([]);
+  const [selectedClassId, setSelectedClassId]     = useState<string | null>(null);
+  const [selectedDate, setSelectedDate]           = useState<string>(TODAY);
+  const [students, setStudents]                   = useState<User[]>([]);
+  const [isLoadingClasses, setIsLoadingClasses]   = useState(true);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  const [savingUid, setSavingUid]           = useState<string | null>(null);
+  const [isSavingAll, setIsSavingAll]             = useState(false);
 
-  // onSnapshot 구독 해제 함수 — 반/날짜 변경 시마다 교체
-  const unsubRef = useRef<(() => void) | null>(null);
+  // 저장 전 로컬 임시 상태 — 저장하기 버튼 누르기 전까지 Firestore에 반영 안 됨
+  const [pendingStatuses, setPendingStatuses] = useState<Record<string, AttendanceStatus>>({});
 
-  // ── 1. 담당 반 목록 로드 (마운트 시 1회) ──
+  const dateListRef = useRef<FlatList<string>>(null);
+  const unsubRef    = useRef<(() => void) | null>(null);
+
+  // ── 1. 담당 반 목록 로드 ──
   useEffect(() => {
     const classIds = user?.assigned_class_ids ?? [];
     if (classIds.length === 0) {
@@ -77,7 +117,6 @@ export default function TeacherAttendanceScreen() {
     ).then((snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class));
       setClasses(list);
-      // 첫 번째 반을 기본 선택
       if (list.length > 0) {
         setSelectedClassId(list[0].id);
         storeSetClassId(list[0].id);
@@ -89,23 +128,24 @@ export default function TeacherAttendanceScreen() {
     });
   }, [user?.uid]);
 
-  // ── 2. 반/날짜 변경 시 학생 목록 재조회 + onSnapshot 구독 교체 ──
+  // ── 2. 반/날짜 변경 시 학생 목록 재조회 + 실시간 구독 ──
   useEffect(() => {
     if (!selectedClassId || !selectedDate || !user?.academy_id) return;
 
     setIsLoadingStudents(true);
     setRecords({});
+    // 날짜·반 변경 시 임시 상태 초기화
+    setPendingStatuses({});
 
-    // 이전 리스너 해제
     if (unsubRef.current) {
       unsubRef.current();
       unsubRef.current = null;
     }
 
-    // 해당 반 활성 학생 목록 조회
     getDocs(
       query(
         Collections.users(),
+        where('academy_id', '==', user.academy_id),
         where('class_id', '==', selectedClassId),
         where('role', '==', 'student'),
         where('is_active', '==', true),
@@ -118,7 +158,6 @@ export default function TeacherAttendanceScreen() {
       setIsLoadingStudents(false);
     });
 
-    // 출결 records 실시간 구독
     const unsub = subscribeAttendanceRecords(
       selectedClassId,
       selectedDate,
@@ -127,14 +166,13 @@ export default function TeacherAttendanceScreen() {
     );
     unsubRef.current = unsub;
 
-    // cleanup: 다음 effect 실행 전 리스너 해제
     return () => {
       unsub();
       unsubRef.current = null;
     };
   }, [selectedClassId, selectedDate]);
 
-  // ── 3. 언마운트 시 store 초기화 ──
+  // ── 3. 언마운트 시 정리 ──
   useEffect(() => {
     return () => {
       clearAttendance();
@@ -142,60 +180,79 @@ export default function TeacherAttendanceScreen() {
     };
   }, []);
 
-  // ── 날짜 이동 핸들러 (좌우 화살표) ──
-  const moveDate = (days: number) => {
-    const d = new Date(selectedDate + 'T00:00:00');
-    d.setDate(d.getDate() + days);
-    const newDate = toDateStr(d);
-    setSelectedDate(newDate);
-    storeSetDate(newDate);
-  };
+  // ── 날짜 선택 ──
+  const handleDateSelect = useCallback((dateStr: string) => {
+    setSelectedDate(dateStr);
+    storeSetDate(dateStr);
+  }, []);
 
-  // ── 출결 상태 변경 핸들러 ──
-  const handleStatusChange = useCallback(async (
-    studentUid: string,
-    status: AttendanceStatus,
-  ) => {
+  // ── 상태 버튼 탭: 로컬 임시 상태만 변경 (Firestore 저장 안 함) ──
+  const handleStatusChange = useCallback((studentUid: string, status: AttendanceStatus) => {
+    setPendingStatuses((prev) => ({ ...prev, [studentUid]: status }));
+  }, []);
+
+  // ── 표시용 상태: 임시 상태 우선, 없으면 Firestore 상태 ──
+  // handleSaveAll에서 참조하므로 먼저 선언
+  const mergedStatuses = useMemo(() => {
+    const result: Record<string, AttendanceStatus | null> = {};
+    students.forEach(({ uid }) => {
+      result[uid] = pendingStatuses[uid] ?? records[uid]?.status ?? null;
+    });
+    return result;
+  }, [students, pendingStatuses, records]);
+
+  // ── 저장하기: 반 전체 학생의 현재 상태를 Firestore에 일괄 저장 ──
+  // 상태가 설정된(null이 아닌) 학생만 저장하며, pendingStatuses + 기존 records 모두 포함
+  const handleSaveAll = useCallback(async () => {
     if (!selectedClassId || !selectedDate || !user?.academy_id) return;
 
-    setSavingUid(studentUid);
+    // 저장 대상: 반 전체 학생 중 상태가 있는 학생
+    const toSave = students
+      .map(({ uid }) => ({ uid, status: mergedStatuses[uid] }))
+      .filter((s): s is { uid: string; status: AttendanceStatus } => s.status !== null);
 
-    // 기존 사유를 유지하면서 로컬 즉시 반영 (낙관적 업데이트)
-    updateRecord(studentUid, {
-      status,
-      reason: records[studentUid]?.reason ?? null,
-    });
+    if (toSave.length === 0) return;
 
+    setIsSavingAll(true);
     try {
-      await setAttendanceRecord(
-        selectedClassId,
-        selectedDate,
-        studentUid,
-        status,
-        user.academy_id,
+      await Promise.all(
+        toSave.map(({ uid, status }) =>
+          setAttendanceRecord(selectedClassId, selectedDate, uid, status, user.academy_id)
+        )
       );
+      // 저장 완료 후 임시 변경 상태 초기화 → 버튼 자동 비활성화
+      setPendingStatuses({});
     } catch (e) {
-      console.error('[TeacherAttendance] 출결 저장 실패:', e);
+      console.error('[TeacherAttendance] 일괄 저장 실패:', e);
     } finally {
-      setSavingUid(null);
+      setIsSavingAll(false);
     }
-  }, [selectedClassId, selectedDate, user?.academy_id, records]);
+  }, [selectedClassId, selectedDate, user?.academy_id, students, mergedStatuses]);
 
-  // ── 요약 카운터 계산 ──
+  // ── 사유 저장: 체크 버튼 탭 시 즉시 저장 ──
+  const handleReasonSave = useCallback(async (studentUid: string, reason: string | null) => {
+    if (!selectedClassId || !selectedDate) return;
+    try {
+      await updateAttendanceReason(selectedClassId, selectedDate, studentUid, reason);
+    } catch (e) {
+      console.error('[TeacherAttendance] 사유 저장 실패:', e);
+    }
+  }, [selectedClassId, selectedDate]);
+
   const summary = useMemo(() => {
-    const values = Object.values(records);
+    const values = Object.values(mergedStatuses);
     return {
-      present: values.filter((r) => r.status === 'present').length,
-      late:    values.filter((r) => r.status === 'late').length,
-      absent:  values.filter((r) => r.status === 'absent').length,
+      present: values.filter((s) => s === 'present').length,
+      late:    values.filter((s) => s === 'late').length,
+      absent:  values.filter((s) => s === 'absent').length,
     };
-  }, [records]);
+  }, [mergedStatuses]);
 
-  // 미입력 수 = 전체 학생 - 입력된 학생
-  const notEnteredCount = students.length
-    - summary.present - summary.late - summary.absent;
+  const notEnteredCount = students.length - summary.present - summary.late - summary.absent;
+  // 상태를 새로 탭한 학생이 있을 때만 저장 버튼 활성화
+  const hasPending = Object.keys(pendingStatuses).length > 0;
 
-  // ── 로딩 (반 목록 로딩 전) ──
+  // ── 로딩 ──
   if (isLoadingClasses) {
     return (
       <View style={styles.centered}>
@@ -204,10 +261,9 @@ export default function TeacherAttendanceScreen() {
     );
   }
 
-  // ── 담당 반 없음 ──
   if (classes.length === 0) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { paddingTop: top }]}>
         <Text style={styles.emptyText}>담당 반이 없어요</Text>
         <Text style={styles.emptySubText}>선생님 홈에서 반을 먼저 등록해주세요</Text>
       </View>
@@ -215,7 +271,72 @@ export default function TeacherAttendanceScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: top }]}>
+
+      {/* ── 오프라인 배너 — 네트워크 끊길 때만 표시 ── */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={15} color="#fff" />
+          <Text style={styles.offlineBannerText}>
+            오프라인 상태 — 입력 내용은 재연결 시 자동 동기화됩니다
+          </Text>
+        </View>
+      )}
+
+      {/* ── 재연결 토스트 — 온라인 복귀 시 잠깐 표시 ── */}
+      <Animated.View style={[styles.reconnectToast, { opacity: toastOpacity }]} pointerEvents="none">
+        <Ionicons name="checkmark-circle" size={16} color="#fff" />
+        <Text style={styles.reconnectToastText}>인터넷에 연결되었습니다 ✓</Text>
+      </Animated.View>
+
+      {/* ── 헤더: 타이틀 + 날짜 + 엑셀 아이콘 ── */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>{strings.attendance.rosterTable}</Text>
+          <Text style={styles.headerDate}>{formatDateHeader(selectedDate)}</Text>
+        </View>
+        {/* 엑셀 내보내기 — 우측 상단 작은 아이콘 버튼 */}
+        <TouchableOpacity style={styles.excelBtn} activeOpacity={0.7}>
+          <Ionicons name="document-text-outline" size={18} color="#5B50E8" />
+          <Text style={styles.excelBtnText}>엑셀</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── 날짜 스트립 ── */}
+      <FlatList
+        ref={dateListRef}
+        data={DATE_LIST}
+        keyExtractor={(item) => item}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.dateStripContent}
+        style={styles.dateStrip}
+        getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
+        initialScrollIndex={Math.max(0, TODAY_INDEX - 3)}
+        renderItem={({ item }) => {
+          const isSelected = item === selectedDate;
+          const isToday    = item === TODAY;
+          return (
+            <TouchableOpacity
+              style={[
+                styles.datePill,
+                isSelected && styles.datePillSelected,
+                !isSelected && isToday && styles.datePillToday,
+              ]}
+              onPress={() => handleDateSelect(item)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.datePillWeekday, isSelected && styles.datePillTextSelected]}>
+                {getWeekdayShort(item)}
+              </Text>
+              <Text style={[styles.datePillDay, isSelected && styles.datePillTextSelected]}>
+                {getDay(item)}
+              </Text>
+              {isToday && !isSelected && <View style={styles.todayDot} />}
+            </TouchableOpacity>
+          );
+        }}
+      />
 
       {/* ── 반 선택 탭 ── */}
       <ScrollView
@@ -227,55 +348,23 @@ export default function TeacherAttendanceScreen() {
         {classes.map((c) => (
           <TouchableOpacity
             key={c.id}
-            style={[
-              styles.classTab,
-              selectedClassId === c.id && styles.classTabActive,
-            ]}
-            onPress={() => {
-              setSelectedClassId(c.id);
-              storeSetClassId(c.id);
-            }}
+            style={[styles.classTab, selectedClassId === c.id && styles.classTabActive]}
+            onPress={() => { setSelectedClassId(c.id); storeSetClassId(c.id); }}
             activeOpacity={0.8}
           >
-            <Text style={[
-              styles.classTabText,
-              selectedClassId === c.id && styles.classTabTextActive,
-            ]}>
+            <Text style={[styles.classTabText, selectedClassId === c.id && styles.classTabTextActive]}>
               {c.name}
             </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {/* ── 날짜 선택 (좌우 화살표) ── */}
-      <View style={styles.dateRow}>
-        <TouchableOpacity style={styles.dateArrow} onPress={() => moveDate(-1)}>
-          <Ionicons name="chevron-back" size={20} color="#5B50E8" />
-        </TouchableOpacity>
-        <Text style={styles.dateText}>{formatDateKor(selectedDate)}</Text>
-        <TouchableOpacity style={styles.dateArrow} onPress={() => moveDate(1)}>
-          <Ionicons name="chevron-forward" size={20} color="#5B50E8" />
-        </TouchableOpacity>
-      </View>
-
       {/* ── 요약 카운터 ── */}
       <View style={styles.summaryRow}>
-        <View style={[styles.summaryChip, styles.summaryPresent]}>
-          <Text style={[styles.summaryCnt, { color: '#065F46' }]}>{summary.present}</Text>
-          <Text style={styles.summaryLbl}>{strings.attendance.present}</Text>
-        </View>
-        <View style={[styles.summaryChip, styles.summaryLate]}>
-          <Text style={[styles.summaryCnt, { color: '#78350F' }]}>{summary.late}</Text>
-          <Text style={styles.summaryLbl}>{strings.attendance.late}</Text>
-        </View>
-        <View style={[styles.summaryChip, styles.summaryAbsent]}>
-          <Text style={[styles.summaryCnt, { color: '#991B1B' }]}>{summary.absent}</Text>
-          <Text style={styles.summaryLbl}>{strings.attendance.absent}</Text>
-        </View>
-        <View style={styles.summaryChip}>
-          <Text style={styles.summaryCnt}>{notEnteredCount}</Text>
-          <Text style={styles.summaryLbl}>미입력</Text>
-        </View>
+        <SummaryChip count={summary.present} label={strings.attendance.present} countColor="#10B981" />
+        <SummaryChip count={summary.late}    label={strings.attendance.late}    countColor="#F59E0B" />
+        <SummaryChip count={summary.absent}  label={strings.attendance.absent}  countColor="#EF4444" />
+        <SummaryChip count={notEnteredCount} label="미입력"                     countColor="#94A3B8" />
       </View>
 
       {/* ── 명렬표 ── */}
@@ -295,14 +384,48 @@ export default function TeacherAttendanceScreen() {
           renderItem={({ item }) => (
             <AttendanceRow
               studentName={item.name}
-              status={records[item.uid]?.status ?? null}
+              status={mergedStatuses[item.uid] ?? null}
               reason={records[item.uid]?.reason ?? null}
               onStatusChange={(status) => handleStatusChange(item.uid, status)}
-              disabled={savingUid === item.uid}
+              onReasonSave={(reason) => handleReasonSave(item.uid, reason)}
+              disabled={isSavingAll}
+              readOnly={!hasPending}
             />
           )}
+          ListFooterComponent={<View style={{ height: 16 }} />}
         />
       )}
+
+      {/* ── 하단 저장하기 버튼 ── */}
+      <View style={styles.saveWrapper}>
+        <TouchableOpacity
+          style={[styles.saveBtn, !hasPending && styles.saveBtnDisabled]}
+          onPress={handleSaveAll}
+          disabled={!hasPending || isSavingAll}
+          activeOpacity={0.8}
+        >
+          {isSavingAll ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={[styles.saveBtnText, !hasPending && styles.saveBtnTextDisabled]}>
+              저장하기
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
+    </View>
+  );
+}
+
+// ── 요약 칩 ──────────────────────────────────────────────────
+function SummaryChip({ count, label, countColor }: {
+  count: number; label: string; countColor: string;
+}) {
+  return (
+    <View style={styles.summaryChip}>
+      <Text style={[styles.summaryCnt, { color: countColor }]}>{count}</Text>
+      <Text style={styles.summaryLbl}>{label}</Text>
     </View>
   );
 }
@@ -311,72 +434,170 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   centered:  { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
 
-  // 반 선택 탭바
-  classTabBar: {
-    maxHeight: 52,
+  // ── 오프라인 배너 ──
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EF4444',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  offlineBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+    flex: 1,
+  },
+
+  // ── 재연결 토스트 ──
+  reconnectToast: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    zIndex: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    // 그림자
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  reconnectToastText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // ── 헤더 ──
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  headerLeft: { gap: 2 },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  headerDate: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  // 엑셀 아이콘 버튼 (우측 상단)
+  excelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#F1F0FB',
+    marginTop: 4,
+  },
+  excelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#5B50E8',
+  },
+
+  // ── 날짜 스트립 ──
+  dateStrip: {
+    maxHeight: 72,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
-  classTabContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    gap: 8,
+  dateStripContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 4,
   },
-  classTab: {
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F1F5F9',
-  },
-  classTabActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
-  },
-  classTabText:       { fontSize: 12, fontWeight: '600', color: '#334155' },
-  classTabTextActive: { color: '#fff' },
-
-  // 날짜 선택
-  dateRow: {
-    flexDirection: 'row',
+  datePill: {
+    width: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 2,
   },
-  dateArrow: { padding: 4 },
-  dateText:  { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  datePillSelected:      { backgroundColor: '#5B50E8' },
+  datePillToday:         { backgroundColor: '#EEEDF9' },
+  datePillWeekday:       { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
+  datePillDay:           { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  datePillTextSelected:  { color: '#fff' },
+  todayDot: {
+    width: 4, height: 4, borderRadius: 2,
+    backgroundColor: '#5B50E8', marginTop: 1,
+  },
 
-  // 요약 카운터
+  // ── 반 탭 ──
+  classTabBar:    { maxHeight: 48 },
+  classTabContent: {
+    paddingHorizontal: 20, paddingVertical: 10,
+    flexDirection: 'row', gap: 8,
+  },
+  classTab: {
+    paddingVertical: 6, paddingHorizontal: 16,
+    borderRadius: 20, borderWidth: 1.5,
+    borderColor: '#E2E8F0', backgroundColor: '#fff',
+  },
+  classTabActive:      { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+  classTabText:        { fontSize: 14, fontWeight: '600', color: '#334155' },
+  classTabTextActive:  { color: '#fff' },
+
+  // ── 요약 카운터 ──
   summaryRow: {
     flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    paddingHorizontal: 20, paddingVertical: 14,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#E2E8F0',
+    marginBottom: 4,
   },
-  summaryChip: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  summaryPresent: { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
-  summaryLate:    { backgroundColor: '#FFFBEB', borderColor: '#F59E0B' },
-  summaryAbsent:  { backgroundColor: '#FEF2F2', borderColor: '#EF4444' },
-  summaryCnt:  { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  summaryLbl:  { fontSize: 10, color: '#64748B', marginTop: 2 },
+  summaryChip:  { flex: 1, alignItems: 'center', gap: 2 },
+  summaryCnt:   { fontSize: 24, fontWeight: '800' },
+  summaryLbl:   { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
 
-  // 명렬표
-  listContent:   { paddingHorizontal: 16, paddingBottom: 32 },
-  emptyText:     { fontSize: 14, fontWeight: '600', color: '#334155' },
-  emptySubText:  { fontSize: 12, color: '#94A3B8' },
+  // ── 명렬표 ──
+  listContent:  { paddingHorizontal: 20, paddingBottom: 8 },
+  emptyText:    { fontSize: 15, fontWeight: '600', color: '#334155' },
+  emptySubText: { fontSize: 13, color: '#94A3B8' },
+
+  // ── 저장하기 버튼 ──
+  saveWrapper: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  saveBtn: {
+    backgroundColor: '#5B50E8',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  saveBtnDisabled: {
+    backgroundColor: '#E2E8F0',
+  },
+  saveBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  saveBtnTextDisabled: {
+    color: '#94A3B8',
+  },
+
 });

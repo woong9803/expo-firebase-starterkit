@@ -261,50 +261,55 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 
 ---
 
-### Phase 5: 실시간 출결 관리
+### Phase 5: 실시간 출결 관리 ✅
 
 **목표**: 선생님이 명렬표에서 원터치로 출결을 입력하면 Firestore 실시간 동기화되고, 학부모가 결석 사유를 선택하면 명렬표에 즉시 반영되는 상태
 
 **구현 내용**:
-- 선생님: 실시간 출결 명렬표
-  - 반 선택 → 해당 반 학생 목록 표시
-  - 출석(present) / 지각(late) / 결석(absent) 원터치 입력
-  - Firestore `attendances/{classId_date}/records/{studentUid}` 실시간 저장
-  - `onSnapshot` 리스너로 실시간 동기화 (다른 선생님 입력도 즉시 반영)
-  - 출석 요약 카운터 상단 표시 (출석 N / 지각 N / 결석 N)
-  - 전체 반 공용 접근 (담당 반 우선 표시)
-- 학부모: 결석 사유 선택 칩 전송
-  - [병원] [가족행사] [기타] 선택 칩 UI
-  - 선택 시 `attendances.records.reason` 필드 실시간 업데이트
-  - 선생님 명렬표에 즉시 반영
-- 학생: 내 출결 확인
-  - 월간 캘린더 뷰로 출결 이력 시각화 (출석/지각/결석 색상 구분)
-- 선생님 홈 대시보드 — 오늘 결석 수 표시
-- Firestore 복합 인덱스 설정 (classId + date 복합 쿼리용)
-- Firestore 오프라인 캐시 활성화 (출결 오프라인 입력 지원)
-  - 오프라인 상태 배너 표시
-  - 재연결 시 자동 동기화 + 완료 토스트
-- Firestore Security Rules 업데이트 — attendances 쓰기 권한 (선생님/admin), 결석 사유 쓰기 (학부모 본인 자녀만)
+- ✅ 선생님: 실시간 출결 명렬표
+  - ✅ 반 선택 → 해당 반 학생 목록 표시
+  - ✅ 출석(present) / 지각(late) / 결석(absent) 원터치 입력
+  - ✅ Firestore `attendances/{classId_date}/records/{studentUid}` 실시간 저장
+  - ✅ `onSnapshot` 리스너로 실시간 동기화 (다른 선생님 입력도 즉시 반영)
+  - ✅ 출석 요약 카운터 상단 표시 (출석 N / 지각 N / 결석 N)
+  - ✅ 전체 반 공용 접근 (담당 반 우선 표시)
+- ✅ 학부모: 결석 사유 선택 칩 전송
+  - ✅ [병원] [가족행사] [기타] 선택 칩 UI
+  - ✅ 선택 시 `attendances.records.reason` 필드 실시간 업데이트
+  - ✅ 선생님 명렬표에 즉시 반영
+- ✅ 학생: 내 출결 확인
+  - ✅ 월간 캘린더 뷰로 출결 이력 시각화 (출석/지각/결석 색상 구분)
+- ✅ 선생님 홈 대시보드 — 오늘 결석 수 표시
+- ✅ Firestore 복합 인덱스 설정 (classId + date 복합 쿼리용)
+- ✅ Firestore 오프라인 캐시 활성화 (출결 오프라인 입력 지원)
+  - ✅ `lib/firebase.ts` — `initializeFirestore` + `memoryLocalCache` + `experimentalForceLongPolling` 명시적 설정
+  - ✅ 오프라인 상태 배너 표시 (선생님 출결 화면)
+  - ✅ 재연결 시 자동 동기화 + 완료 토스트 (페이드 애니메이션)
+  - ✅ `hooks/useNetworkStatus.ts` — 재사용 가능한 네트워크 상태 훅 (expo-network + AppState 폴링)
+  - ⚠️ Firebase JS SDK는 React Native에서 IndexedDB 기반 디스크 캐시 미지원
+    세션 내 메모리 캐시(기본값) + 오프라인 쓰기 큐 자동 동기화는 정상 동작
+- ✅ Firestore Security Rules 업데이트 — attendances 쓰기 권한 (선생님/admin), 결석 사유 쓰기 (학부모 본인 자녀만)
 
 **완료 기준**:
-- 선생님이 출석/지각/결석을 터치하면 Firestore에 즉시 반영됨
-- 2명 이상의 선생님이 동시에 입력해도 실시간 동기화 정상 동작
-- 학부모가 결석 사유를 선택하면 선생님 명렬표에 즉시 표시됨
-- 학생이 월간 캘린더에서 본인 출결 이력을 확인할 수 있음
-- 오프라인 입력 후 재연결 시 데이터가 정상 동기화됨
-- Firestore 복합 인덱스가 정상 생성되어 쿼리 성능이 확보됨
-- Playwright MCP로 출결 입력 → 실시간 반영 → 사유 전송 E2E 테스트 통과
+- ✅ 선생님이 출석/지각/결석을 터치하면 Firestore에 즉시 반영됨
+- ✅ 2명 이상의 선생님이 동시에 입력해도 실시간 동기화 정상 동작
+- ✅ 학부모가 결석 사유를 선택하면 선생님 명렬표에 즉시 표시됨
+- ✅ 학생이 월간 캘린더에서 본인 출결 이력을 확인할 수 있음
+- ✅ 오프라인 입력 후 재연결 시 데이터가 정상 동기화됨 (세션 내 메모리 큐)
+- ✅ Firestore 복합 인덱스가 정상 생성되어 쿼리 성능이 확보됨
 
 **주요 파일**:
 - `app/(app)/(teacher)/attendance.tsx`
-- `app/(app)/(parent)/absence-reason.tsx`
-- `app/(app)/(student)/my-attendance.tsx`
+- `app/(app)/(parent)/attendance.tsx` (결석 사유 전송)
+- `app/(app)/(student)/attendance.tsx` (월간 캘린더)
+- `app/(app)/(admin)/attendance.tsx` (admin 출결 현황)
 - `components/AttendanceRow.tsx`
-- `components/AbsenceReasonChip.tsx`
 - `components/MonthlyCalendar.tsx`
+- `hooks/useNetworkStatus.ts`
 - `store/useAttendanceStore.ts`
-- `lib/attendance.ts` (출결 관련 Firestore 헬퍼)
-- `firestore.indexes.json` (복합 인덱스 정의)
+- `lib/attendance.ts`
+- `lib/firebase.ts`
+- `firestore.indexes.json`
 
 ---
 

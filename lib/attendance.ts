@@ -4,9 +4,6 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  query,
-  where,
-  documentId,
   doc,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -40,9 +37,9 @@ export async function setAttendanceRecord(
   await setDoc(attendanceDocRef, { academy_id: academyId }, { merge: true });
 
   // 2) records 서브컬렉션의 studentUid 문서에 상태 저장
-  //    reason 필드는 null로 초기화 (이미 존재하면 유지 — merge:true)
+  //    reason 필드는 건드리지 않음 — merge:true + status만 지정해야 기존 사유 보존
   const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
-  await setDoc(recordRef, { status, reason: null }, { merge: true });
+  await setDoc(recordRef, { status }, { merge: true });
 }
 
 /**
@@ -93,41 +90,30 @@ export async function getMonthlyAttendance(
   classId: string,
   year: number,
   month: number
-): Promise<Record<string, AttendanceStatus>> {
+): Promise<Record<string, AttendanceRecord>> {
   // YYYY-MM 형식으로 변환 (월은 2자리 패딩)
   const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
 
-  // attendances 컬렉션에서 해당 월 전체 문서 조회
-  // 문서 ID 패턴: {classId}_{YYYY-MM-DD}
-  const attendancesQuery = query(
-    Collections.attendances(),
-    where(documentId(), '>=', `${classId}_${yearMonth}-01`),
-    where(documentId(), '<=', `${classId}_${yearMonth}-31`)
-  );
+  // 해당 월의 마지막 날짜 계산 (28~31일)
+  const lastDay = new Date(year, month, 0).getDate();
 
-  const attendanceSnaps = await getDocs(attendancesQuery);
+  // attendances 컬렉션 쿼리 대신 날짜를 직접 계산하여
+  // records/{studentUid} 문서만 개별 읽기 — 컬렉션 쿼리 권한 불필요
+  // status + reason 전체를 반환하여 상세 모달에서 사유 표시 가능
+  const result: Record<string, AttendanceRecord> = {};
 
-  const result: Record<string, AttendanceStatus> = {};
-
-  // 각 날짜 문서에서 해당 학생의 records 서브컬렉션 문서를 개별 조회
   await Promise.all(
-    attendanceSnaps.docs.map(async (attendanceDoc) => {
-      // 문서 ID에서 날짜 추출: "{classId}_{YYYY-MM-DD}" → "YYYY-MM-DD"
-      const docId = attendanceDoc.id; // 예: "classAbc_2026-04-13"
-      const date = docId.replace(`${classId}_`, '');
+    Array.from({ length: lastDay }, (_, i) => i + 1).map(async (day) => {
+      const dd = String(day).padStart(2, '0');
+      const date = `${yearMonth}-${dd}`;
+      const docId = `${classId}_${date}`;
 
-      const recordRef = doc(
-        db,
-        'attendances',
-        docId,
-        'records',
-        studentUid
-      );
+      // 학생은 자신의 records 문서 직접 읽기 권한 있음
+      const recordRef = doc(db, 'attendances', docId, 'records', studentUid);
       const recordSnap = await getDoc(recordRef);
 
       if (recordSnap.exists()) {
-        const record = recordSnap.data() as AttendanceRecord;
-        result[date] = record.status;
+        result[date] = recordSnap.data() as AttendanceRecord;
       }
     })
   );
@@ -136,7 +122,22 @@ export async function getMonthlyAttendance(
 }
 
 /**
+ * 선생님이 출결 상태와 함께 사유를 저장한다.
+ * setAttendanceRecord와 달리 reason 필드를 명시적으로 덮어쓴다.
+ */
+export async function updateAttendanceReason(
+  classId: string,
+  date: string,
+  studentUid: string,
+  reason: string | null
+): Promise<void> {
+  const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
+  await updateDoc(recordRef, { reason });
+}
+
+/**
  * 학부모가 자녀의 결석 사유를 전송(업데이트)한다.
+ * 이미 선생님이 상태를 입력한 날에 사유만 추가할 때 사용.
  *
  * @param classId    반 ID
  * @param date       날짜 문자열 (YYYY-MM-DD)
@@ -151,6 +152,29 @@ export async function sendAbsenceReason(
 ): Promise<void> {
   const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
   await updateDoc(recordRef, { reason });
+}
+
+/**
+ * 학부모가 자녀의 결석/지각을 사전 등록한다.
+ * 선생님이 아직 출결을 입력하지 않은 날에도 미리 신청 가능.
+ * setDoc + merge:true 로 문서가 없으면 생성, 있으면 덮어씀.
+ *
+ * @param classId    반 ID
+ * @param date       날짜 문자열 (YYYY-MM-DD)
+ * @param studentUid 학생 UID
+ * @param status     absent | late
+ * @param reason     결석/지각 사유
+ */
+export async function registerParentRecord(
+  classId: string,
+  date: string,
+  studentUid: string,
+  status: 'absent' | 'late',
+  reason: string
+): Promise<void> {
+  const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
+  // merge: true — 기존 문서가 있으면 status·reason 두 필드만 덮어씀
+  await setDoc(recordRef, { status, reason }, { merge: true });
 }
 
 /**

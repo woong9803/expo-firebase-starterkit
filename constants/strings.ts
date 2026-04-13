@@ -151,16 +151,47 @@ export const strings = {
   // 출결
   attendance: {
     title: '출결',
+    myTitle: '내 출결',
     present: '출석',
     late: '지각',
     absent: '결석',
     onLeave: '휴원',
     reason: '결석 사유',
     reasonPlaceholder: '결석 사유를 입력해주세요',
+    lateReasonPlaceholder: '지각 사유를 입력해주세요',
     submitReason: '사유 전송',
     absenceReasons: ['🏥 병원', '👨‍👩‍👧 가족행사', '✏️ 기타'],
-    rosterTable: '명렬표',
+    rosterTable: '출석',
     exportExcel: '엑셀 내보내기',
+    noClassMessage: '반에 참여한 후 확인할 수 있어요',
+    noClassSub: '선생님께 반 초대 코드를 받아 참여해주세요',
+    loadFailed: '출결 정보를 불러오지 못했어요',
+    noReason: '사유가 입력되지 않았어요',
+    summaryTitle: '이번달 요약',
+    days: (n: number) => `${n}일`,
+    // 출결 상태 레이블 (그룹 객체 — 동적 키 접근용)
+    statusLabels: {
+      present: '출석',
+      late: '지각',
+      absent: '결석',
+      onLeave: '휴원',
+    },
+    // 출결 저장 실패 오류 메시지
+    errorSaveFailed: '출결 저장에 실패했어요. 다시 시도해주세요.',
+    // 결석 사유 전송 성공
+    reasonSentSuccess: '결석 사유가 선생님께 전달됐어요.',
+    // 출결 데이터 없음 안내
+    noData: '출결 기록이 없어요.',
+    // 반 선택 안내 (admin 출결 화면)
+    selectClass: '반을 선택하세요',
+    // 월간 캘린더 전용
+    calendar: {
+      dayHeaders: ['월', '화', '수', '목', '금', '토', '일'],
+      legendPresent: '출석',
+      legendLate: '지각',
+      legendAbsent: '결석',
+      yearMonth: (year: number, month: number) => `${year}년 ${month}월`,
+    },
   },
   // 공지사항
   notice: {
@@ -169,6 +200,23 @@ export const strings = {
     noNotice: '공지가 없어요',
     write: '공지 작성',
     readCount: '명이 읽었어요',
+  },
+  // 내정보 (학부모 프로필)
+  profile: {
+    title: '내 정보',
+    linkedChildren: '연동된 자녀',
+    addChild: '+ 자녀 추가 연동',
+    unlink: '연동해제',
+    unlinkConfirmTitle: '연동을 해제할까요?',
+    unlinkConfirmDesc: (name: string) => `${name} 자녀와의 연동이 해제됩니다.`,
+    homeworkNotif: '숙제 알림',
+    noticeNotif: '공지 알림',
+    inquiry: '문의하기',
+    inquiryEmail: 'support@eduonepass.kr',
+    noClass: '반 미정',
+    unlinkFailed: '연동 해제에 실패했어요.',
+    childrenCount: (n: number) => `학부모 · 자녀 ${n}명 연동`,
+    noChildren: '연동된 자녀가 없어요',
   },
   // 오류 메시지
   errors: {
