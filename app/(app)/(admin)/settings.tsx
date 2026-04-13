@@ -66,13 +66,15 @@ export default function AdminSettingsScreen() {
 
   // ── 새 반 만들기 모달 ──
   const [isNewClassModalVisible, setIsNewClassModalVisible] = useState(false);
-  const [newClassName, setNewClassName]   = useState('');
+  const [newClassName, setNewClassName]     = useState('');
+  const [newClassSubject, setNewClassSubject] = useState(''); // 교습과목
   const [isCreatingClass, setIsCreatingClass] = useState(false);
 
   // ── 반 설정 모달 (이름 편집 / 삭제) ──
   const [editClass, setEditClass]           = useState<Class | null>(null);
   const [isClassSettingVisible, setIsClassSettingVisible] = useState(false);
   const [editClassName, setEditClassName]   = useState('');
+  const [editClassSubject, setEditClassSubject] = useState(''); // 교습과목
   const [isSavingClass, setIsSavingClass]   = useState(false);
 
   // ── 1. 반 + 선생님 목록 로드 ──
@@ -147,16 +149,26 @@ export default function AdminSettingsScreen() {
     setIsCreatingClass(true);
     try {
       const newCode = generateCode();
+      const subjectTrimmed = newClassSubject.trim();
       const docRef = await addDoc(Collections.classes(), {
         name: trimmed,
         academy_id: user.academy_id,
         invite_code: newCode,
+        // subject가 비어 있으면 저장하지 않음 (선택 필드)
+        ...(subjectTrimmed ? { subject: subjectTrimmed } : {}),
       });
-      const newClass: Class = { id: docRef.id, name: trimmed, academy_id: user.academy_id, invite_code: newCode };
+      const newClass: Class = {
+        id: docRef.id,
+        name: trimmed,
+        academy_id: user.academy_id,
+        invite_code: newCode,
+        ...(subjectTrimmed ? { subject: subjectTrimmed } : {}),
+      };
       setClasses(prev => [...prev, newClass]);
       setStudentCounts(prev => ({ ...prev, [docRef.id]: 0 }));
       setIsNewClassModalVisible(false);
       setNewClassName('');
+      setNewClassSubject('');
     } catch (e) {
       console.error('[AdminSettings] 반 생성 실패:', e);
       Alert.alert('오류', '반 생성에 실패했어요. 다시 시도해주세요.');
@@ -173,12 +185,21 @@ export default function AdminSettingsScreen() {
 
     setIsSavingClass(true);
     try {
-      await updateDoc(Collections.class(editClass.id), { name: trimmed });
-      setClasses(prev => prev.map(c => c.id === editClass.id ? { ...c, name: trimmed } : c));
+      const subjectTrimmed = editClassSubject.trim();
+      // subject는 선택 필드 — 빈 문자열이면 null로 초기화
+      await updateDoc(Collections.class(editClass.id), {
+        name: trimmed,
+        subject: subjectTrimmed || null,
+      });
+      setClasses(prev => prev.map(c =>
+        c.id === editClass.id
+          ? { ...c, name: trimmed, subject: subjectTrimmed || undefined }
+          : c
+      ));
       setIsClassSettingVisible(false);
       setEditClass(null);
     } catch (e) {
-      Alert.alert('오류', '반 이름 수정에 실패했어요.');
+      Alert.alert('오류', '반 정보 수정에 실패했어요.');
     } finally {
       setIsSavingClass(false);
     }
@@ -336,6 +357,7 @@ export default function AdminSettingsScreen() {
                     <Text style={styles.className}>{cls.name}</Text>
                     <Text style={styles.classSub}>
                       {classTeacherMap[cls.id] ?? '선생님 미배정'} · {studentCounts[cls.id] ?? 0}명 · {cls.invite_code}
+                      {cls.subject ? `\n교습과목: ${cls.subject}` : ''}
                     </Text>
                   </View>
 
@@ -345,6 +367,7 @@ export default function AdminSettingsScreen() {
                     onPress={() => {
                       setEditClass(cls);
                       setEditClassName(cls.name);
+                      setEditClassSubject(cls.subject ?? ''); // 기존 교습과목 불러오기
                       setIsClassSettingVisible(true);
                     }}
                     activeOpacity={0.8}
@@ -442,6 +465,7 @@ export default function AdminSettingsScreen() {
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>새 반 만들기</Text>
 
+          {/* 반 이름 */}
           <TextInput
             style={styles.modalInput}
             placeholder="반 이름 (예: 초등 A반)"
@@ -449,6 +473,15 @@ export default function AdminSettingsScreen() {
             value={newClassName}
             onChangeText={setNewClassName}
             autoFocus
+          />
+
+          {/* 교습과목 — 법정 출석부 필수 기재항목 */}
+          <TextInput
+            style={styles.modalInput}
+            placeholder="교습과목 (예: 수학, 영어) — 선택"
+            placeholderTextColor="#94A3B8"
+            value={newClassSubject}
+            onChangeText={setNewClassSubject}
           />
 
           <TouchableOpacity
@@ -466,7 +499,7 @@ export default function AdminSettingsScreen() {
 
           <TouchableOpacity
             style={styles.modalCancelBtn}
-            onPress={() => { setIsNewClassModalVisible(false); setNewClassName(''); }}
+            onPress={() => { setIsNewClassModalVisible(false); setNewClassName(''); setNewClassSubject(''); }}
           >
             <Text style={styles.modalCancelText}>취소</Text>
           </TouchableOpacity>
@@ -489,12 +522,22 @@ export default function AdminSettingsScreen() {
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{editClass?.name} 설정</Text>
 
+          {/* 반 이름 */}
           <TextInput
             style={styles.modalInput}
             placeholder="반 이름"
             placeholderTextColor="#94A3B8"
             value={editClassName}
             onChangeText={setEditClassName}
+          />
+
+          {/* 교습과목 — 법정 출석부 필수 기재항목 */}
+          <TextInput
+            style={styles.modalInput}
+            placeholder="교습과목 (예: 수학, 영어) — 선택"
+            placeholderTextColor="#94A3B8"
+            value={editClassSubject}
+            onChangeText={setEditClassSubject}
           />
 
           <TouchableOpacity
@@ -506,7 +549,7 @@ export default function AdminSettingsScreen() {
             {isSavingClass ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.modalPrimaryBtnText}>이름 저장</Text>
+              <Text style={styles.modalPrimaryBtnText}>저장</Text>
             )}
           </TouchableOpacity>
 
@@ -520,7 +563,7 @@ export default function AdminSettingsScreen() {
 
           <TouchableOpacity
             style={styles.modalCancelBtn}
-            onPress={() => setIsClassSettingVisible(false)}
+            onPress={() => { setIsClassSettingVisible(false); setEditClass(null); }}
           >
             <Text style={styles.modalCancelText}>취소</Text>
           </TouchableOpacity>

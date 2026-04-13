@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { query, where, getDocs, documentId } from 'firebase/firestore';
+import { router } from 'expo-router';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useAttendanceStore } from '../../../store/useAttendanceStore';
 import { Collections } from '../../../lib/firestore';
@@ -296,7 +297,11 @@ export default function TeacherAttendanceScreen() {
           <Text style={styles.headerDate}>{formatDateHeader(selectedDate)}</Text>
         </View>
         {/* 엑셀 내보내기 — 우측 상단 작은 아이콘 버튼 */}
-        <TouchableOpacity style={styles.excelBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.excelBtn}
+          activeOpacity={0.7}
+          onPress={() => router.push('/(app)/(teacher)/attendance-export')}
+        >
           <Ionicons name="document-text-outline" size={18} color="#5B50E8" />
           <Text style={styles.excelBtnText}>엑셀</Text>
         </TouchableOpacity>

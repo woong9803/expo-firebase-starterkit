@@ -89,9 +89,10 @@ export default function AdminTabLayout() {
         }}
       />
       {/* 탭바에 표시하지 않는 화면 */}
-      <Tabs.Screen name="teachers"         options={{ href: null }} />
-      <Tabs.Screen name="homework-create"  options={{ href: null }} />
-      <Tabs.Screen name="homework-review"  options={{ href: null }} />
+      <Tabs.Screen name="teachers"          options={{ href: null }} />
+      <Tabs.Screen name="homework-create"   options={{ href: null }} />
+      <Tabs.Screen name="homework-review"   options={{ href: null }} />
+      <Tabs.Screen name="attendance-export" options={{ href: null }} />
     </Tabs>
   );
 }

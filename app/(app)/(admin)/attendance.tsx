@@ -11,6 +11,7 @@ import {
   Modal,
   SafeAreaView,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { query, where, getDocs } from 'firebase/firestore';
@@ -208,7 +209,11 @@ export default function AdminAttendanceScreen() {
           <Text style={styles.headerTitle}>출결 관리</Text>
           <Text style={styles.headerSub}>전체 반 통합 현황</Text>
         </View>
-        <TouchableOpacity style={styles.excelBtn} onPress={handleExport} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.excelBtn}
+          onPress={() => router.push('/(app)/(admin)/attendance-export')}
+          activeOpacity={0.8}
+        >
           <Ionicons name="document-text-outline" size={14} color="#fff" />
           <Text style={styles.excelBtnText}>엑셀</Text>
         </TouchableOpacity>

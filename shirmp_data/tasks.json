@@ -385,6 +385,352 @@
       "analysisResult": "Phase 5 출결 시스템 구현. lib/attendance.ts 헬퍼(TASK-501)가 완성된 후 각 역할별 화면에서 이를 활용한다. Firestore 구조: attendances/{classId_YYYY-MM-DD}/records/{studentUid}",
       "summary": "strings.attendance에 statusLabels(present/late/absent/onLeave 그룹 객체), errorSaveFailed, reasonSentSuccess, noData, selectClass 5개 항목 추가 완료. 기존 항목(absenceReasons, loadFailed, calendar 등) 모두 유지. TypeScript 타입 오류 없음(기존 app.config.ts 무관 오류 제외).",
       "completedAt": "2026-04-13T02:48:27.671Z"
+    },
+    {
+      "id": "16438dad-ffa9-444f-83f3-2201dadfd47e",
+      "name": "TASK-601: 패키지 설치 — xlsx, expo-sharing, expo-file-system",
+      "description": "엑셀 생성 및 파일 공유에 필요한 패키지 3종을 설치한다.\n- xlsx (SheetJS): 엑셀 파일 생성\n- expo-sharing: iOS/Android 공유 시트 실행\n- expo-file-system: 파일 캐시 디렉토리 저장\n\n설치 후 package.json 의존성 확인 및 타입 에러 0개 검증.",
+      "notes": "expo install 사용 — npm install 아님 (Expo SDK 버전 호환 자동 해결)",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2026-04-13T05:37:03.088Z",
+      "updatedAt": "2026-04-13T05:48:52.349Z",
+      "relatedFiles": [
+        {
+          "path": "package.json",
+          "type": "TO_MODIFY",
+          "description": "의존성 추가 확인"
+        }
+      ],
+      "implementationGuide": "npx expo install xlsx expo-sharing expo-file-system\n설치 완료 후 npx tsc --noEmit 로 타입 에러 없는지 확인",
+      "verificationCriteria": "package.json에 xlsx, expo-sharing, expo-file-system 세 패키지가 추가되고 npx tsc --noEmit 에러 0개",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 기술 스택: SheetJS(xlsx) + expo-file-system + expo-sharing. 기존 lib/attendance.ts 헬퍼, ProUpgradeSheet 컴포넌트, types/index.ts 타입(User.birth_date, guardian_phone, enrollment_date) 재사용.",
+      "summary": "xlsx(^0.18.5), expo-sharing(~55.0.18), expo-file-system(~55.0.16) 3개 패키지 설치 완료. expo install 시 react-dom peer 버전 충돌로 --legacy-peer-deps 옵션으로 우회 설치(프로젝트 기존 의존성 충돌 문제). 타입 에러 0개 확인.",
+      "completedAt": "2026-04-13T05:48:52.348Z"
+    },
+    {
+      "id": "e563330e-38b1-4fa9-94b9-b08ec9b6fae3",
+      "name": "TASK-602: lib/attendance.ts — 반 전체 월간 출결 조회 함수 추가",
+      "description": "엑셀 내보내기용 반 전체 월간 출결 데이터 조회 함수를 lib/attendance.ts에 추가한다.\n\n기존 getMonthlyAttendance(studentUid, classId, year, month)는 단일 학생 전용이므로 반 전체 버전이 필요.\n\n신규 함수 시그니처:\ngetClassMonthlyDataForExport(\n  classId: string,\n  year: number,\n  month: number\n): Promise<Record<string, Record<string, AttendanceRecord>>>\n반환: { 'YYYY-MM-DD': { [studentUid]: AttendanceRecord } }\n\n구현 방식: 날짜별 getDocs(attendanceRecords 서브컬렉션) — 학생 수×날짜 수 개별 getDoc보다 효율적 (읽기 횟수: 일수 기준 최대 31회)",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "16438dad-ffa9-444f-83f3-2201dadfd47e"
+        }
+      ],
+      "createdAt": "2026-04-13T05:37:03.088Z",
+      "updatedAt": "2026-04-13T05:50:26.189Z",
+      "relatedFiles": [
+        {
+          "path": "lib/attendance.ts",
+          "type": "TO_MODIFY",
+          "description": "getClassMonthlyDataForExport 함수 추가",
+          "lineStart": 200,
+          "lineEnd": 213
+        },
+        {
+          "path": "lib/firestore.ts",
+          "type": "REFERENCE",
+          "description": "Collections.attendanceRecords 헬퍼 참조"
+        },
+        {
+          "path": "types/index.ts",
+          "type": "REFERENCE",
+          "description": "AttendanceRecord 타입 참조"
+        }
+      ],
+      "implementationGuide": "1. yearMonth = YYYY-MM 생성, lastDay 계산\n2. 해당 월 날짜 배열(1~lastDay) 생성\n3. Promise.all로 날짜별 병렬 처리:\n   - Collections.attendanceRecords(classId, date)로 getDocs\n   - snapshot.forEach → result[date][docSnap.id] = data\n4. { date: { studentUid: AttendanceRecord } } 맵 반환\n5. 한국어 주석 필수",
+      "verificationCriteria": "함수가 정상 export되고 npx tsc --noEmit 에러 0개. 반환 타입 Record<string, Record<string, AttendanceRecord>> 명시",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 기술 스택: SheetJS(xlsx) + expo-file-system + expo-sharing. 기존 lib/attendance.ts 헬퍼, ProUpgradeSheet 컴포넌트, types/index.ts 타입(User.birth_date, guardian_phone, enrollment_date) 재사용.",
+      "summary": "getClassMonthlyDataForExport(classId, year, month) 함수 lib/attendance.ts 226번 라인에 추가 완료. 반환 타입 Record&lt;string, Record&lt;string, AttendanceRecord&gt;&gt; 명시. 날짜별 getDocs 방식으로 최대 31회 읽기로 반 전체 데이터 수집(학생 수×날짜 수 방식 대비 효율적). 데이터 없는 날짜는 결과에서 제외. 타입 에러 0개.",
+      "completedAt": "2026-04-13T05:50:26.188Z"
+    },
+    {
+      "id": "8071aa5a-5840-477c-9c79-69b50ec6c920",
+      "name": "TASK-604: constants/strings.ts — 엑셀 내보내기 UI 문자열 추가",
+      "description": "엑셀 내보내기 화면에서 사용할 UI 문자열을 strings.export 그룹으로 추가한다.\n\n추가할 항목:\n- title: '출결 내보내기'\n- selectClass: '반을 선택해주세요'\n- selectMonth: '월을 선택해주세요'\n- exportButton: '엑셀 파일 내보내기'\n- generating: '파일 생성 중...'\n- shareSuccess: '파일이 생성되었어요'\n- shareError: '파일 생성에 실패했어요. 다시 시도해주세요'\n- noStudents: '이 반에 학생이 없어요'\n- proFeatureName: '출결 엑셀 내보내기'\n- excelHeaderTeacher: '담당 선생님'\n- excelHeaderAcademy: '학원명'",
+      "status": "pending",
+      "dependencies": [],
+      "createdAt": "2026-04-13T05:37:03.088Z",
+      "updatedAt": "2026-04-13T05:37:03.088Z",
+      "relatedFiles": [
+        {
+          "path": "constants/strings.ts",
+          "type": "TO_MODIFY",
+          "description": "strings.export 그룹 추가"
+        }
+      ],
+      "implementationGuide": "strings 객체에 export 키 추가:\nexport: {\n  title: '출결 내보내기',\n  ...\n}\n기존 strings 객체 마지막에 추가 — 기존 키 수정 금지",
+      "verificationCriteria": "strings.export 그룹이 정상 추가되고 npx tsc --noEmit 에러 0개",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 기술 스택: SheetJS(xlsx) + expo-file-system + expo-sharing. 기존 lib/attendance.ts 헬퍼, ProUpgradeSheet 컴포넌트, types/index.ts 타입(User.birth_date, guardian_phone, enrollment_date) 재사용."
+    },
+    {
+      "id": "19b93dc4-d22d-4961-afe5-47bf962b4d8a",
+      "name": "TASK-605: app/(app)/(teacher)/attendance-export.tsx — 선생님 엑셀 내보내기 화면 신규 구현",
+      "description": "선생님이 담당 반과 월을 선택하여 법정 출석부 엑셀을 생성하고 공유하는 화면을 구현한다.\n\n구현 범위:\n1. Pro 플랜 체크: academy.plan !== 'pro' && !== 'trial' → ProUpgradeSheet 표시\n2. 담당 반 목록: user.assigned_class_ids → getDocs(Classes)\n3. 반 선택 UI: 반 카드 목록\n4. 월 선택 UI: 이전/다음 화살표 + YYYY년 MM월 표시\n5. 내보내기 버튼:\n   a. getClassMonthlyDataForExport(classId, year, month) 호출\n   b. 반 학생 목록 조회 (user.class_id === classId)\n   c. generateLegalAttendanceExcel(params) 호출\n   d. Sharing.shareAsync(uri) 실행\n6. 로딩 상태 + 에러 처리\n7. 헤더: 뒤로가기 버튼 + 제목 '출결 내보내기'",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "155c27cf-c6da-4339-9a81-a152f03d98cf"
+        },
+        {
+          "taskId": "8071aa5a-5840-477c-9c79-69b50ec6c920"
+        }
+      ],
+      "createdAt": "2026-04-13T05:37:03.088Z",
+      "updatedAt": "2026-04-13T05:37:03.088Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(teacher)/attendance-export.tsx",
+          "type": "CREATE",
+          "description": "선생님 엑셀 내보내기 화면 신규 파일"
+        },
+        {
+          "path": "lib/excelExporter.ts",
+          "type": "DEPENDENCY",
+          "description": "generateLegalAttendanceExcel 사용"
+        },
+        {
+          "path": "lib/attendance.ts",
+          "type": "DEPENDENCY",
+          "description": "getClassMonthlyDataForExport 사용"
+        },
+        {
+          "path": "components/ProUpgradeSheet.tsx",
+          "type": "REFERENCE",
+          "description": "Pro 플랜 바텀시트 재사용"
+        },
+        {
+          "path": "app/(app)/(teacher)/attendance.tsx",
+          "type": "REFERENCE",
+          "description": "반 목록 로드 패턴 참조"
+        },
+        {
+          "path": "constants/strings.ts",
+          "type": "REFERENCE",
+          "description": "strings.export 문자열 사용"
+        }
+      ],
+      "implementationGuide": "import { Sharing } from 'expo-sharing'\nimport { generateLegalAttendanceExcel } from '../../../lib/excelExporter'\nimport { getClassMonthlyDataForExport } from '../../../lib/attendance'\nimport ProUpgradeSheet from '../../../components/ProUpgradeSheet'\n\nuseEffect → 담당 반 목록 로드\nhandleExport:\n  setLoading(true)\n  attendanceData = await getClassMonthlyDataForExport(classId, year, month)\n  students = await getDocs(query(users, where class_id == classId))\n  { uri } = await generateLegalAttendanceExcel({...})\n  await Sharing.shareAsync(uri)\n  setLoading(false)",
+      "verificationCriteria": "화면이 정상 렌더되고, 반·월 선택 후 내보내기 버튼 실행 시 공유 시트가 뜨며, 무료 플랜에서 ProUpgradeSheet가 표시됨. npx tsc --noEmit 에러 0개",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 기술 스택: SheetJS(xlsx) + expo-file-system + expo-sharing. 기존 lib/attendance.ts 헬퍼, ProUpgradeSheet 컴포넌트, types/index.ts 타입(User.birth_date, guardian_phone, enrollment_date) 재사용."
+    },
+    {
+      "id": "be6102e7-60cd-4a7f-8122-ca2036b54adb",
+      "name": "TASK-606: app/(app)/(admin)/attendance-export.tsx — admin 엑셀 내보내기 화면 신규 구현",
+      "description": "admin이 학원 전체 반 중 하나를 선택하여 법정 출석부 엑셀을 생성하고 공유하는 화면을 구현한다.\n선생님 버전(TASK-605)과 동일한 UX이나 반 목록 조회 로직이 다름:\n- 선생님: user.assigned_class_ids 기준\n- admin: academy_id 기준으로 전체 반 조회\n\n나머지 흐름(Pro 체크, 월 선택, 내보내기, 공유)은 TASK-605와 동일.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "155c27cf-c6da-4339-9a81-a152f03d98cf"
+        },
+        {
+          "taskId": "8071aa5a-5840-477c-9c79-69b50ec6c920"
+        }
+      ],
+      "createdAt": "2026-04-13T05:37:03.088Z",
+      "updatedAt": "2026-04-13T05:37:03.088Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(admin)/attendance-export.tsx",
+          "type": "CREATE",
+          "description": "admin 엑셀 내보내기 화면 신규 파일"
+        },
+        {
+          "path": "app/(app)/(teacher)/attendance-export.tsx",
+          "type": "REFERENCE",
+          "description": "선생님 버전 패턴 참조"
+        },
+        {
+          "path": "lib/excelExporter.ts",
+          "type": "DEPENDENCY",
+          "description": "generateLegalAttendanceExcel 사용"
+        },
+        {
+          "path": "lib/attendance.ts",
+          "type": "DEPENDENCY",
+          "description": "getClassMonthlyDataForExport 사용"
+        },
+        {
+          "path": "components/ProUpgradeSheet.tsx",
+          "type": "REFERENCE",
+          "description": "Pro 플랜 바텀시트 재사용"
+        }
+      ],
+      "implementationGuide": "반 목록 로드:\nquery(Collections.classes, where('academy_id', '==', academyId))\n나머지 로직은 TASK-605 attendance-export.tsx 패턴 동일하게 적용\n담당 선생님 이름: 반의 학생 조회와 별개로 users 컬렉션에서 teacher role + class_id 조회",
+      "verificationCriteria": "학원 전체 반 목록이 표시되고 반·월 선택 후 공유 시트가 정상 동작. npx tsc --noEmit 에러 0개",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 기술 스택: SheetJS(xlsx) + expo-file-system + expo-sharing. 기존 lib/attendance.ts 헬퍼, ProUpgradeSheet 컴포넌트, types/index.ts 타입(User.birth_date, guardian_phone, enrollment_date) 재사용."
+    },
+    {
+      "id": "101c84c9-1d0e-4732-a8f4-33ac11cc96ad",
+      "name": "TASK-607: _layout.tsx 및 출결 화면에 엑셀 내보내기 진입 연결",
+      "description": "선생님·admin _layout.tsx에 attendance-export 화면을 href:null로 등록하고, 각 출결 화면 헤더에 '엑셀 내보내기' 버튼을 추가하여 진입할 수 있도록 연결한다.\n\n수정 파일:\n1. app/(app)/(teacher)/_layout.tsx: Tabs.Screen name='attendance-export' options={{href:null}} 추가\n2. app/(app)/(admin)/_layout.tsx: 동일하게 추가\n3. app/(app)/(teacher)/attendance.tsx: 헤더 우측에 다운로드 아이콘 버튼 추가 → router.push('/(app)/(teacher)/attendance-export')\n4. app/(app)/(admin)/attendance.tsx: 동일하게 추가",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "19b93dc4-d22d-4961-afe5-47bf962b4d8a"
+        },
+        {
+          "taskId": "be6102e7-60cd-4a7f-8122-ca2036b54adb"
+        }
+      ],
+      "createdAt": "2026-04-13T05:37:03.088Z",
+      "updatedAt": "2026-04-13T05:37:03.088Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(teacher)/_layout.tsx",
+          "type": "TO_MODIFY",
+          "description": "attendance-export href:null 등록",
+          "lineStart": 77,
+          "lineEnd": 81
+        },
+        {
+          "path": "app/(app)/(admin)/_layout.tsx",
+          "type": "TO_MODIFY",
+          "description": "attendance-export href:null 등록"
+        },
+        {
+          "path": "app/(app)/(teacher)/attendance.tsx",
+          "type": "TO_MODIFY",
+          "description": "헤더 우측 다운로드 버튼 추가"
+        },
+        {
+          "path": "app/(app)/(admin)/attendance.tsx",
+          "type": "TO_MODIFY",
+          "description": "헤더 우측 다운로드 버튼 추가"
+        }
+      ],
+      "implementationGuide": "각 _layout.tsx의 탭바 숨김 화면 블록에:\n<Tabs.Screen name=\"attendance-export\" options={{ href: null }} />\n\n각 attendance.tsx 헤더 우측:\n<TouchableOpacity onPress={() => router.push('/(app)/(teacher)/attendance-export')}>\n  <Ionicons name=\"download-outline\" size={22} color=\"#5B50E8\" />\n</TouchableOpacity>",
+      "verificationCriteria": "출결 화면 헤더에 다운로드 아이콘이 표시되고 탭하면 내보내기 화면으로 정상 이동. npx tsc --noEmit 에러 0개",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 기술 스택: SheetJS(xlsx) + expo-file-system + expo-sharing. 기존 lib/attendance.ts 헬퍼, ProUpgradeSheet 컴포넌트, types/index.ts 타입(User.birth_date, guardian_phone, enrollment_date) 재사용."
+    },
+    {
+      "id": "02ea90ba-266c-459d-865f-8b91e6659add",
+      "name": "TASK-600: types/index.ts 및 admin/settings.tsx — Class.subject 필드 추가",
+      "description": "법정 출석부 '교습과목 및 수강반' 컬럼에 필요한 subject 필드를 Class 타입에 추가하고, admin 반 관리 화면에서 교습과목을 입력·저장할 수 있도록 수정한다.\n\n수정 범위:\n1. types/index.ts — Class 인터페이스에 subject?: string 추가\n2. app/(app)/(admin)/settings.tsx — 반 생성/수정 모달에 교습과목 입력 필드 추가 → Firestore 저장\n3. 기존 반 데이터(subject 없는 문서)는 undefined로 처리 — 엑셀 생성 시 빈 문자열 대체",
+      "notes": "subject는 선택 필드(?) — 기존 반 데이터와 하위 호환 필수",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2026-04-13T05:43:33.049Z",
+      "updatedAt": "2026-04-13T05:47:01.103Z",
+      "relatedFiles": [
+        {
+          "path": "types/index.ts",
+          "type": "TO_MODIFY",
+          "description": "Class 인터페이스에 subject?: string 추가",
+          "lineStart": 46,
+          "lineEnd": 54
+        },
+        {
+          "path": "app/(app)/(admin)/settings.tsx",
+          "type": "TO_MODIFY",
+          "description": "반 생성/수정 모달에 교습과목 입력 필드 추가"
+        }
+      ],
+      "implementationGuide": "1. types/index.ts의 Class 인터페이스에 subject?: string 추가\n2. settings.tsx 반 생성 모달에 TextInput (교습과목 입력) 추가\n3. addDoc/updateDoc 호출 시 subject 필드 포함\n4. 기존 데이터 하위 호환: subject ?? '' 처리",
+      "verificationCriteria": "Class 타입에 subject?: string 존재, settings.tsx에서 교습과목 입력 후 Firestore 저장 확인, npx tsc --noEmit 에러 0개",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 누락 3가지 추가: legalAttendanceFormat.ts 분리, Class.subject 필드 추가, 엑셀 컬럼 헤더 strings.ts 추가.",
+      "summary": "types/index.ts의 Class 인터페이스에 subject?: string 추가 완료 (선택 필드, 하위 호환). settings.tsx에 newClassSubject/editClassSubject 상태 추가, 새 반 만들기·반 설정 모달 양쪽에 교습과목 TextInput 추가, handleCreateClass/handleSaveClassName에서 Firestore 저장 처리, 반 목록 행에 subject 표시, 모달 닫을 때 상태 초기화 완료. 타입 에러 0개 (app.config.ts 기존 에러는 이 태스크와 무관).",
+      "completedAt": "2026-04-13T05:47:01.102Z"
+    },
+    {
+      "id": "0e0e91e2-f243-4973-b6fe-aefbed664256",
+      "name": "TASK-603b: lib/legalAttendanceFormat.ts — 법정 출석부 양식 정의 파일 신규 작성",
+      "description": "ROADMAP에 명시된 lib/legalAttendanceFormat.ts 파일을 작성한다. 엑셀 생성 유틸(excelExporter.ts)에서 참조하는 법정 출석부 상수·타입·변환 함수를 이 파일에 분리하여 정의한다.\n\n포함 내용:\n1. ATTENDANCE_SYMBOLS: 출결 상태 → 엑셀 기호 매핑 (present→○, late→△, absent→X, onLeave→-, null→'')\n2. EXCEL_COLUMN_HEADERS: 법정 출석부 컬럼 헤더 배열 (번호, 성명, 생년월일, 보호자연락처, 교습과목 및 수강반, 수강기간, 1~말일, 출석합계, 지각합계, 결석합계, 출석률)\n3. formatBirthDate(birthDate: string | null): string — YYYY-MM-DD → YYYY.MM.DD 변환\n4. formatEnrollmentPeriod(enrollmentDate: Timestamp | null): string — 수강기간 문자열 생성\n5. calcAttendanceSummary(symbols: string[]): { present: number, late: number, absent: number, rate: string } — 합계 계산",
+      "notes": "이 파일은 순수 상수·유틸만 포함 — Firebase/Firestore import 금지. excelExporter.ts에서 import하여 사용",
+      "status": "completed",
+      "dependencies": [
+        {
+          "taskId": "02ea90ba-266c-459d-865f-8b91e6659add"
+        }
+      ],
+      "createdAt": "2026-04-13T05:43:33.049Z",
+      "updatedAt": "2026-04-13T05:52:58.428Z",
+      "relatedFiles": [
+        {
+          "path": "lib/legalAttendanceFormat.ts",
+          "type": "CREATE",
+          "description": "법정 출석부 양식 상수·유틸 정의 파일 (ROADMAP 명시 파일)"
+        },
+        {
+          "path": "types/index.ts",
+          "type": "REFERENCE",
+          "description": "AttendanceStatus, AttendanceRecord 타입 참조"
+        }
+      ],
+      "implementationGuide": "export const ATTENDANCE_SYMBOLS: Record<string, string> = {\n  present: '○', late: '△', absent: 'X', onLeave: '-', null: ''\n}\nexport const EXCEL_COLUMN_HEADERS = ['번호','성명','생년월일',...]\nexport function formatBirthDate(v: string|null): string\nexport function formatEnrollmentPeriod(v: Timestamp|null): string\nexport function calcAttendanceSummary(symbols: string[]): {...}",
+      "verificationCriteria": "lib/legalAttendanceFormat.ts 파일 존재, 모든 심볼·헤더·유틸 함수 export 확인, npx tsc --noEmit 에러 0개",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 누락 3가지 추가: legalAttendanceFormat.ts 분리, Class.subject 필드 추가, 엑셀 컬럼 헤더 strings.ts 추가.",
+      "summary": "lib/legalAttendanceFormat.ts 신규 생성 완료. ATTENDANCE_SYMBOLS(4종), EMPTY_SYMBOL, getAttendanceSymbol(), LEFT/RIGHT_COLUMN_HEADERS, getExcelColumnHeaders(year,month), formatBirthDate(), formatEnrollmentPeriod(TimestampLike), calcAttendanceSummary() 모두 export. Firebase import 없이 TimestampLike 로컬 인터페이스로 처리. 타입 에러 0개.",
+      "completedAt": "2026-04-13T05:52:58.427Z"
+    },
+    {
+      "id": "da0ffd97-67cd-4049-ba56-0dd04bcc8c3c",
+      "name": "TASK-604: constants/strings.ts — 엑셀 내보내기 UI 문자열 및 컬럼 헤더 추가",
+      "description": "엑셀 내보내기 화면 UI 문자열과 엑셀 파일 내부 컬럼 헤더 텍스트를 strings.ts에 추가한다.\n\n주의: strings.attendance.exportExcel 키가 이미 존재하므로 중복 추가 금지\n\nstrings.export 그룹 추가 항목:\nUI 문자열:\n- title: '출결 내보내기'\n- selectClass: '반을 선택해주세요'\n- selectMonth: '월을 선택해주세요'\n- exportButton: '엑셀 파일 내보내기'\n- generating: '파일 생성 중...'\n- shareError: '파일 생성에 실패했어요. 다시 시도해주세요'\n- noStudents: '이 반에 학생이 없어요'\n- proFeatureName: '출결 엑셀 내보내기'\n\n엑셀 내부 컬럼 헤더:\n- colNumber: '번호'\n- colName: '성명'\n- colBirthDate: '생년월일'\n- colGuardianPhone: '보호자연락처'\n- colSubjectClass: '교습과목 및 수강반'\n- colEnrollPeriod: '수강기간'\n- colPresentTotal: '출석합계'\n- colLateTotal: '지각합계'\n- colAbsentTotal: '결석합계'\n- colAttendRate: '출석률'",
+      "status": "completed",
+      "dependencies": [],
+      "createdAt": "2026-04-13T05:43:33.049Z",
+      "updatedAt": "2026-04-13T05:52:55.483Z",
+      "relatedFiles": [
+        {
+          "path": "constants/strings.ts",
+          "type": "TO_MODIFY",
+          "description": "strings.export 그룹 추가 (UI 문자열 + 엑셀 컬럼 헤더)",
+          "lineStart": 222,
+          "lineEnd": 231
+        }
+      ],
+      "implementationGuide": "strings 객체 마지막(errors 이전)에 export 키 추가.\n기존 strings.attendance.exportExcel 키는 그대로 두고 중복 추가 금지.",
+      "verificationCriteria": "strings.export 그룹이 정상 추가되고 npx tsc --noEmit 에러 0개. 기존 strings.attendance.exportExcel 키 중복 없음",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 누락 3가지 추가: legalAttendanceFormat.ts 분리, Class.subject 필드 추가, 엑셀 컬럼 헤더 strings.ts 추가.",
+      "summary": "strings.export 그룹 추가 완료. UI 문자열 8개(title, selectClass, selectMonth, exportButton, generating, shareError, noStudents, proFeatureName)와 엑셀 컬럼 헤더 10개(colNumber~colAttendRate) 모두 포함. 기존 strings.attendance.exportExcel 키 중복 없음. 타입 에러 0개.",
+      "completedAt": "2026-04-13T05:52:55.480Z"
+    },
+    {
+      "id": "155c27cf-c6da-4339-9a81-a152f03d98cf",
+      "name": "TASK-603: lib/excelExporter.ts — 법정 출석부 엑셀 생성 유틸 신규 작성",
+      "description": "SheetJS(xlsx) + expo-file-system을 사용해 법정 출석부 양식 엑셀을 생성하고 파일 URI를 반환하는 유틸 함수를 작성한다. lib/legalAttendanceFormat.ts의 상수·유틸을 import하여 사용.\n\n함수 시그니처:\ngenerateLegalAttendanceExcel(params: ExportParams): Promise<{ uri: string; fileName: string }>\n\ninterface ExportParams {\n  academyName: string;\n  className: string;\n  subjectName: string;\n  teacherName: string;\n  year: number;\n  month: number;\n  students: User[];\n  attendanceData: Record<string, Record<string, AttendanceRecord>>;\n}\n\n엑셀 구성:\n- 1행: 학원명/반이름/담당선생님/연월\n- 2행: EXCEL_COLUMN_HEADERS (legalAttendanceFormat에서 import)\n- 3행~: 학생별 데이터 (ATTENDANCE_SYMBOLS 매핑, formatBirthDate, formatEnrollmentPeriod 사용)\n- 마지막 행: calcAttendanceSummary로 합계\n파일명: {className}_{year}년_{month}월_출결현황.xlsx\nFileSystem.cacheDirectory에 저장 후 URI 반환",
+      "notes": "legalAttendanceFormat.ts(TASK-603b) 완료 후 구현. ExportParams 인터페이스는 이 파일 내 정의",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "16438dad-ffa9-444f-83f3-2201dadfd47e"
+        },
+        {
+          "taskId": "0e0e91e2-f243-4973-b6fe-aefbed664256"
+        },
+        {
+          "taskId": "da0ffd97-67cd-4049-ba56-0dd04bcc8c3c"
+        }
+      ],
+      "createdAt": "2026-04-13T05:37:03.088Z",
+      "updatedAt": "2026-04-13T05:43:33.049Z",
+      "relatedFiles": [
+        {
+          "path": "lib/excelExporter.ts",
+          "type": "CREATE",
+          "description": "엑셀 생성 유틸 신규 파일"
+        },
+        {
+          "path": "lib/legalAttendanceFormat.ts",
+          "type": "DEPENDENCY",
+          "description": "양식 상수·유틸 import"
+        },
+        {
+          "path": "types/index.ts",
+          "type": "REFERENCE",
+          "description": "User, AttendanceRecord 타입 참조"
+        },
+        {
+          "path": "constants/strings.ts",
+          "type": "REFERENCE",
+          "description": "strings.export 컬럼 헤더 사용"
+        }
+      ],
+      "implementationGuide": "import * as XLSX from 'xlsx'\nimport * as FileSystem from 'expo-file-system'\nimport { ATTENDANCE_SYMBOLS, EXCEL_COLUMN_HEADERS, formatBirthDate, formatEnrollmentPeriod, calcAttendanceSummary } from './legalAttendanceFormat'\nimport { strings } from '../constants/strings'\n\nXLSX.utils.aoa_to_sheet(aoa) → XLSX.write → base64 → FileSystem.writeAsStringAsync",
+      "verificationCriteria": "함수가 정상 export되고 npx tsc --noEmit 에러 0개. uri, fileName 포함한 객체 반환 확인",
+      "analysisResult": "Phase 6: 선생님/admin이 반별·월별 출결 데이터를 법정 출석부 양식 엑셀로 생성 후 expo-sharing으로 공유하는 Pro 전용 기능 구현. 누락 3가지 추가: legalAttendanceFormat.ts 분리, Class.subject 필드 추가, 엑셀 컬럼 헤더 strings.ts 추가."
     }
   ]
 }

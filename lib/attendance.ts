@@ -210,3 +210,55 @@ export async function getAbsentCountToday(
 
   return absentCount;
 }
+
+/**
+ * 엑셀 내보내기용 — 반 전체 학생의 월간 출결 데이터를 한 번에 조회한다.
+ *
+ * 기존 getMonthlyAttendance()는 단일 학생 전용이며,
+ * 이 함수는 날짜별 getDocs 방식으로 반 전체 데이터를 효율적으로 수집한다.
+ * 읽기 횟수: 최대 31회 (월 일수 기준) — 학생 수 × 날짜 수 방식보다 훨씬 적음
+ *
+ * @param classId  반 ID
+ * @param year     연도 (예: 2026)
+ * @param month    월 (1~12)
+ * @returns        { 'YYYY-MM-DD': { [studentUid]: AttendanceRecord } } 형태의 이중 맵
+ */
+export async function getClassMonthlyDataForExport(
+  classId: string,
+  year: number,
+  month: number
+): Promise<Record<string, Record<string, AttendanceRecord>>> {
+  // YYYY-MM 형식 생성 (월은 2자리 패딩)
+  const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+
+  // 해당 월의 마지막 날 계산 (28~31일)
+  const lastDay = new Date(year, month, 0).getDate();
+
+  // 결과 맵: date → { studentUid → AttendanceRecord }
+  const result: Record<string, Record<string, AttendanceRecord>> = {};
+
+  // 날짜별로 records 서브컬렉션을 병렬 조회
+  // 날짜 1개당 getDocs 1회 → 최대 31회 읽기로 반 전체 데이터 수집
+  await Promise.all(
+    Array.from({ length: lastDay }, (_, i) => i + 1).map(async (day) => {
+      const dd = String(day).padStart(2, '0');
+      const date = `${yearMonth}-${dd}`;
+
+      // attendances/{classId}_{date}/records 서브컬렉션 전체 조회
+      const recordsRef = Collections.attendanceRecords(classId, date);
+      const snapshot = await getDocs(recordsRef);
+
+      if (!snapshot.empty) {
+        // 해당 날짜에 출결 데이터가 있는 경우에만 결과에 포함
+        const dateRecords: Record<string, AttendanceRecord> = {};
+        snapshot.forEach((docSnap) => {
+          // 문서 ID = studentUid
+          dateRecords[docSnap.id] = docSnap.data() as AttendanceRecord;
+        });
+        result[date] = dateRecords;
+      }
+    })
+  );
+
+  return result;
+}

@@ -48,6 +48,7 @@ export interface Class {
   name: string;
   academy_id: string;
   invite_code: string; // 6자리 영숫자
+  subject?: string;        // 교습과목 (예: 수학, 영어) — 법정 출석부 '교습과목 및 수강반' 컬럼에 사용
   student_count?: number;  // 캐시된 학생 수 (Firestore 저장 시 업데이트)
   present_count?: number;  // 오늘 출석 수 (실시간 계산, 선택적)
   // ★ head_teacher_id 제거 — 담당반은 users/{uid}.assigned_class_ids[] 로 관리

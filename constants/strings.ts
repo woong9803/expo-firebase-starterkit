@@ -218,6 +218,31 @@ export const strings = {
     childrenCount: (n: number) => `학부모 · 자녀 ${n}명 연동`,
     noChildren: '연동된 자녀가 없어요',
   },
+  // 엑셀 내보내기 (Phase 6)
+  // 주의: strings.attendance.exportExcel 키와 중복되지 않도록 여기서는 별도 그룹으로 관리
+  export: {
+    // ── UI 문자열 ──────────────────────────────────
+    title: '출결 내보내기',
+    selectClass: '반을 선택해주세요',
+    selectMonth: '월을 선택해주세요',
+    exportButton: '엑셀 파일 내보내기',
+    generating: '파일 생성 중...',
+    shareError: '파일 생성에 실패했어요. 다시 시도해주세요',
+    noStudents: '이 반에 학생이 없어요',
+    proFeatureName: '출결 엑셀 내보내기',
+
+    // ── 엑셀 파일 내부 컬럼 헤더 ──────────────────
+    colNumber: '번호',
+    colName: '성명',
+    colBirthDate: '생년월일',
+    colGuardianPhone: '보호자연락처',
+    colSubjectClass: '교습과목 및 수강반',
+    colEnrollPeriod: '수강기간',
+    colPresentTotal: '출석합계',
+    colLateTotal: '지각합계',
+    colAbsentTotal: '결석합계',
+    colAttendRate: '출석률',
+  },
   // 오류 메시지
   errors: {
     codeNotFound: '코드를 찾을 수 없어요',
