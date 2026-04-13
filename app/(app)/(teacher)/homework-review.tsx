@@ -196,6 +196,14 @@ export default function HomeworkReviewScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* 숙제 내용 카드 — content가 있을 때만 표시 */}
+          {!!homework?.content && (
+            <View style={styles.contentCard}>
+              <Text style={styles.contentLabel}>숙제 내용</Text>
+              <Text style={styles.contentText}>{homework.content}</Text>
+            </View>
+          )}
+
           {/* 제출 현황 카드 */}
           <View style={styles.statusCard}>
             <View style={styles.statusRow}>
@@ -465,6 +473,18 @@ const styles = StyleSheet.create({
 
   // ── 스크롤 콘텐츠
   scrollContent: { padding: 16, gap: 16, paddingBottom: 40 },
+
+  // ── 숙제 내용 카드
+  contentCard: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 16,
+    gap: 6,
+  },
+  contentLabel: { fontSize: 12, fontWeight: '700', color: '#94A3B8' },
+  contentText: { fontSize: 15, color: '#0F172A', lineHeight: 22 },
 
   // ── 제출 현황 카드
   statusCard: {

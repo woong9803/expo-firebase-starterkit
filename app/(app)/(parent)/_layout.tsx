@@ -73,6 +73,9 @@ export default function ParentTabLayout() {
           ),
         }}
       />
+      {/* 탭바에 표시하지 않는 화면 */}
+      <Tabs.Screen name="children-switch" options={{ href: null }} />
+      <Tabs.Screen name="child-homework"  options={{ href: null }} />
     </Tabs>
   );
 }

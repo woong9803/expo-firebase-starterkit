@@ -86,9 +86,11 @@ export interface Notice {
   content: string;
   is_important: boolean;
   academy_id: string;
-  read_by: string[];   // 읽은 uid 배열
+  read_by: string[];            // 읽은 uid 배열
+  target_class_ids: string[];   // 공지 대상 반 ID 배열. 빈 배열 = 전체 반
+  target_roles: string[];       // 공지 수신 역할 배열. 빈 배열 = 모두 ['student','parent']
   created_at: Timestamp;
-  created_by: string;  // 작성자 uid
+  created_by: string;           // 작성자 uid
 }
 
 // Notification은 브라우저 내장 타입과 충돌 — AppNotification으로 명명

@@ -15,11 +15,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { query, where, getDocs, getCountFromServer } from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { useNotificationStore } from '../../../store/useNotificationStore';
 import { Class, AttendanceRecord } from '../../../types';
 
 // 오늘 날짜 문자열 (YYYY-MM-DD)
@@ -34,6 +36,7 @@ function getTodayStr(): string {
 export default function AdminHomeScreen() {
   const { user, academy } = useAuthStore();
   const isPending = academy?.status === 'pending';
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
 
   const { top } = useSafeAreaInsets();
 
@@ -199,8 +202,14 @@ export default function AdminHomeScreen() {
             <Text style={styles.headerLabel}>원장님 대시보드 👑</Text>
             <Text style={styles.headerAcademy}>{academy?.name ?? '학원'}</Text>
           </View>
-          <TouchableOpacity style={styles.bellBtn}>
+          <TouchableOpacity
+            style={styles.bellBtn}
+            onPress={() => router.push('/common/notification-inbox')}
+            activeOpacity={0.8}
+          >
             <Ionicons name="notifications-outline" size={20} color="#fff" />
+            {/* 미읽음 dot 배지 — 숫자 없이 점만 표시 (ui-screens.md 규칙) */}
+            {unreadCount > 0 && <View style={styles.unreadDot} />}
           </TouchableOpacity>
         </View>
 
@@ -355,6 +364,13 @@ const styles = StyleSheet.create({
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -2, right: -2,
+    width: 8, height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
   },
 
   // 2칸 그리드

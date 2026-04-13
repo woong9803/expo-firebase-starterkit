@@ -131,7 +131,7 @@
       "name": "공지사항 상세 공유 화면 생성 (app/(app)/common/notice-detail.tsx)",
       "description": "전 역할이 공유하는 공지 상세 화면. router.params로 noticeId 수신, Firestore에서 notice 조회, 진입 시 markNoticeRead 호출(uid 추가). 선생님/admin 역할이면 하단에 '읽음 현황 보기' 버튼 표시(Pro 전용 이동).",
       "notes": "role 분기는 useAuthStore().user.role 사용. admin은 /(app)/(admin)/notice-read-status, teacher는 /(app)/(teacher)/notice-read-status로 각각 이동. common/ 디렉토리를 새로 생성해야 함.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "55d940c0-29dc-4eea-ac3a-5d3b5ba347d7"
@@ -141,7 +141,7 @@
         }
       ],
       "createdAt": "2026-04-13T07:28:09.120Z",
-      "updatedAt": "2026-04-13T07:28:09.120Z",
+      "updatedAt": "2026-04-13T07:37:56.965Z",
       "relatedFiles": [
         {
           "path": "app/(app)/common/notice-detail.tsx",
@@ -168,21 +168,23 @@
       ],
       "implementationGuide": "pseudocode:\n1. const { noticeId } = useLocalSearchParams()\n2. useState: notice, isLoading, error\n3. useEffect: getDoc(Collections.notice(noticeId)) -> setNotice. 조회 후 markNoticeRead(noticeId, user.uid) 호출 (비동기, 실패 무시)\n4. 렌더: 헤더(뒤로가기), 중요뱃지, 제목(fontSize 20 fontWeight 800), 작성일, 구분선, 내용(fontSize 15 lineHeight 24)\n5. role이 teacher/admin이면 하단 고정 버튼 '읽음 현황 보기' -> router.push('/(app)/(teacher)/notice-read-status?noticeId=xxx') 또는 admin 경로\n6. 로딩: ActivityIndicator, 에러: 에러 텍스트",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. noticeId 파라미터로 Firestore 조회. 진입 시 read_by에 uid arrayUnion. teacher/admin만 읽음현황 버튼 노출.",
-      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수."
+      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수.",
+      "summary": "app/(app)/common/notice-detail.tsx 생성 완료. noticeId params로 Firestore 조회, 진입 시 markNoticeRead 호출(실패 무시). 중요 뱃지/제목/작성일/구분선/내용 렌더. teacher/admin만 하단 읽음현황 버튼 노출 — 역할별 라우트로 분기. 로딩/오류 처리 포함. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:37:56.964Z"
     },
     {
       "id": "8f120cec-db15-45c4-9989-236776a8b5cb",
       "name": "공지사항 작성 화면 생성 (teacher + admin)",
       "description": "1) app/(app)/(teacher)/notice-create.tsx 생성. 2) app/(app)/(admin)/notice-create.tsx 생성. 제목/내용 입력 + 중요/일반 토글 + 저장 버튼. createNotice() 호출 후 router.back().",
       "notes": "두 파일 내용은 동일. import 경로만 ../../.. vs ../../../ 차이. saving 중 버튼 ActivityIndicator 표시. 유효성: 제목 필수(1자 이상).",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "55d940c0-29dc-4eea-ac3a-5d3b5ba347d7"
         }
       ],
       "createdAt": "2026-04-13T07:28:09.120Z",
-      "updatedAt": "2026-04-13T07:28:09.120Z",
+      "updatedAt": "2026-04-13T07:40:03.307Z",
       "relatedFiles": [
         {
           "path": "app/(app)/(teacher)/notice-create.tsx",
@@ -209,21 +211,23 @@
       ],
       "implementationGuide": "pseudocode (teacher, admin 동일 구조):\n1. useState: title(''), content(''), isImportant(false), saving(false)\n2. 헤더: 뒤로가기 + '공지 작성' 타이틀\n3. 중요 토글: Switch 컴포넌트 또는 터치 가능 칩 (활성: bg #EF4444, 비활성: bg #F1F5F9)\n4. 제목 TextInput: bg #F1F0FB borderRadius 12 placeholder strings.notice.titlePlaceholder\n5. 내용 TextInput: multiline height 200 동일 스타일\n6. 저장 버튼: title 없으면 비활성(bg #E2E8F0), 있으면 Primary(bg #5B50E8)\n7. handleSave: saving=true -> createNotice({ title, content, isImportant, academyId: user.academy_id, createdBy: user.uid }) -> router.back()",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. 제목 입력 전 저장 버튼 비활성. createNotice 호출 후 router.back(). saving 중 중복 제출 불가.",
-      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수."
+      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수.",
+      "summary": "teacher/notice-create.tsx + admin/notice-create.tsx 생성 완료. 제목/내용 TextInput, 중요 토글(빨간 활성/회색 비활성), 저장 버튼(제목 없으면 비활성/회색). createNotice() 호출 후 router.back(). saving 중 중복 제출 불가, KeyboardAvoidingView 적용. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:40:03.307Z"
     },
     {
       "id": "e4bedfa9-253c-4272-8bb5-1795ccda7e2f",
       "name": "알림 인박스 화면 생성 (app/(app)/common/notification-inbox.tsx)",
       "description": "Firestore notifications 컬렉션에서 본인 알림 목록 실시간 조회. 읽음/미읽음 구분 표시. 탭 시 is_read=true 업데이트. useNotificationStore 연동.",
       "notes": "Firestore에 notifications 복합 인덱스 필요: target_uid(asc) + created_at(desc). firestore.indexes.json에 추가 필요. limit(50)으로 최신 50건만 조회.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "6922fc13-9ba4-4271-b4d0-644620306153"
         }
       ],
       "createdAt": "2026-04-13T07:28:09.120Z",
-      "updatedAt": "2026-04-13T07:28:09.120Z",
+      "updatedAt": "2026-04-13T07:44:48.219Z",
       "relatedFiles": [
         {
           "path": "app/(app)/common/notification-inbox.tsx",
@@ -250,14 +254,16 @@
       ],
       "implementationGuide": "pseudocode:\n1. useEffect: unsub = onSnapshot(query(Collections.notifications(), where('target_uid','==',user.uid), orderBy('created_at','desc'), limit(50)), snap => { const notifs = snap.docs.map(...); setNotifications(notifs); }). return () => unsub()\n2. 알림 타입별 아이콘: homework_feedback -> 📝, homework_due -> ⏰, attendance -> 📋, notice -> 📢\n3. 읽지 않은 알림: bg #F8FAFC bold, 읽은 알림: bg #fff color #64748B\n4. 탭 시: updateDoc(Collections.notification(id), { is_read: true }) + markAsRead(id) 호출\n5. 상단 '모두 읽음' 버튼: 미읽음 목록 일괄 업데이트\n6. 빈 상태: strings.notification.empty",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. target_uid 기준 본인 알림만 조회. onSnapshot cleanup 정상. 탭 후 is_read=true 업데이트 및 unreadCount 감소.",
-      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수."
+      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수.",
+      "summary": "notification-inbox.tsx 생성 완료. onSnapshot으로 target_uid 기준 본인 알림 최신 50건 실시간 조회, useEffect cleanup으로 구독 해제, 탭 시 markAsRead 호출로 is_read 업데이트, writeBatch로 모두 읽음 일괄 처리, 미읽음 배경/볼드 스타일 구분. firestore.indexes.json에 target_uid+created_at 복합 인덱스 추가. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:44:48.219Z"
     },
     {
       "id": "48436573-04b4-445f-b599-e1f9baee118d",
       "name": "_layout.tsx 4개 파일 비탭 화면 등록",
       "description": "Phase 7에서 추가된 비탭 화면들을 각 역할 _layout.tsx에 href:null로 등록. 1) (teacher)/_layout.tsx: notice-create, notice-read-status 추가. 2) (admin)/_layout.tsx: notice-create, notice-read-status 추가. 3) (parent)/_layout.tsx: children-switch 추가. 4) (student)/_layout.tsx: 변경 없음.",
       "notes": "기존 등록 패턴: teacher에는 이미 create-student, homework-create, homework-review, class-select, attendance-export가 href:null로 등록되어 있음. 동일 방식으로 추가.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "8f120cec-db15-45c4-9989-236776a8b5cb"
@@ -270,7 +276,7 @@
         }
       ],
       "createdAt": "2026-04-13T07:28:09.120Z",
-      "updatedAt": "2026-04-13T07:28:09.120Z",
+      "updatedAt": "2026-04-13T07:53:17.455Z",
       "relatedFiles": [
         {
           "path": "app/(app)/(teacher)/_layout.tsx",
@@ -292,14 +298,16 @@
       ],
       "implementationGuide": "각 _layout.tsx에 아래 패턴으로 추가 (기존 attendance-export 등록 패턴 동일):\n<Tabs.Screen name=\"notice-create\" options={{ href: null }} />\n<Tabs.Screen name=\"notice-read-status\" options={{ href: null }} />\n\nparent/_layout.tsx:\n<Tabs.Screen name=\"children-switch\" options={{ href: null }} />",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. expo-router에서 notice-create, notice-read-status 라우트 접근 시 탭바 미표시. 각 _layout.tsx에 href:null 화면 정상 등록.",
-      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수."
+      "analysisResult": "Phase 7: 공지사항 및 학부모 대시보드 구현. 기술스택: React Native + Expo + TypeScript + Firebase Firestore + Zustand + expo-router. 기존 인프라: types/index.ts에 Notice/AppNotification 타입 정의 완료, lib/firestore.ts에 Collections.notices/notifications 등록 완료, ProUpgradeSheet 컴포넌트 존재. 플레이스홀더 파일: (teacher)/notices.tsx, (admin)/notices.tsx, (parent)/notices.tsx, (parent)/homework.tsx. 학생은 notices 탭 없음(홈 인라인 표시). UI 규칙: Primary #5B50E8, 카드 bg #F8FAFC border #E2E8F0, 중요공지 bg #FEF2F2 border #FECACA. 모든 텍스트 strings.ts에서 관리, StyleSheet.create() 필수, onSnapshot cleanup 필수.",
+      "summary": "(teacher)/_layout.tsx에 notice-create, notice-read-status 비탭 등록. (admin)/_layout.tsx에 notice-create, notice-read-status 비탭 등록. (parent)/_layout.tsx에 children-switch, child-homework 비탭 등록. 모두 href:null 패턴 적용. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:53:17.454Z"
     },
     {
       "id": "38304a45-6025-4a0f-9fd7-bd1284315620",
       "name": "common/notice-list.tsx 공통 공지 목록 화면 생성",
       "description": "전 역할이 공유하는 공지 목록 화면. Props로 showCreateButton(boolean)을 받아 선생님/admin만 작성 버튼 표시. 역할별 notices.tsx에서 이 화면을 재사용하는 구조. subscribeNotices로 실시간 목록, 중요 공지 상단 정렬, NoticeCard 탭 시 notice-detail 이동.",
       "notes": "onSnapshot cleanup 필수. common/ 디렉토리는 notice-detail.tsx 생성 시 이미 만들어져 있음. 이 화면이 생성된 후 T6(notices.tsx 교체)은 직접 구현 대신 이 컴포넌트를 래핑하는 방식으로 단순화됨.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "7df7ee94-bebe-4600-8741-370a163d231f"
@@ -309,7 +317,7 @@
         }
       ],
       "createdAt": "2026-04-13T07:32:29.664Z",
-      "updatedAt": "2026-04-13T07:32:29.664Z",
+      "updatedAt": "2026-04-13T07:42:07.718Z",
       "relatedFiles": [
         {
           "path": "app/(app)/common/notice-list.tsx",
@@ -334,14 +342,16 @@
       ],
       "implementationGuide": "pseudocode:\ninterface Props { showCreateButton?: boolean; onCreatePress?: () => void; }\nexport default function NoticeListScreen({ showCreateButton, onCreatePress }: Props)\n1. useAuthStore로 user, academy_id 획득\n2. useEffect: unsub = subscribeNotices(user.academy_id, notices => setNotices(notices)). return () => unsub()\n3. useMemo: sortedNotices = [...important(is_important=true), ...normal] 순으로 정렬\n4. 헤더: '공지사항' 타이틀 + showCreateButton=true 이면 우상단 '+' Ionicons 버튼(onCreatePress 호출)\n5. FlatList: NoticeCard onPress -> router.push('/common/notice-detail?noticeId=' + n.id)\n6. 빈 상태: strings.notice.noNotice\n7. 로딩: ActivityIndicator\n\n각 역할 notices.tsx에서 사용:\n- (teacher)/notices.tsx: <NoticeListScreen showCreateButton onCreatePress={() => router.push('/(app)/(teacher)/notice-create')} />\n- (admin)/notices.tsx: <NoticeListScreen showCreateButton onCreatePress={() => router.push('/(app)/(admin)/notice-create')} />\n- (parent)/notices.tsx: <NoticeListScreen /> (showCreateButton 없음)",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. showCreateButton=true 시 '+' 버튼 표시, false/미전달 시 미표시. 중요 공지가 일반 공지보다 상단에 위치. onSnapshot cleanup 정상 동작.",
-      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함"
+      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함",
+      "summary": "app/(app)/common/notice-list.tsx 생성 완료. showCreateButton prop으로 '+' 버튼 조건부 표시. subscribeNotices onSnapshot 실시간 구독 + useEffect cleanup 정상. useMemo로 중요 공지 상단 정렬 보장. NoticeCard 탭 시 /common/notice-detail?noticeId= 이동. 빈 상태/로딩 처리 포함. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:42:07.716Z"
     },
     {
       "id": "4be8d8a3-96d7-4fe3-9ca4-bb2fd4a49d8d",
       "name": "선생님/admin 공지 목록 화면 구현 및 읽음 현황 화면 생성",
       "description": "1) (teacher)/notices.tsx 플레이스홀더 교체: common/notice-list.tsx 래핑 + notice-create 이동 연결. 2) (admin)/notices.tsx 동일 구현. 3) (teacher)/notice-read-status.tsx 생성: Pro 게이팅, 특정 공지 읽음/미읽음 사용자 목록. 4) (admin)/notice-read-status.tsx 동일 구현.",
       "notes": "notices.tsx는 common/notice-list.tsx 래핑으로 단순화. notice-read-status는 Pro 전용 — ProUpgradeSheet 사용. getNoticeReadUsers는 학생+학부모 대상으로만 계산.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "38304a45-6025-4a0f-9fd7-bd1284315620"
@@ -354,7 +364,7 @@
         }
       ],
       "createdAt": "2026-04-13T07:28:09.120Z",
-      "updatedAt": "2026-04-13T07:32:29.664Z",
+      "updatedAt": "2026-04-13T07:47:23.676Z",
       "relatedFiles": [
         {
           "path": "app/(app)/(teacher)/notices.tsx",
@@ -399,14 +409,16 @@
       ],
       "implementationGuide": "notices.tsx (teacher/admin) pseudocode:\nimport NoticeListScreen from '../../common/notice-list'\nexport default function TeacherNoticesScreen() {\n  return <NoticeListScreen showCreateButton onCreatePress={() => router.push('..../notice-create')} />\n}\n(단순 래퍼로 구현 — 별도 로직 없음)\n\nnotice-read-status.tsx pseudocode:\n1. isPro 체크 -> 아니면 ProUpgradeSheet\n2. const { noticeId } = useLocalSearchParams()\n3. useEffect: getNoticeReadUsers(noticeId, user.academy_id) -> { readUsers, unreadUsers } setstate\n4. ReadProgressBar(readUsers.length, readUsers.length + unreadUsers.length)\n5. 읽은 사용자 섹션 + 미읽음 사용자 섹션 카드 목록",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. notices.tsx는 NoticeListScreen 래핑으로 단순화. Pro 아닌 경우 ProUpgradeSheet 표시. 읽음/미읽음 합산이 전체 학생+학부모 수와 일치.",
-      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함"
+      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함",
+      "summary": "notices.tsx (teacher/admin) NoticeListScreen 래핑으로 단순화 완료. notice-read-status.tsx (teacher/admin) 생성 완료: useProCheck으로 Pro 게이팅, getNoticeReadUsers로 학생+학부모 읽음/미읽음 집계, ReadProgressBar 진행률 표시, ProUpgradeSheet 연동. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:47:23.675Z"
     },
     {
       "id": "c23cac02-71cb-46c9-8b39-1bb3e183298c",
       "name": "학부모 공지 목록, 자녀 숙제 현황, 다자녀 전환 UI 구현",
       "description": "1) (parent)/notices.tsx: common/notice-list.tsx 래핑(작성 버튼 없음). 2) (parent)/homework.tsx: 자녀 숙제 목록 실시간 확인(탭시 child-homework로 이동). 3) (parent)/child-homework.tsx 신규 생성: 특정 숙제 상세 — 제출 이미지, 피드백(👍/💧), 제출일. 4) (parent)/children-switch.tsx 신규 생성: 다자녀 전환 UI.",
       "notes": "child-homework.tsx는 비탭 화면 → _layout.tsx에 href:null 등록 필요(T9에서 처리). 학부모 테마 #F59E0B 활용. 피드백 칩: 👍=bg #ECFDF5 color #065F46, 💧=bg #FEF2F2 color #991B1B.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "598243bf-9d3f-4062-b023-7ffd530ce78b"
@@ -419,7 +431,7 @@
         }
       ],
       "createdAt": "2026-04-13T07:28:09.120Z",
-      "updatedAt": "2026-04-13T07:32:29.664Z",
+      "updatedAt": "2026-04-13T07:50:20.480Z",
       "relatedFiles": [
         {
           "path": "app/(app)/(parent)/notices.tsx",
@@ -456,14 +468,16 @@
       ],
       "implementationGuide": "parent/notices.tsx:\nimport NoticeListScreen from '../../common/notice-list'\nexport default function ParentNoticesScreen() { return <NoticeListScreen /> }\n\nparent/homework.tsx pseudocode:\n1. activeChildUid: useLocalSearchParams 또는 user.children[0]\n2. 자녀 정보 조회(name, class_id)\n3. onSnapshot: homeworks where class_id == childClassId, orderBy due_date\n4. 각 hw별 submissions/childUid 조회 (제출여부/피드백)\n5. 카드 탭 -> router.push('/(app)/(parent)/child-homework?homeworkId=xxx&childUid=xxx')\n6. user.children.length > 1 이면 상단 '자녀 전환' 버튼\n\nchild-homework.tsx pseudocode:\n1. params: homeworkId, childUid\n2. getDoc homework + getDoc submission\n3. 숙제 제목/내용/마감일 표시\n4. 제출 있으면: 이미지 목록(Image 컴포넌트), 피드백 칩(👍 pass/💧 retry)\n5. 미제출이면: '아직 제출하지 않았어요' 안내\n\nchildren-switch.tsx pseudocode:\n1. user.children 배열 순회 -> 각 uid로 getDoc users\n2. 자녀 카드 목록(이름, 반 이름)\n3. 선택 -> router.back() + router.setParams({ childUid: selectedUid }) 또는 router.push에 파라미터",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. user.children 없는 경우 빈 상태 처리. 자녀 1명이면 전환 버튼 미표시. 제출 이미지 있으면 child-homework에서 표시. 피드백 칩 색상 pass/retry 구분.",
-      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함"
+      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함",
+      "summary": "notices.tsx NoticeListScreen 래핑 완료. homework.tsx 자녀 숙제 실시간 조회(onSnapshot) + 제출/피드백 표시 + 다자녀 전환 버튼. child-homework.tsx 숙제 상세 + 제출 이미지 + 피드백 칩(👍 #ECFDF5/#065F46, 💧 #FEF2F2/#991B1B) + 미제출 안내. children-switch.tsx 자녀 목록 + 반 이름 조회 + 탭 시 homework로 childUid params 전달. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:50:20.478Z"
     },
     {
       "id": "4c6be95b-c4fa-49aa-bc4a-de4cd124a80f",
       "name": "_layout.tsx 비탭 화면 등록 및 알림 벨 버튼 연결",
       "description": "1) (teacher)/_layout.tsx: notice-create, notice-read-status 추가. 2) (admin)/_layout.tsx: notice-create, notice-read-status 추가. 3) (parent)/_layout.tsx: children-switch, child-homework 추가. 4) teacher/index.tsx + admin/index.tsx 알림 벨 버튼에 onPress 추가 → notification-inbox 이동. 미읽음 있을 때 dot 배지(width 8, height 8, bg #EF4444, borderRadius 4) 표시.",
       "notes": "ui-screens.md 규칙: 바텀탭 숫자 뱃지 사용 금지. 헤더 벨 아이콘의 dot 배지는 허용 (탭바 숫자 뱃지가 아님). useNotificationStore는 notification-inbox.tsx에서 onSnapshot으로 채워지므로, 홈 화면에서는 store 구독만 하면 됨.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         {
           "taskId": "8f120cec-db15-45c4-9989-236776a8b5cb"
@@ -479,7 +493,7 @@
         }
       ],
       "createdAt": "2026-04-13T07:32:29.664Z",
-      "updatedAt": "2026-04-13T07:32:29.664Z",
+      "updatedAt": "2026-04-13T07:54:40.486Z",
       "relatedFiles": [
         {
           "path": "app/(app)/(teacher)/_layout.tsx",
@@ -520,7 +534,9 @@
       ],
       "implementationGuide": "_layout.tsx 추가 패턴 (기존 attendance-export와 동일):\n<Tabs.Screen name=\"notice-create\" options={{ href: null }} />\n<Tabs.Screen name=\"notice-read-status\" options={{ href: null }} />\n\nparent/_layout.tsx:\n<Tabs.Screen name=\"children-switch\" options={{ href: null }} />\n<Tabs.Screen name=\"child-homework\" options={{ href: null }} />\n\nteacher/index.tsx 알림 벨 버튼 (line 248):\n- useNotificationStore에서 unreadCount 구독\n- TouchableOpacity onPress={() => router.push('/common/notification-inbox')}\n- unreadCount > 0 이면 벨 아이콘 우상단에 dot View 렌더 (position absolute, top -2, right -2)\n- dot: width 8, height 8, borderRadius 4, bg #EF4444 (숫자 표시 금지 — ui-screens.md 규칙)\n\nadmin/index.tsx 동일 패턴 적용",
       "verificationCriteria": "npx tsc --noEmit 오류 없음. notice-create/notice-read-status 탐색 시 탭바 미표시. 알림 벨 탭 시 notification-inbox 이동. unreadCount>0 시 빨간 dot 표시, 0이면 dot 없음.",
-      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함"
+      "analysisResult": "Phase 7 누락 3가지 보완: (1) common/notice-list.tsx 공통 목록 화면 신규 추가, (2) 학부모 child-homework.tsx 드릴다운 화면 T7에 포함, (3) teacher/admin 홈 알림 벨 onPress 연결 + dot 배지 T9에 포함",
+      "summary": "_layout.tsx 비탭 등록은 T10에서 완료. teacher/index.tsx + admin/index.tsx 알림 벨 버튼에 onPress → notification-inbox 이동 추가. useNotificationStore unreadCount 구독 + unreadCount>0 시 dot 배지(width 8, height 8, bg #EF4444, borderRadius 4, position absolute) 표시. 타입 오류 없음.",
+      "completedAt": "2026-04-13T07:54:40.485Z"
     }
   ]
 }

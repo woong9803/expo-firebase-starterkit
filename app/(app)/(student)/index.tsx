@@ -4,9 +4,12 @@ import {
   TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { query, where, getDocs, getDoc, orderBy, limit } from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { useNotificationStore } from '../../../store/useNotificationStore';
 import { Homework, Submission, Notice } from '../../../types';
 
 // 스트릭 막대 개수 (고정 장식용)
@@ -32,6 +35,7 @@ function calcDDays(dueTimestamp: Homework['due_date']): number {
 export default function StudentHomeScreen() {
   const { user } = useAuthStore();
   const streak = user?.streak ?? 0;
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
 
   const [homeworks, setHomeworks] = useState<HwItem[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -112,9 +116,26 @@ export default function StudentHomeScreen() {
             </View>
           </View>
         </View>
-        {/* 알림 아이콘 */}
-        <View style={styles.bellBtn}>
-          <Text style={styles.bellEmoji}>🔔</Text>
+        {/* 우측 아이콘 버튼 묶음 */}
+        <View style={styles.headerActions}>
+          {/* 공지 확성기 버튼 */}
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.push('/common/notice-list')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="megaphone-outline" size={21} color="#0F172A" />
+          </TouchableOpacity>
+          {/* 알림 벨 버튼 */}
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.push('/common/notification-inbox')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={22} color="#0F172A" />
+            {/* 미읽음 dot 배지 — 숫자 없이 점만 표시 (ui-screens.md 규칙) */}
+            {unreadCount > 0 && <View style={styles.unreadDot} />}
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -243,9 +264,11 @@ export default function StudentHomeScreen() {
             <Text style={styles.sectionTitle}>📢 공지사항</Text>
           </View>
           {notices.map((n) => (
-            <View
+            <TouchableOpacity
               key={n.id}
               style={[styles.noticeCard, !n.is_important && styles.noticeCardNormal]}
+              onPress={() => router.push(`/common/notice-detail?noticeId=${n.id}`)}
+              activeOpacity={0.75}
             >
               {n.is_important && (
                 <View style={styles.noticeTop}>
@@ -254,7 +277,7 @@ export default function StudentHomeScreen() {
                 </View>
               )}
               <Text style={styles.noticeTitle}>{n.title}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -293,12 +316,22 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   streakBadgeText: { fontSize: 12, fontWeight: '700', color: '#334155' },
-  bellBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#ECFDF5',
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: '#F1F5F9',
     alignItems: 'center', justifyContent: 'center',
   },
-  bellEmoji: { fontSize: 20 },
+  unreadDot: {
+    position: 'absolute',
+    top: -2, right: -2,
+    width: 8, height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
 
   // ── 공통 패딩 ──
   sectionPad: { paddingHorizontal: 16, marginTop: 16 },

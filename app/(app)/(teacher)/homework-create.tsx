@@ -25,6 +25,7 @@ import { addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
+import ClassPickerSheet from '../../../components/ClassPickerSheet';
 import { Class } from '../../../types';
 
 // 날짜+시간 포맷: "2026년 4월 30일 오후 6:00"
@@ -155,8 +156,13 @@ export default function HomeworkCreateScreen() {
         due_date: Timestamp.fromDate(dueDate),
         created_by: user.uid,
       });
+      // 폼 초기화 — 화면이 캐시에 남아도 다음 진입 시 빈 폼으로 표시
+      setTitle('');
+      setContent('');
+      setDueDate(null);
+      setSelectedClassId(classes.length === 1 ? classes[0].id : null);
       // 숙제 목록 화면으로 복귀
-      router.back();
+      router.navigate('/(app)/(teacher)/homework');
     } catch (e) {
       console.error('[HomeworkCreate] 출제 실패:', e);
       Alert.alert('오류', '숙제 출제에 실패했어요. 다시 시도해주세요.');
@@ -176,7 +182,7 @@ export default function HomeworkCreateScreen() {
       {/* ── 헤더 ── */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.navigate('/(app)/(teacher)/homework')}
           style={styles.backBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
@@ -226,34 +232,13 @@ export default function HomeworkCreateScreen() {
           <Text style={styles.label}>
             반 선택 <Text style={styles.required}>*</Text>
           </Text>
-          {classes.length === 0 ? (
-            <View style={styles.emptyClass}>
-              <Text style={styles.emptyClassText}>등록된 반이 없어요</Text>
-            </View>
-          ) : (
-            <View style={styles.classChips}>
-              {classes.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[
-                    styles.classChip,
-                    selectedClassId === c.id && styles.classChipActive,
-                  ]}
-                  onPress={() => setSelectedClassId(c.id)}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.classChipText,
-                      selectedClassId === c.id && styles.classChipTextActive,
-                    ]}
-                  >
-                    {c.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+          <ClassPickerSheet
+            mode="single"
+            classes={classes}
+            selectedId={selectedClassId}
+            onSelect={setSelectedClassId}
+            placeholder="반을 선택해주세요"
+          />
         </View>
 
         {/* ── 마감일 — 달력 버튼 ── */}
@@ -401,19 +386,6 @@ const styles = StyleSheet.create({
   },
   inputMultiline: { minHeight: 100, paddingTop: 14 },
 
-  // ── 반 선택 칩 ──
-  classChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  classChip: {
-    paddingVertical: 8, paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1.5, borderColor: '#E2E8F0',
-  },
-  classChipActive: { backgroundColor: '#EEEDF9', borderColor: '#5B50E8' },
-  classChipText: { fontSize: 14, fontWeight: '700', color: '#334155' },
-  classChipTextActive: { color: '#5B50E8' },
-  emptyClass: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, alignItems: 'center' },
-  emptyClassText: { fontSize: 14, color: '#94A3B8' },
 
   // ── 날짜 선택 버튼 ──
   dateBtn: {

@@ -3,11 +3,14 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { getDoc, getDocs, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { Collections } from '../../../lib/firestore';
 import { getMonthlyAttendance, sendAbsenceReason } from '../../../lib/attendance';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { useNotificationStore } from '../../../store/useNotificationStore';
 import { strings } from '../../../constants/strings';
 import type { User, AttendanceRecord, AttendanceStatus, Homework, Submission } from '../../../types/index';
 
@@ -33,6 +36,7 @@ function getTodayStr(): string {
 export default function ParentHomeScreen() {
   const { user } = useAuthStore();
   const parentName = user?.name ?? '부모님';
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
 
   // ── 자녀 목록 상태 ──────────────────────────────────────────
   const [children, setChildren] = useState<User[]>([]);
@@ -249,9 +253,15 @@ export default function ParentHomeScreen() {
             )}
           </View>
         </View>
-        <View style={styles.bellBtn}>
-          <Text style={styles.bellEmoji}>🔔</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.bellBtn}
+          onPress={() => router.push('/common/notification-inbox')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="notifications-outline" size={22} color="#0F172A" />
+          {/* 미읽음 dot 배지 — 숫자 없이 점만 표시 (ui-screens.md 규칙) */}
+          {unreadCount > 0 && <View style={styles.unreadDot} />}
+        </TouchableOpacity>
       </View>
 
       <View style={styles.body}>
@@ -380,10 +390,16 @@ const styles = StyleSheet.create({
   },
   childTabInactiveText: { fontSize: 14, fontWeight: '700', color: '#64748B' },
   bellBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#FFFBEB', alignItems: 'center', justifyContent: 'center',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center',
   },
-  bellEmoji: { fontSize: 20 },
+  unreadDot: {
+    position: 'absolute',
+    top: -2, right: -2,
+    width: 8, height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
 
   body: { paddingHorizontal: 16 },
 

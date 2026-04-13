@@ -1,34 +1,20 @@
-import { View, Text, StyleSheet } from 'react-native';
+/**
+ * app/(app)/(admin)/notices.tsx — admin 공지사항 탭
+ *
+ * common/notice-list.tsx를 래핑.
+ * showCreateButton=true 로 '+' 버튼 표시, 탭 시 notice-create 화면으로 이동.
+ */
 
-// 공지사항 — Phase 7에서 구현 예정
+import React from 'react';
+import { router } from 'expo-router';
+
+import NoticeListScreen from '../common/notice-list';
+
 export default function AdminNoticesScreen() {
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>공지사항</Text>
-      </View>
-      <View style={styles.body}>
-        <Text style={styles.emoji}>📢</Text>
-        <Text style={styles.text}>공지 기능은 준비 중이에요</Text>
-        <Text style={styles.sub}>Phase 7에서 구현됩니다</Text>
-      </View>
-    </View>
+    <NoticeListScreen
+      showCreateButton
+      onCreatePress={() => router.push('/(app)/(admin)/notice-create')}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: {
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    paddingHorizontal: 16,
-    paddingTop: 52,
-    paddingBottom: 14,
-  },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
-  body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  emoji: { fontSize: 40 },
-  text: { fontSize: 16, fontWeight: '600', color: '#334155' },
-  sub: { fontSize: 13, color: '#94A3B8' },
-});

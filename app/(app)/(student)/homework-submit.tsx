@@ -20,17 +20,69 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import {
+  getInfoAsync,
+} from 'expo-file-system/legacy';
+import { getIdToken } from 'firebase/auth';
+import { auth } from '../../../lib/firebase';
 import { getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { storage } from '../../../lib/firebase';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { Homework, Submission } from '../../../types';
 
 // AsyncStorage 키 — 업로드 실패 시 임시저장용
 const PENDING_KEY = 'pendingSubmission';
+
+/**
+ * Firebase Storage REST API + FormData로 파일 업로드.
+ *
+ * Firebase JS SDK의 uploadBytes/uploadString은 React Native Hermes 엔진에서
+ * 내부적으로 Blob(ArrayBuffer) 생성을 시도해 오류 발생.
+ * React Native의 네이티브 네트워킹 레이어는 FormData에 { uri, type, name } 객체를
+ * 넣으면 로컬 파일을 직접 읽어 멀티파트로 전송함 — JS 레벨 Blob 불필요.
+ *
+ * @returns Firebase Storage 다운로드 URL
+ */
+const uploadToFirebaseStorage = async (
+  fileUri: string,
+  storagePath: string,
+  contentType: string
+): Promise<string> => {
+  // Firebase 인증 토큰 발급
+  const token = auth.currentUser
+    ? await getIdToken(auth.currentUser)
+    : null;
+  if (!token) throw new Error('인증 토큰 없음');
+
+  const bucket = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  const encodedPath = encodeURIComponent(storagePath);
+  const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodedPath}`;
+
+  // React Native FormData — { uri, type, name } 형태로 로컬 파일 직접 첨부
+  const formData = new FormData();
+  formData.append('file', {
+    uri: fileUri,
+    type: contentType,
+    name: storagePath.split('/').pop() ?? 'photo.jpg',
+  } as any);
+
+  const res = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Storage 업로드 실패 (${res.status}): ${err}`);
+  }
+
+  const json = await res.json();
+  // 다운로드 URL 조립
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${json.downloadTokens}`;
+};
 
 // ── 상수 ───────────────────────────────────────────────────────────────────────
 
@@ -175,10 +227,10 @@ export default function HomeworkSubmitScreen() {
       { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
     );
 
-    // 2단계: 200KB 초과면 추가 압축
-    const response = await fetch(resized.uri);
-    const blob = await response.blob();
-    if (blob.size > TARGET_SIZE_KB * 1024) {
+    // 2단계: 200KB 초과면 추가 압축 (getInfoAsync로 파일 크기 조회 — fetch/XHR 불필요)
+    const info = await getInfoAsync(resized.uri);
+    const fileSize = (info as any).size ?? 0;
+    if (fileSize > TARGET_SIZE_KB * 1024) {
       const compressed = await ImageManipulator.manipulateAsync(
         resized.uri,
         [],
@@ -205,13 +257,13 @@ export default function HomeworkSubmitScreen() {
         const compressedUri = await compressImage(photos[i]);
 
         // Storage 업로드
-        const storageRef = ref(
-          storage,
-          `homeworks/${hwId}/${user.uid}/${timestamp}_${i}.jpg`
+        // Firebase SDK Blob 문제 우회 → REST API + FormData로 직접 업로드
+        const storagePath = `homeworks/${hwId}/${user.uid}/${timestamp}_${i}.jpg`;
+        const url = await uploadToFirebaseStorage(
+          compressedUri,
+          storagePath,
+          'image/jpeg'
         );
-        const imageBlob = await (await fetch(compressedUri)).blob();
-        await uploadBytes(storageRef, imageBlob, { contentType: 'image/jpeg' });
-        const url = await getDownloadURL(storageRef);
         downloadUrls.push(url);
 
         setUploadProgress((i + 1) / photos.length);

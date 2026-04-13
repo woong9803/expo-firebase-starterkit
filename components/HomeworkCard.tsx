@@ -10,6 +10,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 interface Props {
   title: string;
+  content?: string;       // 숙제 내용 (있으면 제목 아래에 표시)
   dDay: number;
   dueDate?: string;       // 마감일 포맷 문자열 (예: "2026. 4. 20.")
   className?: string;     // 반 이름
@@ -21,6 +22,7 @@ interface Props {
 
 export default function HomeworkCard({
   title,
+  content,
   dDay,
   dueDate,
   className,
@@ -56,6 +58,11 @@ export default function HomeworkCard({
           </Text>
         </View>
       </View>
+
+      {/* 숙제 내용 */}
+      {!!content && (
+        <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>
+      )}
 
       {/* 반 이름 + 마감일 */}
       {(className || dueDate) && (
@@ -130,6 +137,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', flex: 1 },
+  cardContent: { fontSize: 13, color: '#475569', lineHeight: 19 },
   cardSub: { fontSize: 13, color: '#64748B' },
 
   // D-Day 칩

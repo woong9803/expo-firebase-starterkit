@@ -284,7 +284,7 @@ interface HomeworkCardProps {
 }
 
 function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCardProps) {
-  const { title, due_date, submission } = item;
+  const { title, content, due_date, submission } = item;
   const dDay = calcDDay(due_date as any);
   const dueStr = (due_date as any).toDate().toLocaleDateString('ko-KR');
 
@@ -296,6 +296,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
           <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
           <View style={styles.chipDone}><Text style={styles.chipDoneText}>완료</Text></View>
         </View>
+        {!!content && <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>}
         <Text style={styles.cardDue}>마감 {dueStr}</Text>
         <View style={styles.feedbackRow}>
           <Text style={styles.feedbackEmoji}>{submission.feedback ?? '✅'}</Text>
@@ -316,6 +317,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
           <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
           <View style={styles.chipRetry}><Text style={styles.chipRetryText}>다시제출</Text></View>
         </View>
+        {!!content && <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>}
         <Text style={styles.cardDue}>마감 {dueStr}</Text>
         <View style={styles.feedbackRow}>
           <Text style={styles.feedbackEmoji}>💧</Text>
@@ -340,6 +342,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
           <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
           <View style={styles.chipPending}><Text style={styles.chipPendingText}>검사대기</Text></View>
         </View>
+        {!!content && <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>}
         <Text style={styles.cardDue}>마감 {dueStr}</Text>
         <Text style={styles.submittedInfo}>
           {submittedStr} 제출{submission.is_late ? ' · 지각' : ''}
@@ -369,6 +372,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
           </Text>
         </View>
       </View>
+      {!!content && <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>}
       <Text style={styles.cardDue}>마감 {dueStr}</Text>
       <TouchableOpacity
         style={[styles.submitBtn, isUrgent ? styles.submitBtnUrgent : styles.submitBtnNormal]}
@@ -528,6 +532,7 @@ const styles = StyleSheet.create({
   },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', flex: 1 },
+  cardContent: { fontSize: 13, color: '#475569', lineHeight: 19 },
   cardDue: { fontSize: 13, color: '#94A3B8' },
 
   // 카드 타입별

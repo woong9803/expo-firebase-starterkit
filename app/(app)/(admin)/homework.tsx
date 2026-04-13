@@ -240,6 +240,7 @@ export default function AdminHomeworkScreen() {
               <HomeworkCard
                 key={hw.id}
                 title={hw.title}
+                content={hw.content}
                 dDay={dDay}
                 dueDate={(hw.due_date as any).toDate().toLocaleDateString('ko-KR')}
                 className={classMap[hw.class_id] ?? '-'}

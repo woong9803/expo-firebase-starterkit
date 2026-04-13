@@ -214,6 +214,17 @@ export const strings = {
     readUsers: '읽은 사람',
     unreadUsers: '아직 안 읽은 사람',
     noReaders: '아직 아무도 읽지 않았어요',
+    // 공지 대상 선택
+    targetLabel: '공지 대상 반',
+    targetAll: '전체 반',
+    targetSelect: '반 선택',
+    targetNoneSelected: '반을 선택해주세요',
+    targetClassCount: (n: number) => `${n}개 반 선택됨`,
+    // 수신 역할 선택
+    targetRoleLabel: '수신 대상',
+    targetRoleAll: '모두',
+    targetRoleStudentOnly: '학생만',
+    targetRoleParentOnly: '학부모만',
   },
   // 알림 인박스
   notification: {

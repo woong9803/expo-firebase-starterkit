@@ -30,7 +30,9 @@ export interface CreateNoticeParams {
   content: string;
   isImportant: boolean;
   academyId: string;
-  createdBy: string; // 작성자 uid
+  createdBy: string;         // 작성자 uid
+  targetClassIds: string[];  // 빈 배열 = 전체 반
+  targetRoles: string[];     // 빈 배열 = 모두. 예: ['student'] | ['parent'] | []
 }
 
 /** getNoticeReadUsers 반환 타입 */
@@ -48,7 +50,7 @@ export interface NoticeReadStatus {
  * @returns 생성된 문서 ID
  */
 export async function createNotice(params: CreateNoticeParams): Promise<string> {
-  const { title, content, isImportant, academyId, createdBy } = params;
+  const { title, content, isImportant, academyId, createdBy, targetClassIds, targetRoles } = params;
 
   const docRef = await addDoc(Collections.notices(), {
     title,
@@ -56,7 +58,9 @@ export async function createNotice(params: CreateNoticeParams): Promise<string> 
     is_important: isImportant,
     academy_id: academyId,
     created_by: createdBy,
-    read_by: [],           // 초기 읽음 목록은 빈 배열
+    read_by: [],
+    target_class_ids: targetClassIds,  // 빈 배열 = 전체 반
+    target_roles: targetRoles,         // 빈 배열 = 모두 (학생+학부모)
     created_at: serverTimestamp(),
   });
 
@@ -85,11 +89,17 @@ export async function markNoticeRead(noticeId: string, uid: string): Promise<voi
  * 특정 학원의 공지 목록을 실시간으로 구독한다.
  * 중요 공지 → 최신순으로 정렬.
  *
+ * @param viewerClassId - 학생 역할의 경우 본인 반 ID를 전달.
+ *   전달 시 전체 공지(target_class_ids=[]) 또는 해당 반이 포함된 공지만 클라이언트 필터링.
+ * @param viewerRole - 'student' 또는 'parent' 전달 시 역할 기반 필터링 적용.
+ *   target_roles가 빈 배열(=모두) 이거나 해당 역할이 포함된 공지만 표시.
  * @returns 구독 해제 함수 (useEffect cleanup에서 반드시 호출)
  */
 export function subscribeNotices(
   academyId: string,
-  callback: (notices: Notice[]) => void
+  callback: (notices: Notice[]) => void,
+  viewerClassId?: string | null,
+  viewerRole?: string | null,
 ): () => void {
   const q = query(
     Collections.notices(),
@@ -99,7 +109,28 @@ export function subscribeNotices(
   );
 
   const unsub = onSnapshot(q, (snap) => {
-    const notices = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notice));
+    let notices = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notice));
+
+    // 학생: 전체 공지(target_class_ids=[]) 또는 본인 반 포함 공지만 표시
+    if (viewerClassId) {
+      notices = notices.filter(
+        (n) =>
+          !n.target_class_ids ||
+          n.target_class_ids.length === 0 ||
+          n.target_class_ids.includes(viewerClassId)
+      );
+    }
+
+    // 학생/학부모: target_roles가 빈 배열(=모두) 또는 본인 역할 포함 공지만 표시
+    if (viewerRole === 'student' || viewerRole === 'parent') {
+      notices = notices.filter(
+        (n) =>
+          !n.target_roles ||
+          n.target_roles.length === 0 ||
+          n.target_roles.includes(viewerRole)
+      );
+    }
+
     callback(notices);
   });
 

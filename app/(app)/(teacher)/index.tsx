@@ -12,6 +12,7 @@ import {
 import { Collections } from '../../../lib/firestore';
 import { getAbsentCountToday } from '../../../lib/attendance';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { useNotificationStore } from '../../../store/useNotificationStore';
 import { Class, Homework, Notice, AttendanceRecord } from '../../../types';
 
 // 반별 오늘 출석 현황 타입
@@ -45,6 +46,7 @@ function getTodayStr(): string {
 export default function TeacherHomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -245,8 +247,14 @@ export default function TeacherHomeScreen() {
               <Ionicons name="person-add-outline" size={18} color="#fff" />
             </TouchableOpacity>
             {/* 알림 */}
-            <TouchableOpacity style={styles.headerActionBtn}>
+            <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={() => router.push('/common/notification-inbox')}
+              activeOpacity={0.8}
+            >
               <Ionicons name="notifications-outline" size={18} color="#fff" />
+              {/* 미읽음 dot 배지 — 숫자 없이 점만 표시 (ui-screens.md 규칙) */}
+              {unreadCount > 0 && <View style={styles.unreadDot} />}
             </TouchableOpacity>
           </View>
         </View>
@@ -437,6 +445,13 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -2, right: -2,
+    width: 8, height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
   },
 
   // 통계 3칸

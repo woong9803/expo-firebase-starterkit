@@ -79,6 +79,8 @@ export default function TeacherTabLayout() {
       <Tabs.Screen name="homework-review"   options={{ href: null }} />
       <Tabs.Screen name="class-select"      options={{ href: null }} />
       <Tabs.Screen name="attendance-export" options={{ href: null }} />
+      <Tabs.Screen name="notice-create"     options={{ href: null }} />
+      <Tabs.Screen name="notice-read-status" options={{ href: null }} />
     </Tabs>
   );
 }
