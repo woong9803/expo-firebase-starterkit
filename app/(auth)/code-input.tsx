@@ -11,7 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { arrayUnion, updateDoc } from 'firebase/firestore';
+import { arrayUnion, updateDoc, getDoc } from 'firebase/firestore';
 import {
   validateAcademyCode,
   validateInviteCode,
@@ -20,9 +20,8 @@ import {
 } from '../../lib/auth';
 import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { UserRole } from '../../types';
+import { UserRole, User } from '../../types';
 import { strings } from '../../constants/strings';
-import StepIndicator from '../../components/StepIndicator';
 
 // 브루트포스 방지 설정
 const MAX_ATTEMPTS = 5;
@@ -31,19 +30,22 @@ const LOCK_SECONDS = 30;
 export default function CodeInputScreen() {
   const router = useRouter();
   const { role } = useLocalSearchParams<{ role: string }>();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
 
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ─── 브루트포스 방지 상태 ────────────────────────────────────────
+  // ─── 미리보기 (선생님: 학원명, 학생: 반명) ──────────────────────────
+  const [preview, setPreview] = useState<{ name: string; info: string } | null>(null);
+  const [isLooking, setIsLooking] = useState(false);
+
+  // ─── 브루트포스 방지 ────────────────────────────────────────────────
   const [attemptCount, setAttemptCount] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
   const [lockTimer, setLockTimer] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 잠금 타이머 카운트다운
   useEffect(() => {
     if (lockTimer <= 0 && isLocked) {
       setIsLocked(false);
@@ -52,61 +54,91 @@ export default function CodeInputScreen() {
     }
   }, [lockTimer, isLocked]);
 
-  // 컴포넌트 언마운트 시 타이머 해제
   useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
-  // 5회 오류 시 30초 잠금 시작
   const startLockTimer = () => {
     setIsLocked(true);
     setLockTimer(LOCK_SECONDS);
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setLockTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current!);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timerRef.current!); return 0; }
         return prev - 1;
       });
     }, 1000);
   };
 
-  // 오류 처리: 시도 횟수 증가 및 잠금 여부 판단
+  // ─── 6자리 입력 시 자동 미리보기 (선생님: 학원명) ──────────────────
+  useEffect(() => {
+    if (code.length !== 6) { setPreview(null); return; }
+
+    let cancelled = false;
+    setIsLooking(true);
+
+    (async () => {
+      try {
+        if (role === 'teacher') {
+          const academyId = await validateAcademyCode(code);
+          if (cancelled) return;
+          if (academyId) {
+            const snap = await getDoc(Collections.academy(academyId));
+            if (!cancelled && snap.exists()) {
+              const d = snap.data();
+              setPreview({ name: d.name as string, info: '학원' });
+            }
+          } else {
+            setPreview(null);
+          }
+        } else if (role === 'student') {
+          const result = await validateInviteCode(code);
+          if (cancelled) return;
+          if (result) {
+            const snap = await getDoc(Collections.class(result.classId));
+            if (!cancelled && snap.exists()) {
+              const d = snap.data();
+              setPreview({ name: d.name as string, info: '반' });
+            }
+          } else {
+            setPreview(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setPreview(null);
+      } finally {
+        if (!cancelled) setIsLooking(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [code, role]);
+
+  // ─── 실패 처리 ─────────────────────────────────────────────────────
   const handleFailure = (message: string) => {
     const newCount = attemptCount + 1;
     setAttemptCount(newCount);
     if (newCount >= MAX_ATTEMPTS) {
       startLockTimer();
-      setError(`${strings.onboarding.lockedMessage}`);
+      setError(strings.onboarding.lockedMessage);
     } else {
       setError(`${message} (${newCount}/${MAX_ATTEMPTS}회)`);
     }
   };
 
-  // ─── 역할별 안내 텍스트 ──────────────────────────────────────────
-  const getPlaceholder = () => {
-    if (role === 'teacher') return strings.onboarding.academyCodePlaceholder;
-    if (role === 'student') return strings.onboarding.inviteCodePlaceholder;
-    return strings.onboarding.linkCodePlaceholder;
-  };
+  // ─── 역할별 텍스트 (strings.ts에서 관리) ─────────────────────────
+  const roleKey = (role === 'teacher' || role === 'student' || role === 'parent')
+    ? role
+    : 'parent';
+  const roleStrings = strings.onboarding.codeInput[roleKey];
 
-  const getTitle = () => {
-    if (role === 'teacher') return strings.onboarding.academyCode;
-    if (role === 'student') return strings.onboarding.inviteCode;
-    return strings.onboarding.linkCode;
-  };
+  const getTitle = () => roleStrings.title;
+  const getSubtitle = () => roleStrings.subtitle;
+  const getPlaceholder = () => roleStrings.placeholder;
+  const getJoinLabel = () => roleStrings.joinLabel;
+  const getPreviewEmoji = () => roleStrings.previewEmoji;
 
-  const getSubtitle = () => {
-    if (role === 'teacher') return '학원에서 받은 학원코드를 입력해주세요';
-    if (role === 'student') return '선생님에게 받은 반 코드를 입력해주세요';
-    return '자녀의 연동코드를 입력해주세요';
-  };
-
-  // ─── 코드 검증 및 Firestore 업데이트 ────────────────────────────
+  // ─── 코드 확인 및 Firestore 업데이트 ──────────────────────────────
   const handleConfirm = async () => {
     if (!code.trim() || !user) return;
     if (isLocked) return;
@@ -116,56 +148,62 @@ export default function CodeInputScreen() {
 
     try {
       if (role === 'teacher') {
-        // 학원코드 검증 → teacher로 활성화
         const academyId = await validateAcademyCode(code.trim());
-        if (!academyId) {
-          handleFailure(strings.errors.invalidCode);
-          return;
-        }
+        if (!academyId) { handleFailure(strings.errors.invalidCode); return; }
         await updateDoc(Collections.user(user.uid), {
           role: 'teacher' as UserRole,
           academy_id: academyId,
         });
 
       } else if (role === 'student') {
-        // 반 초대코드 검증 → student로 활성화 + linkCode 발급
         const result = await validateInviteCode(code.trim());
-        if (!result) {
-          handleFailure(strings.errors.invalidCode);
-          return;
-        }
+        if (!result) { handleFailure(strings.errors.invalidCode); return; }
         const linkCode = generateLinkCode();
         await updateDoc(Collections.user(user.uid), {
           role: 'student' as UserRole,
           class_id: result.classId,
           academy_id: result.academyId,
-          link_code: linkCode, // 학부모 연동용 6자리 코드 자동 발급
+          link_code: linkCode,
         });
 
       } else if (role === 'parent') {
-        // 자녀 연동코드 검증 → parent로 활성화 + 자녀 연결
         const studentUid = await validateLinkCode(code.trim());
-        if (!studentUid) {
-          handleFailure(strings.errors.invalidCode);
-          return;
-        }
+        if (!studentUid) { handleFailure(strings.errors.invalidCode); return; }
+
+        const studentSnap = await getDoc(Collections.user(studentUid));
+        const studentAcademyId = studentSnap.exists()
+          ? (studentSnap.data().academy_id as string)
+          : '';
+
         await updateDoc(Collections.user(user.uid), {
           role: 'parent' as UserRole,
-          children: arrayUnion(studentUid), // 다자녀 지원 — 기존 배열에 추가
+          children: arrayUnion(studentUid),
+          academy_id: studentAcademyId,
         });
       }
 
-      // 성공 → 앱 메인으로 이동 (역할 분기는 (app)/_layout.tsx에서 처리)
-      router.replace('/(app)');
+      const freshSnap = await getDoc(Collections.user(user.uid));
+      if (freshSnap.exists()) setUser(freshSnap.data() as User);
+
+      // 선생님은 가입 후 담당반 선택 화면으로 이동 (건너뛰기 가능)
+      // 다른 역할은 바로 홈으로 이동
+      if (role === 'teacher') {
+        router.replace({
+          pathname: '/(app)/(teacher)/class-select',
+          params: { fromOnboarding: 'true' },
+        });
+      } else {
+        router.replace('/(app)');
+      }
 
     } catch (e: unknown) {
-      const err = e as Error;
-      handleFailure(err.message || strings.common.error);
+      handleFailure((e as Error).message || strings.common.error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const codeEntered = code.trim().length > 0;
   const isDisabled = isLoading || isLocked || !code.trim();
 
   return (
@@ -174,66 +212,121 @@ export default function CodeInputScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {/* ── 스텝 인디케이터: 3단계 진행 중 ── */}
-        <StepIndicator steps={3} current={3} />
+        {/* ── 스텝 인디케이터: 4개 dot, 4번째 활성 ── */}
+        <View style={styles.stepRow}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={i === 3 ? styles.stepActive : styles.stepInactive} />
+          ))}
+        </View>
 
-        {/* ── 타이틀 ── */}
+        {/* ── 제목 ── */}
         <View style={styles.titleArea}>
           <Text style={styles.title}>{getTitle()}</Text>
           <Text style={styles.subtitle}>{getSubtitle()}</Text>
         </View>
 
-        {/* ── 에러 / 잠금 메시지 ── */}
-        {error && (
-          <View style={[styles.errorBox, isLocked && styles.lockedBox]}>
-            <Text style={[styles.errorText, isLocked && styles.lockedText]}>
-              {isLocked
-                ? `${lockTimer}${strings.onboarding.lockedSuffix}`
-                : error}
-            </Text>
+        {/* ── 잠금 알림 ── */}
+        {isLocked && (
+          <View style={styles.lockedBox}>
+            <Text style={styles.lockedText}>{lockTimer}초 후 다시 시도할 수 있어요</Text>
           </View>
         )}
 
-        {/* ── 코드 입력 ── */}
-        <TextInput
-          style={[styles.input, isLocked && styles.inputDisabled]}
-          placeholder={getPlaceholder()}
-          placeholderTextColor="#94A3B8"
-          value={code}
-          onChangeText={(v) => { setCode(v.toUpperCase()); setError(null); }}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          editable={!isLoading && !isLocked}
-          returnKeyType="done"
-          onSubmitEditing={handleConfirm}
-        />
-
-        {/* ── 확인 버튼 ── */}
-        <TouchableOpacity
-          style={[styles.btnPrimary, isDisabled && styles.btnDisabled]}
-          onPress={handleConfirm}
-          disabled={isDisabled}
-          activeOpacity={0.85}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.btnPrimaryText}>
-              {strings.onboarding.confirm}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        {/* ── 시도 횟수 안내 ── */}
-        {attemptCount > 0 && !isLocked && (
-          <Text style={styles.attemptsText}>
-            {`코드가 올바르지 않아요 · ${attemptCount}/${MAX_ATTEMPTS}회 시도`}
-          </Text>
+        {/* ── 에러 ── */}
+        {error && !isLocked && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
         )}
+
+        {/* ── 코드 입력 필드 ── */}
+        {/* letterSpacing이 있으면 placeholder가 잘리는 RN 이슈 → 가짜 placeholder로 대체 */}
+        <View style={[
+          styles.inputWrap,
+          codeEntered && styles.inputActive,
+          isLocked && styles.inputDisabled,
+        ]}>
+          {/* 입력값 없을 때만 보이는 가짜 placeholder */}
+          {!codeEntered && (
+            <Text style={styles.fakePlaceholder}>_ _ _ _ _ _</Text>
+          )}
+          <TextInput
+            style={styles.input}
+            value={code}
+            onChangeText={(v) => {
+              setCode(v.toUpperCase());
+              setError(null);
+              setPreview(null);
+            }}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            editable={!isLoading && !isLocked}
+            returnKeyType="done"
+            onSubmitEditing={handleConfirm}
+            maxLength={6}
+          />
+        </View>
+
+        {/* 코드 힌트 */}
+        <Text style={styles.codeHint}>코드는 대소문자를 구분하지 않아요</Text>
+
+        {/* 유효 코드 안내 */}
+        {preview && (
+          <Text style={styles.validText}>✓ 올바른 {preview.info} 코드예요</Text>
+        )}
+
+        {/* 조회 중 */}
+        {isLooking && (
+          <ActivityIndicator size="small" color="#5B50E8" style={{ marginTop: 8 }} />
+        )}
+
+        {/* ── 미리보기 카드 ── */}
+        {preview && (
+          <View style={styles.previewCard}>
+            <Text style={styles.previewEmoji}>{getPreviewEmoji()}</Text>
+            <View>
+              <Text style={styles.previewName}>{preview.name}</Text>
+              <Text style={styles.previewInfo}>{getJoinLabel()}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* ── 버튼 영역 ── */}
+        <View style={styles.btnArea}>
+          <TouchableOpacity
+            style={[styles.btnPrimary, isDisabled && styles.btnDisabled]}
+            onPress={handleConfirm}
+            disabled={isDisabled}
+            activeOpacity={0.85}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.btnPrimaryText}>{getJoinLabel()}</Text>
+            )}
+          </TouchableOpacity>
+
+          {codeEntered && (
+            <TouchableOpacity
+              style={styles.btnSecondary}
+              onPress={() => { setCode(''); setPreview(null); setError(null); }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.btnSecondaryText}>다시 입력하기</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ── 보안 안내 카드 ── */}
+        <View style={styles.securityCard}>
+          <Text style={styles.securityText}>5회 오류 시 30초 대기 (브루트포스 방지)</Text>
+        </View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -242,95 +335,206 @@ export default function CodeInputScreen() {
 const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#ffffff',
   },
-  container: {
+  scroll: {
     flex: 1,
   },
-  contentContainer: {
+  content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 56,
+    paddingTop: 24,
     paddingBottom: 40,
   },
 
-  // ── 타이틀 ──
-  titleArea: {
-    marginBottom: 28,
+  // ── 스텝 인디케이터 ──
+  stepRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 22,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 6,
+  stepActive: {
+    width: 28,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#5B50E8',
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#64748B',
+  stepInactive: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
   },
 
-  // ── 에러/잠금 박스 ──
+  // ── 제목 ──
+  titleArea: {
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 4,
+  },
+
+  // ── 잠금 / 에러 ──
+  lockedBox: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  lockedText: {
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '600',
+  },
   errorBox: {
     backgroundColor: '#FEF2F2',
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    marginBottom: 16,
-  },
-  lockedBox: {
-    backgroundColor: '#FFFBEB', // amber bg
+    marginBottom: 14,
   },
   errorText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#991B1B',
-  },
-  lockedText: {
-    color: '#78350F',
-    fontWeight: '600',
+    lineHeight: 18,
   },
 
-  // ── 입력 필드 ──
-  input: {
-    height: 56,
+  // ── 코드 입력 필드 ──
+  // 입력 래퍼 — 테두리·배경은 여기서, TextInput은 투명
+  inputWrap: {
+    height: 64,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0F172A',
-    backgroundColor: '#fff',
-    letterSpacing: 4,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  inputDisabled: {
-    backgroundColor: '#F1F5F9',
-    color: '#94A3B8',
-  },
-
-  // ── Primary 버튼 ──
-  btnPrimary: {
-    height: 52,
-    backgroundColor: '#2176C7',
-    borderRadius: 10,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
   },
-  btnDisabled: {
+  inputActive: {
+    borderColor: '#5B50E8',
+    backgroundColor: '#EEEDF9',
+  },
+  inputDisabled: {
     opacity: 0.5,
   },
+  // 가짜 placeholder — letterSpacing 적용, 입력값 없을 때만 표시
+  fakePlaceholder: {
+    position: 'absolute',
+    fontSize: 22,
+    color: '#C4B5FD',
+    textAlign: 'center',
+    letterSpacing: 8,
+  },
+  // 실제 TextInput — 투명 배경, 입력값 스타일만 담당
+  input: {
+    width: '100%',
+    height: '100%',
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#5B50E8',
+    letterSpacing: 8,
+    textAlign: 'center',
+    backgroundColor: 'transparent',
+  },
+  codeHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  validText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+
+  // ── 미리보기 카드 ──
+  previewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: 16,
+  },
+  previewEmoji: {
+    fontSize: 28,
+  },
+  previewName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  previewInfo: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+  },
+
+  // ── 버튼 ──
+  btnArea: {
+    marginTop: 20,
+    gap: 10,
+  },
+  btnPrimary: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#5B50E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnDisabled: {
+    opacity: 0.45,
+  },
   btnPrimaryText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#fff',
   },
+  btnSecondary: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnSecondaryText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#475569',
+  },
 
-  // ── 시도 횟수 텍스트 ──
-  attemptsText: {
-    textAlign: 'center',
-    fontSize: 13,
+  // ── 보안 안내 카드 ──
+  securityCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  securityText: {
+    fontSize: 11,
     color: '#94A3B8',
+    textAlign: 'center',
   },
 });

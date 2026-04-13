@@ -11,11 +11,12 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { generateLinkCode } from '../../lib/auth';
+import { auth } from '../../lib/firebase';
+import { AcademyType, User } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
-import { AcademyType } from '../../types';
 import { strings } from '../../constants/strings';
 
 // 운영 유형 선택 옵션
@@ -23,7 +24,8 @@ const ACADEMY_TYPES: AcademyType[] = ['학원', '교습소', '개인과외'];
 
 export default function AcademyRegisterScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { setUser } = useAuthStore();
+  const currentUser = auth.currentUser;
 
   const [academyType, setAcademyType] = useState<AcademyType | null>(null);
   const [academyName, setAcademyName] = useState('');
@@ -50,7 +52,10 @@ export default function AcademyRegisterScreen() {
       setError(validationError);
       return;
     }
-    if (!user) return;
+    if (!currentUser) {
+      setError('로그인 정보를 불러오지 못했어요. 다시 시도해주세요.');
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -76,11 +81,24 @@ export default function AcademyRegisterScreen() {
         created_at: serverTimestamp(),
       });
 
-      // users 문서에 role: 'admin', academy_id 업데이트
-      await updateDoc(Collections.user(user.uid), {
+      // users 문서에 role: 'admin', academy_id 저장 (문서 없을 경우 생성)
+      await setDoc(Collections.user(currentUser.uid), {
         role: 'admin',
         academy_id: academyRef.id,
-      });
+        uid: currentUser.uid,
+        email: currentUser.email ?? '',
+        name: '',
+        phone_verified: false,
+        is_active: true,
+        created_at: serverTimestamp(),
+      }, { merge: true });
+
+      // Firestore 업데이트 후 store 즉시 반영
+      // store가 stale하면 pending → /(app) 진입 시 AppLayout이 role-select로 돌려보냄
+      const freshSnap = await getDoc(Collections.user(currentUser.uid));
+      if (freshSnap.exists()) {
+        setUser(freshSnap.data() as User);
+      }
 
       // 승인 대기 화면으로 이동 (뒤로 가기 불필요 → replace)
       router.replace('/(auth)/pending');
@@ -233,115 +251,116 @@ export default function AcademyRegisterScreen() {
 const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#ffffff', // 온보딩 화면은 흰 배경
   },
   container: {
     flex: 1,
   },
   contentContainer: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 56,
+    paddingHorizontal: 20,
+    paddingTop: 40,
     paddingBottom: 40,
   },
 
   // ── 타이틀 ──
   titleArea: {
-    marginBottom: 28,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 6,
+    letterSpacing: -0.5,
+    marginBottom: 3,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 11,
     color: '#64748B',
   },
 
   // ── 에러 ──
   errorBox: {
     backgroundColor: '#FEF2F2',
-    borderRadius: 10,
+    borderRadius: 9,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   errorText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#991B1B',
     lineHeight: 18,
   },
 
   // ── 섹션 ──
   section: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   sectionLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#334155',
-    marginBottom: 12,
+    color: '#334155', // g700
+    marginBottom: 10,
   },
 
-  // ── 운영 유형 카드 ──
+  // ── 운영 유형 탭 버튼 ──
   typeRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   typeCard: {
     flex: 1,
-    height: 48,
+    height: 44,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 10,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#fff',
   },
   typeCardSelected: {
-    borderColor: '#2176C7',
-    backgroundColor: '#E6F1FB',
+    borderColor: '#5B50E8',
+    backgroundColor: '#EEEDF9',
   },
   typeCardText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
   },
   typeCardTextSelected: {
-    color: '#0C447C',
+    color: '#3730A3',
   },
 
   // ── 입력 폼 ──
   formSection: {
-    gap: 16,
-    marginBottom: 32,
+    gap: 12,
+    marginBottom: 28,
   },
   inputWrapper: {
-    gap: 6,
+    gap: 4,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#334155', // g700
   },
   input: {
     height: 52,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 15,
     color: '#0F172A',
-    backgroundColor: '#fff',
+    backgroundColor: '#F1F0FB',
   },
 
   // ── Primary 버튼 ──
   btnPrimary: {
     height: 52,
-    backgroundColor: '#2176C7',
-    borderRadius: 10,
+    backgroundColor: '#5B50E8',
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -349,7 +368,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   btnPrimaryText: {
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: '700',
     color: '#fff',
   },

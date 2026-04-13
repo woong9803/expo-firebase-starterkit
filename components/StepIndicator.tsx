@@ -68,17 +68,16 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
+    marginBottom: 22,
   },
 
   // ── 연결선 ──
   line: {
-    width: 40,
+    flex: 1,
     height: 2,
   },
   lineDone: {
-    backgroundColor: '#2176C7', // b500 — 완료 구간은 파란색
+    backgroundColor: '#5B50E8', // 완료 구간은 포인트 보라
   },
   linePending: {
     backgroundColor: '#E2E8F0', // g200 — 미완료 구간은 회색
@@ -86,36 +85,36 @@ const styles = StyleSheet.create({
 
   // ── 스텝 원 ──
   circle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   circleDone: {
-    backgroundColor: '#2176C7', // b500
+    backgroundColor: '#5B50E8', // 완료는 포인트 보라
   },
   circleActive: {
-    backgroundColor: '#2176C7', // b500
-    // glow ring: 0 0 0 3px #B5D4F4
-    shadowColor: '#B5D4F4',
+    backgroundColor: '#5B50E8', // 현재는 포인트 보라
+    // glow ring
+    shadowColor: '#5B50E8',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 4,
     elevation: 4,
   },
   circlePending: {
-    backgroundColor: '#F1F5F9', // g100
+    backgroundColor: '#F1F5F9', // g100 — 미완료는 연회색
   },
 
   // ── 텍스트 ──
   checkMark: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '700',
     color: '#fff',
   },
   stepNumber: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: '700',
   },
   stepNumberActive: {

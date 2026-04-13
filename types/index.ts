@@ -12,6 +12,7 @@ export interface User {
   role: UserRole;
   academy_id: string;
   class_id: string | null;        // 학생 전용 — 소속 반 ID
+  assigned_class_ids: string[];   // 선생님 전용 — 직접 선택한 담당반 ID 목록 (없으면 빈 배열)
   link_code: string | null;       // 학생 전용 — 학부모 연동코드 (6자리)
   children: string[];             // 학부모 전용 — 자녀 uid 배열
   is_active: boolean;
@@ -20,6 +21,7 @@ export interface User {
   enrollment_date: Timestamp | null; // 법정 출석부 대응
   phone_number: string;
   phone_verified: boolean;
+  streak?: number;                 // 학생 전용 — 연속 제출 일수 (없으면 0)
   deleted_at: Timestamp | null;   // 탈퇴 처리 시 기록
   created_at: Timestamp;
 }
@@ -45,8 +47,10 @@ export interface Class {
   id: string;
   name: string;
   academy_id: string;
-  head_teacher_id: string;
   invite_code: string; // 6자리 영숫자
+  student_count?: number;  // 캐시된 학생 수 (Firestore 저장 시 업데이트)
+  present_count?: number;  // 오늘 출석 수 (실시간 계산, 선택적)
+  // ★ head_teacher_id 제거 — 담당반은 users/{uid}.assigned_class_ids[] 로 관리
 }
 
 export interface Homework {

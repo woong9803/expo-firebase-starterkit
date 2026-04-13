@@ -26,6 +26,14 @@ service cloud.firestore {
       return getUserData().academy_id == academyId;
     }
 
+    // 온보딩 중인 사용자 — 아직 학원에 속하지 않은 상태
+    // users 문서가 없거나 academy_id가 빈 값이면 true
+    // get('academy_id', '') 로 필드 없음/null 모두 안전하게 처리
+    function isOnboarding() {
+      return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('academy_id', '') == '';
+    }
+
     // admin 또는 teacher 역할인지 확인
     function isStaff() {
       return getUserRole() in ['admin', 'teacher'];
@@ -58,8 +66,10 @@ service cloud.firestore {
     // academies/{academyId} — 학원
     // ─────────────────────────────────────────────
     match /academies/{academyId} {
-      // 소속 멤버만 읽기 가능
-      allow read: if isAuthenticated() && isAcademyMember(academyId);
+      // 소속 멤버이거나, 온보딩 중인 사용자는 읽기 가능
+      // 온보딩 중 선생님이 academy_code로 학원 조회 시 필요
+      allow read: if isAuthenticated()
+                  && (isAcademyMember(academyId) || isOnboarding());
       // admin만 학원 정보 수정 가능 (active 상태에서만)
       allow update: if isAuthenticated()
                     && isAcademyMember(academyId)
@@ -75,12 +85,23 @@ service cloud.firestore {
     // users/{uid} — 사용자
     // ─────────────────────────────────────────────
     match /users/{uid} {
-      // 본인 또는 같은 학원 소속이면 읽기 가능
+      // 본인, 같은 학원 소속, 또는 온보딩 중인 사용자는 읽기 가능
+      // 온보딩 중 학부모가 link_code로 자녀 계정 조회 시 필요
       allow read: if isAuthenticated()
                   && (request.auth.uid == uid
-                      || isAcademyMember(resource.data.academy_id));
+                      || isAcademyMember(resource.data.academy_id)
+                      || isOnboarding());
       // 본인 문서만 수정 가능
-      allow update: if isAuthenticated() && request.auth.uid == uid;
+      // - role: 미설정 상태에서만 한 번 허용 (온보딩), 이후 변경 불가
+      // - is_active: 클라이언트 직접 변경 불가 (Cloud Functions 전용)
+      allow update: if isAuthenticated()
+                    && request.auth.uid == uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['is_active'])
+                    && (
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+                      || !resource.data.keys().hasAny(['role'])
+                      || resource.data.get('role', '') == ''
+                    );
       // 신규 가입 시 본인 문서 생성 가능
       allow create: if isAuthenticated() && request.auth.uid == uid;
       // 삭제 불가 (소프트 삭제 사용: deleted_at 필드)
@@ -91,9 +112,10 @@ service cloud.firestore {
     // classes/{classId} — 반
     // ─────────────────────────────────────────────
     match /classes/{classId} {
-      // 같은 학원 소속이면 읽기 가능
+      // 같은 학원 소속이거나, 온보딩 중인 사용자는 읽기 가능
+      // 온보딩 중 학생이 invite_code로 반 조회 시 필요
       allow read: if isAuthenticated()
-                  && isAcademyMember(resource.data.academy_id);
+                  && (isAcademyMember(resource.data.academy_id) || isOnboarding());
       // admin 또는 teacher만 반 수정·삭제 가능
       // rejected 학원은 모든 쓰기 차단
       allow update, delete: if isAuthenticated()
@@ -129,7 +151,7 @@ service cloud.firestore {
         // 본인(학생), teacher, admin 읽기 가능
         allow read: if isAuthenticated()
                     && (request.auth.uid == studentUid || isStaff());
-        // 학생 본인만 제출 가능 (rejected 학원은 제출 차단)
+        // 학생 본인만 제출(create/write) 가능 (rejected 학원은 제출 차단)
         allow write: if isAuthenticated()
                      && request.auth.uid == studentUid
                      && getUserRole() == 'student'
@@ -137,6 +159,10 @@ service cloud.firestore {
         allow create: if isAuthenticated()
                       && request.auth.uid == studentUid
                       && getUserRole() == 'student'
+                      && isMyAcademyPendingOrActive();
+        // teacher, admin은 피드백(feedback, status 필드) 업데이트만 가능
+        allow update: if isAuthenticated()
+                      && isStaff()
                       && isMyAcademyPendingOrActive();
       }
     }
@@ -146,8 +172,8 @@ service cloud.firestore {
     // (문서 ID 형식: {classId}_{YYYY-MM-DD})
     // ─────────────────────────────────────────────
     match /attendances/{attendanceDoc} {
-      // 인증된 사용자 읽기 가능
-      allow read: if isAuthenticated();
+      // 같은 학원 소속 멤버만 읽기 가능 (타 학원 출결 열람 차단)
+      allow read: if isAuthenticated() && isAcademyMember(resource.data.academy_id);
       // teacher, admin만 출결 입력·수정 가능
       // rejected 학원은 쓰기 차단
       allow write: if isAuthenticated()

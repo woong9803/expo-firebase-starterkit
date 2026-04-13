@@ -1,0 +1,112 @@
+import { Tabs } from 'expo-router';
+import { View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+// 탭 아이콘 컴포넌트
+function TabIcon({
+  name,
+  focused,
+}: {
+  name: React.ComponentProps<typeof Ionicons>['name'];
+  focused: boolean;
+}) {
+  return (
+    <View style={styles.iconWrapper}>
+      <Ionicons
+        name={name}
+        size={22}
+        color={focused ? '#5B50E8' : '#CBD5E1'}
+      />
+      {/* 활성 탭 아래 3px 닷 */}
+      {focused && <View style={styles.activeDot} />}
+    </View>
+  );
+}
+
+export default function AdminTabLayout() {
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: styles.tabBar,
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarActiveTintColor: '#5B50E8',
+        tabBarInactiveTintColor: '#CBD5E1',
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: '홈',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'home' : 'home-outline'} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="attendance"
+        options={{
+          title: '출결',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'calendar' : 'calendar-outline'} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="students"
+        options={{
+          title: '학생',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'people' : 'people-outline'} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="notices"
+        options={{
+          title: '공지',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'megaphone' : 'megaphone-outline'} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: '설정',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'settings' : 'settings-outline'} focused={focused} />
+          ),
+        }}
+      />
+      {/* 탭바에 표시하지 않는 화면 */}
+      <Tabs.Screen name="teachers" options={{ href: null }} />
+    </Tabs>
+  );
+}
+
+const styles = StyleSheet.create({
+  tabBar: {
+    height: 72,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingBottom: 12,
+    paddingTop: 8,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  iconWrapper: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  activeDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#5B50E8',
+  },
+});

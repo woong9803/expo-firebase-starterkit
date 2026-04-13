@@ -1,5 +1,5 @@
 /**
- * lib/auth.ts — EduOnePass 인증 헬퍼 함수
+ * lib/auth.ts — dev-app-first 인증 헬퍼 함수
  *
  * Firebase Auth 래퍼 + Firestore users 문서 관리 + 코드 검증 로직을 한 곳에서 관리.
  * 인증 화면(login, register, code-input 등)에서 직접 Firebase를 호출하지 말고
@@ -28,18 +28,26 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
+// GoogleSignin 지연 로드 — 최상단 import 시 네이티브 모듈 없으면 번들 전체 크래시
+// Xcode로 빌드된 바이너리에 네이티브 모듈이 포함된 경우에만 정상 작동
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { GoogleSignin } = (() => {
+  try {
+    return require('@react-native-google-signin/google-signin');
+  } catch {
+    return { GoogleSignin: null };
+  }
+})();
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { auth } from './firebase';
 import { Collections } from './firestore';
 import { User } from '../types';
 
-// react-native-kakao-login은 타입 정의가 없는 구형 패키지 — require로 가져옴
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const KakaoLogin = require('react-native-kakao-login').default as {
-  login: () => Promise<{ accessToken: string }>;
-  logout: () => Promise<void>;
-};
+// 카카오 로그인 — API 키 발급 후 활성화
+// const KakaoLogin = require('react-native-kakao-login').default as {
+//   login: () => Promise<{ accessToken: string }>;
+//   logout: () => Promise<void>;
+// };
 
 // ─── 이메일/비밀번호 인증 ───────────────────────────────────────────
 
@@ -82,6 +90,9 @@ export const signUpWithEmail = async (
  * Firebase GoogleAuthProvider credential로 변환해 로그인
  */
 export const signInWithGoogle = async (): Promise<UserCredential> => {
+  if (!GoogleSignin) {
+    throw new Error('Google 로그인을 사용하려면 앱을 Xcode로 빌드해야 합니다.');
+  }
   // Android: Google Play 서비스 가용성 확인
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
@@ -122,20 +133,17 @@ export const signInWithApple = async (): Promise<UserCredential> => {
  *
  * ⚠️ 카카오 Admin Key는 Cloud Function 환경변수에만 있음 — 클라이언트 코드 포함 절대 금지
  */
-export const signInWithKakao = async (): Promise<UserCredential> => {
-  // 카카오 SDK 로그인으로 액세스 토큰 획득
-  const kakaoToken = await KakaoLogin.login();
-
-  // Cloud Function 호출: 카카오 accessToken → Firebase Custom Token
-  const functions = getFunctions();
-  const kakaoLoginFn = httpsCallable<
-    { accessToken: string },
-    { customToken: string }
-  >(functions, 'kakaoLogin');
-
-  const result = await kakaoLoginFn({ accessToken: kakaoToken.accessToken });
-  return signInWithCustomToken(auth, result.data.customToken);
-};
+// 카카오 로그인 — API 키 발급 후 활성화
+// export const signInWithKakao = async (): Promise<UserCredential> => {
+//   const kakaoToken = await KakaoLogin.login();
+//   const functions = getFunctions();
+//   const kakaoLoginFn = httpsCallable<
+//     { accessToken: string },
+//     { customToken: string }
+//   >(functions, 'kakaoLogin');
+//   const result = await kakaoLoginFn({ accessToken: kakaoToken.accessToken });
+//   return signInWithCustomToken(auth, result.data.customToken);
+// };
 
 // ─── 휴대폰 OTP 인증 ───────────────────────────────────────────────
 

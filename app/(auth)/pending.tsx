@@ -1,239 +1,317 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
+  Alert,
+  Linking,
 } from 'react-native';
-import { signOut } from 'firebase/auth';
-import { auth } from '../../lib/firebase';
+import { useRouter } from 'expo-router';
+import { onSnapshot } from 'firebase/firestore';
+import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { strings } from '../../constants/strings';
+import { Academy } from '../../types';
+
+// 신청일 Timestamp → "YYYY.MM.DD" 포맷
+function formatDate(ts: { toDate: () => Date } | null | undefined): string {
+  if (!ts) return '-';
+  try {
+    const d = ts.toDate();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}.${m}.${day}`;
+  } catch {
+    return '-';
+  }
+}
 
 export default function PendingScreen() {
-  const { clearUser } = useAuthStore();
+  const router = useRouter();
+  const { user, academy: storeAcademy } = useAuthStore();
 
-  // 로그아웃 처리
-  const handleLogout = async () => {
-    await signOut(auth);
-    clearUser();
-    // app/_layout.tsx의 onAuthStateChanged가 /(auth)/login으로 자동 이동
+  const [academy, setAcademy] = useState<Academy | null>(storeAcademy);
+  const [isLoading, setIsLoading] = useState(!storeAcademy);
+
+  // 학원 상태 실시간 구독 — approved(active)되면 앱 홈으로 자동 이동
+  useEffect(() => {
+    if (!user?.academy_id) { setIsLoading(false); return; }
+
+    const unsub = onSnapshot(
+      Collections.academy(user.academy_id),
+      (snap) => {
+        setIsLoading(false);
+        if (!snap.exists()) return;
+        const data = { id: snap.id, ...snap.data() } as Academy;
+        setAcademy(data);
+        // 승인 완료 시 앱 홈으로 자동 이동
+        if (data.status === 'active') {
+          router.replace('/(app)');
+        }
+      },
+      (e) => {
+        console.error('[Pending] 학원 정보 구독 실패:', e);
+        setIsLoading(false);
+      }
+    );
+    return () => unsub();
+  }, [user?.academy_id]);
+
+  // 카카오톡 문의 (채널 URL 연결, 없으면 안내)
+  const handleKakaoContact = async () => {
+    const url = 'https://pf.kakao.com/_placeholder'; // TODO: 실제 채널 URL 입력
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      Linking.openURL(url);
+    } else {
+      Alert.alert('문의', '카카오톡 채널 URL을 설정해주세요.');
+    }
   };
 
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.contentContainer}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
     >
-      {/* ── 로고 & 타이틀 ── */}
+      {/* ── 아이콘 + 제목 ── */}
       <View style={styles.heroArea}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoText}>E</Text>
+        <View style={styles.iconBox}>
+          <Text style={styles.iconEmoji}>⏳</Text>
         </View>
-        <Text style={styles.title}>{strings.onboarding.pendingTitle}</Text>
-        <Text style={styles.subtitle}>{strings.onboarding.pendingDesc}</Text>
-      </View>
-
-      {/* ── 허용 기능 카드 ── */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.dotGreen} />
-          <Text style={styles.cardTitle}>
-            {strings.onboarding.pendingAllowedTitle}
-          </Text>
-        </View>
-        {[
-          strings.onboarding.pendingAllowed1,
-          strings.onboarding.pendingAllowed2,
-          strings.onboarding.pendingAllowed3,
-        ].map((item) => (
-          <View key={item} style={styles.featureRow}>
-            <Text style={styles.featureCheck}>✓</Text>
-            <Text style={styles.featureText}>{item}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* ── 차단 기능 카드 ── */}
-      <View style={[styles.card, styles.cardBlocked]}>
-        <View style={styles.cardHeader}>
-          <View style={styles.dotGray} />
-          <Text style={[styles.cardTitle, styles.cardTitleBlocked]}>
-            {strings.onboarding.pendingBlockedTitle}
-          </Text>
-        </View>
-        {[
-          strings.onboarding.pendingBlocked1,
-          strings.onboarding.pendingBlocked2,
-        ].map((item) => (
-          <View key={item} style={styles.featureRow}>
-            <Text style={styles.featureLock}>🔒</Text>
-            <Text style={[styles.featureText, styles.featureTextBlocked]}>
-              {item}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      {/* ── 안내 문구 ── */}
-      <View style={styles.infoBox}>
-        <Text style={styles.infoText}>
-          승인은 영업일 기준 1~2일 내에 완료돼요.{'\n'}
-          승인 완료 시 알림을 드릴게요.
+        <Text style={styles.title}>승인 대기 중</Text>
+        <Text style={styles.subtitle}>
+          운영자가 학원 정보를 확인 중이에요.{'\n'}
+          보통 1~2 영업일 내 연락드려요!
         </Text>
       </View>
 
-      {/* ── 로그아웃 버튼 ── */}
-      <TouchableOpacity
-        style={styles.btnLogout}
-        onPress={handleLogout}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.btnLogoutText}>{strings.auth.logout}</Text>
-      </TouchableOpacity>
+      {/* ── 신청 정보 카드 ── */}
+      <View style={styles.infoCard}>
+        <Text style={styles.infoCardTitle}>📋 신청 정보</Text>
+
+        {isLoading ? (
+          <ActivityIndicator color="#F59E0B" style={{ marginTop: 8 }} />
+        ) : (
+          <>
+            <InfoRow label="학원 유형" value={academy?.academy_type ?? '-'} />
+            <InfoRow label="학원명" value={academy?.name ?? '-'} />
+            <InfoRow label="대표자" value={academy?.owner_name ?? '-'} />
+            <InfoRow
+              label="신청일"
+              value={formatDate(academy?.submitted_at as any)}
+              isLast
+            />
+          </>
+        )}
+      </View>
+
+      {/* ── 승인 전 사용 가능한 기능 카드 ── */}
+      <View style={styles.limitCard}>
+        <Text style={styles.limitCardTitle}>승인 전 사용 가능한 기능</Text>
+
+        <View style={styles.limitRow}>
+          <Text style={styles.limitLabel}>학생 등록</Text>
+          <Text style={styles.limitValueAmber}>최대 3명</Text>
+        </View>
+        <View style={styles.limitRow}>
+          <Text style={styles.limitLabel}>반 생성</Text>
+          <Text style={styles.limitValueAmber}>1개</Text>
+        </View>
+        <View style={styles.limitRow}>
+          <Text style={styles.limitLabel}>선생님 초대</Text>
+          <Text style={styles.limitValueRed}>불가</Text>
+        </View>
+      </View>
+
+      {/* ── 버튼 2개 ── */}
+      <View style={styles.btnArea}>
+        <TouchableOpacity
+          style={styles.btnOutline}
+          onPress={handleKakaoContact}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.btnOutlineText}>카카오톡으로 문의</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.btnPrimary}
+          onPress={() => router.replace('/(app)')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.btnPrimaryText}>미리 탐색해보기</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
+  );
+}
+
+// ── 신청 정보 행 컴포넌트 ──────────────────────────────────────────
+function InfoRow({
+  label,
+  value,
+  isLast,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <View style={[styles.infoRow, isLast && styles.infoRowLast]}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#ffffff',
   },
-  contentContainer: {
+  content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 64,
+    paddingTop: 48,
     paddingBottom: 40,
   },
 
-  // ── 히어로 영역 ──
+  // ── 히어로 ──
   heroArea: {
     alignItems: 'center',
-    marginBottom: 36,
+    marginBottom: 28,
   },
-  logoMark: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: '#2176C7',
+  iconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
   },
-  logoText: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#fff',
+  iconEmoji: {
+    fontSize: 40,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 14,
     color: '#64748B',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    marginTop: 8,
   },
 
-  // ── 카드 ──
-  card: {
+  // ── 신청 정보 카드 ──
+  infoCard: {
+    backgroundColor: '#FFFBEB',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 16,
-    padding: 18,
-    backgroundColor: '#fff',
+    borderColor: '#FDE68A',
+    borderRadius: 14,
+    padding: 16,
     marginBottom: 12,
   },
-  cardBlocked: {
-    backgroundColor: '#F8FAFC',
+  infoCardTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 12,
   },
-  cardHeader: {
+  infoRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FEF3C7',
   },
-  dotGreen: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
+  infoRowLast: {
+    borderBottomWidth: 0,
   },
-  dotGray: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#94A3B8',
+  infoLabel: {
+    fontSize: 13,
+    color: '#64748B',
   },
-  cardTitle: {
-    fontSize: 14,
+  infoValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+
+  // ── 제한 기능 카드 ──
+  limitCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 24,
+  },
+  limitCardTitle: {
+    fontSize: 11,
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  limitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  limitLabel: {
+    fontSize: 13,
+    color: '#0F172A',
+  },
+  limitValueAmber: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#F59E0B',
+  },
+  limitValueRed: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+
+  // ── 버튼 ──
+  btnArea: {
+    gap: 10,
+  },
+  btnOutline: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnOutlineText: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#0F172A',
   },
-  cardTitleBlocked: {
-    color: '#64748B',
-  },
-
-  // ── 기능 항목 ──
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 5,
-  },
-  featureCheck: {
-    fontSize: 14,
-    color: '#10B981',
-    width: 18,
-    textAlign: 'center',
-  },
-  featureLock: {
-    fontSize: 13,
-    width: 18,
-    textAlign: 'center',
-  },
-  featureText: {
-    fontSize: 14,
-    color: '#334155',
-  },
-  featureTextBlocked: {
-    color: '#94A3B8',
-  },
-
-  // ── 안내 박스 ──
-  infoBox: {
-    backgroundColor: '#E6F1FB',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 32,
-    marginTop: 4,
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#185FA5',
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-
-  // ── 로그아웃 버튼 ──
-  btnLogout: {
+  btnPrimary: {
     height: 52,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
+    borderRadius: 14,
+    backgroundColor: '#5B50E8',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
   },
-  btnLogoutText: {
+  btnPrimaryText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#64748B',
+    fontWeight: '700',
+    color: '#fff',
   },
 });

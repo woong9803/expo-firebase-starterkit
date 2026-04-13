@@ -13,19 +13,20 @@ export default function AppLayout() {
   useEffect(() => {
     if (!user) return;
 
+    // phone_verified 없음 → Firestore 문서 미완료 → phone-verify로
+    if (!user.phone_verified && !user.role) {
+      router.replace('/(auth)/phone-verify');
+      return;
+    }
+
     // academy_id 없음 → 온보딩 미완료 → 역할 선택부터 다시
     if (!user.academy_id) {
       router.replace('/(auth)/role-select');
       return;
     }
 
-    // 학원 승인 대기 상태 → 승인 대기 화면으로
-    if (academy?.status === 'pending') {
-      router.replace('/(auth)/pending');
-      return;
-    }
-
     // 역할에 따라 전용 홈 화면으로 이동
+    // pending 상태여도 앱 진입 허용 — 기능 제한은 각 화면에서 academy.status로 처리
     switch (user.role) {
       case 'admin':
         router.replace('/(app)/(admin)');

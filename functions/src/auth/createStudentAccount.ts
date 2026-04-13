@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { randomInt } from 'crypto';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 
 /**
@@ -37,9 +38,9 @@ export const createStudentAccount = onCall(async (request) => {
     throw new HttpsError('invalid-argument', '이름, 반 ID, 학원 ID는 필수입니다');
   }
 
-  // 가상 이메일 생성: s_{6자리랜덤코드}@eduonepass.app
+  // 가상 이메일 생성: s_{6자리랜덤코드}@dev-app-first.app
   const randomCode = generateRandomCode(6);
-  const email = `s_${randomCode}@eduonepass.app`;
+  const email = `s_${randomCode}@dev-app-first.app`;
 
   // 임시 비밀번호 생성 (영숫자+특수문자 8자리)
   const tempPassword = generateTempPassword(8);
@@ -101,22 +102,22 @@ export const createStudentAccount = onCall(async (request) => {
 
 // ─── 내부 유틸리티 ────────────────────────────────────────────────
 
-/** 영숫자 랜덤 코드 생성 (대문자) */
+/** 영숫자 랜덤 코드 생성 (대문자) — crypto.randomInt 사용으로 암호학적 안전성 확보 */
 const generateRandomCode = (length: number): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(randomInt(chars.length));
   }
   return result;
 };
 
-/** 임시 비밀번호 생성 (영소문자+숫자+특수문자 혼합) */
+/** 임시 비밀번호 생성 (영소문자+숫자+특수문자 혼합) — crypto.randomInt 사용 */
 const generateTempPassword = (length: number): string => {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#';
   let result = '';
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(randomInt(chars.length));
   }
   return result;
 };

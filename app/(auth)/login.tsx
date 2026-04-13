@@ -11,11 +11,11 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import {
   signInWithEmail,
   signInWithGoogle,
   signInWithApple,
-  signInWithKakao,
 } from '../../lib/auth';
 import { strings } from '../../constants/strings';
 
@@ -24,10 +24,10 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ─── 이메일 로그인 ────────────────────────────────────────────────
   const handleEmailLogin = async () => {
     if (!email.trim() || !password) {
       setError(strings.auth.emailRequired);
@@ -37,55 +37,34 @@ export default function LoginScreen() {
     setError(null);
     try {
       await signInWithEmail(email.trim(), password);
-      // 성공 시 app/_layout.tsx의 onAuthStateChanged가 /(app)/으로 자동 이동
     } catch (e: unknown) {
-      const err = e as Error;
-      setError(err.message || strings.common.error);
+      setError((e as Error).message || strings.common.error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ─── Google 로그인 ────────────────────────────────────────────────
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     setError(null);
     try {
       await signInWithGoogle();
     } catch (e: unknown) {
-      const err = e as Error;
-      setError(err.message || strings.common.error);
+      setError((e as Error).message || strings.common.error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ─── Apple 로그인 (iOS 전용) ──────────────────────────────────────
   const handleAppleLogin = async () => {
     setIsLoading(true);
     setError(null);
     try {
       await signInWithApple();
     } catch (e: unknown) {
-      const err = e as Error;
-      // 사용자가 직접 취소한 경우 에러 표시 생략
       if ((e as { code?: string }).code !== 'ERR_CANCELED') {
-        setError(err.message || strings.common.error);
+        setError((e as Error).message || strings.common.error);
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // ─── 카카오 로그인 ────────────────────────────────────────────────
-  const handleKakaoLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await signInWithKakao();
-    } catch (e: unknown) {
-      const err = e as Error;
-      setError(err.message || strings.common.error);
     } finally {
       setIsLoading(false);
     }
@@ -97,51 +76,80 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {/* ── 로고 & 타이틀 ── */}
-        <View style={styles.logoArea}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoText}>E</Text>
-          </View>
-          <Text style={styles.title}>{strings.auth.loginTitle}</Text>
-          <Text style={styles.subtitle}>{strings.auth.loginSubtitle}</Text>
+        {/* ── 제목 ── */}
+        <View style={styles.titleArea}>
+          <Text style={styles.title}> 반가워요! 👋</Text>
+          <Text style={styles.subtitle}>로그인하여 계속하세요</Text>
         </View>
 
-        {/* ── 에러 메시지 ── */}
+        {/* ── 에러 ── */}
         {error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
 
-        {/* ── 이메일/비밀번호 입력 ── */}
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            placeholder={strings.auth.emailPlaceholder}
-            placeholderTextColor="#94A3B8"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!isLoading}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder={strings.auth.passwordPlaceholder}
-            placeholderTextColor="#94A3B8"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!isLoading}
-            onSubmitEditing={handleEmailLogin}
-            returnKeyType="done"
-          />
+        {/* ── 입력 필드 ── */}
+        <View style={styles.fieldList}>
+
+          {/* 이메일 */}
+          <View>
+            <Text style={styles.label}>이메일</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="이메일 주소를 입력해주세요"
+              placeholderTextColor="#94A3B8"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isLoading}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* 비밀번호 */}
+          <View>
+            <Text style={styles.label}>비밀번호</Text>
+            <View style={styles.passwordWrap}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="비밀번호를 입력해주세요"
+                placeholderTextColor="#94A3B8"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                editable={!isLoading}
+                onSubmitEditing={handleEmailLogin}
+                returnKeyType="done"
+              />
+              {/* Ionicons 눈 아이콘 토글 */}
+              <TouchableOpacity
+                style={styles.eyeBtn}
+                onPress={() => setShowPassword((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                  size={18}
+                  color="#94A3B8"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
         </View>
+
+        {/* 비밀번호 찾기 */}
+        <TouchableOpacity style={styles.forgotRow} disabled={isLoading}>
+          <Text style={styles.forgotText}>비밀번호 찾기</Text>
+        </TouchableOpacity>
 
         {/* ── 로그인 버튼 ── */}
         <TouchableOpacity
@@ -153,19 +161,25 @@ export default function LoginScreen() {
           {isLoading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnPrimaryText}>{strings.auth.loginButton}</Text>
+            <Text style={styles.btnPrimaryText}>로그인</Text>
           )}
         </TouchableOpacity>
 
-        {/* ── 구분선 ── */}
+        {/* ── 소셜 로그인 구분선 ── */}
         <View style={styles.dividerRow}>
           <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>{strings.auth.orDivider}</Text>
+          <Text style={styles.dividerText}>소셜 로그인</Text>
           <View style={styles.dividerLine} />
         </View>
 
-        {/* ── 소셜 로그인 버튼 ── */}
-        <View style={styles.socialGroup}>
+        {/* ── 소셜 버튼 ── */}
+        <View style={styles.socialList}>
+
+          {/* 카카오 — UI만 구현 */}
+          <TouchableOpacity style={styles.btnKakao} activeOpacity={0.85} disabled={isLoading}>
+            <Text style={styles.btnKakaoText}>💬 카카오로 로그인</Text>
+          </TouchableOpacity>
+
           {/* Google */}
           <TouchableOpacity
             style={styles.btnGoogle}
@@ -173,10 +187,10 @@ export default function LoginScreen() {
             disabled={isLoading}
             activeOpacity={0.85}
           >
-            <Text style={styles.btnGoogleText}>{strings.auth.googleLogin}</Text>
+            <Text style={styles.btnGoogleText}>🌐 Google로 로그인</Text>
           </TouchableOpacity>
 
-          {/* Apple — iOS 전용 */}
+          {/* Apple — iOS에서만 */}
           {Platform.OS === 'ios' && (
             <TouchableOpacity
               style={styles.btnApple}
@@ -184,31 +198,20 @@ export default function LoginScreen() {
               disabled={isLoading}
               activeOpacity={0.85}
             >
-              <Text style={styles.btnAppleText}>{strings.auth.appleLogin}</Text>
+              <Text style={styles.btnAppleText}>🍎 Apple로 로그인</Text>
             </TouchableOpacity>
           )}
 
-          {/* 카카오 */}
-          <TouchableOpacity
-            style={styles.btnKakao}
-            onPress={handleKakaoLogin}
-            disabled={isLoading}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.btnKakaoText}>{strings.auth.kakaoLogin}</Text>
-          </TouchableOpacity>
         </View>
 
         {/* ── 회원가입 링크 ── */}
         <View style={styles.signupRow}>
-          <Text style={styles.signupPrompt}>{strings.auth.noAccount}</Text>
-          <TouchableOpacity
-            onPress={() => router.push('/(auth)/register')}
-            disabled={isLoading}
-          >
-            <Text style={styles.signupLink}>{strings.auth.signupButton}</Text>
+          <Text style={styles.signupPrompt}>계정이 없으신가요? </Text>
+          <TouchableOpacity onPress={() => router.push('/(auth)/register')} disabled={isLoading}>
+            <Text style={styles.signupLink}>회원가입</Text>
           </TouchableOpacity>
         </View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -217,92 +220,116 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
-    backgroundColor: '#F8FAFC', // g50 — 페이지 배경
+    backgroundColor: '#ffffff',
   },
-  container: {
+  scroll: {
     flex: 1,
   },
-  contentContainer: {
-    flexGrow: 1,
+  scrollContent: {
     paddingHorizontal: 24,
     paddingTop: 60,
     paddingBottom: 40,
   },
 
-  // ── 로고 영역 ──
-  logoArea: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoMark: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: '#2176C7', // b500 — 주요 버튼
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  logoText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#fff',
+  // ── 제목 ──
+  titleArea: {
+    marginBottom: 28,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#0F172A', // g900 — 주요 텍스트
-    marginBottom: 6,
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#64748B', // g500 — 서브 텍스트
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 6,
   },
 
-  // ── 에러 박스 ──
+  // ── 에러 ──
   errorBox: {
     backgroundColor: '#FEF2F2',
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   errorText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#991B1B',
     lineHeight: 18,
   },
 
   // ── 입력 필드 ──
-  inputGroup: {
+  fieldList: {
     gap: 12,
-    marginBottom: 16,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 5,
   },
   input: {
-    height: 52,
+    backgroundColor: '#F1F0FB',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0', // g200
-    borderRadius: 10,
-    paddingHorizontal: 16,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     fontSize: 15,
-    color: '#0F172A', // g900
-    backgroundColor: '#fff',
+    color: '#0F172A',
   },
 
-  // ── Primary 버튼 ──
-  btnPrimary: {
-    height: 52,
-    backgroundColor: '#2176C7', // b500
+  // 비밀번호 래퍼 (눈 아이콘 포함)
+  passwordWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F0FB',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
     borderRadius: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: '#0F172A',
+  },
+  eyeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+
+  // 비밀번호 찾기
+  forgotRow: {
+    alignItems: 'flex-end',
+    marginTop: 6,
+    marginBottom: 20,
+  },
+  forgotText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#5B50E8',
+  },
+
+  // ── 로그인 버튼 ──
+  btnPrimary: {
+    backgroundColor: '#5B50E8',
+    borderRadius: 14,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginTop: 20,
+    marginBottom: 20,
   },
   btnDisabled: {
     opacity: 0.6,
   },
   btnPrimaryText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#fff',
   },
@@ -311,54 +338,30 @@ const styles = StyleSheet.create({
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    gap: 12,
+    gap: 8,
+    marginBottom: 14,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E2E8F0', // g200
+    backgroundColor: '#E2E8F0',
   },
   dividerText: {
-    fontSize: 13,
-    color: '#94A3B8', // g400
+    fontSize: 12,
+    color: '#94A3B8',
   },
 
   // ── 소셜 버튼 ──
-  socialGroup: {
-    gap: 12,
-    marginBottom: 32,
+  socialList: {
+    gap: 10,
+    marginBottom: 24,
   },
-  btnGoogle: {
-    height: 52,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0', // g200
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnGoogleText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#333',
-  },
-  btnApple: {
-    height: 52,
-    backgroundColor: '#0F172A', // g900
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnAppleText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-  },
+
+  // 카카오
   btnKakao: {
     height: 52,
-    backgroundColor: '#FEE500', // 카카오 옐로우
-    borderRadius: 10,
+    borderRadius: 14,
+    backgroundColor: '#FEE500',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -368,20 +371,50 @@ const styles = StyleSheet.create({
     color: '#191919',
   },
 
+  // Google
+  btnGoogle: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnGoogleText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#333333',
+  },
+
+  // Apple
+  btnApple: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnAppleText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+
   // ── 회원가입 링크 ──
   signupRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    marginTop: 24,
   },
   signupPrompt: {
-    fontSize: 14,
-    color: '#64748B', // g500
+    fontSize: 13,
+    color: '#64748B',
   },
   signupLink: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#2176C7', // b500
+    color: '#5B50E8',
   },
 });

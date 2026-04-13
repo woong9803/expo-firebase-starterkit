@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getDoc } from 'firebase/firestore';
@@ -8,72 +8,123 @@ import { Collections } from '../lib/firestore';
 import { useAuthStore } from '../store/useAuthStore';
 import { User, Academy } from '../types';
 
+// Firestore 조회에 타임아웃 적용 — 네트워크 지연 시 무한 대기 방지
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 export default function RootLayout() {
-  const router = useRouter();
+  const router   = useRouter();
   const segments = useSegments();
-  const { user, isLoading, setUser, setLoading, setAcademy, setAcademyId } = useAuthStore();
+  const { user, setUser, setAcademy, setAcademyId } = useAuthStore();
+
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    // Firebase Auth 상태 변화 감지 — 로그인/로그아웃 자동 처리
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Firestore에서 사용자 상세 정보 로드 (역할·학원 ID 등)
-        const userSnap = await getDoc(Collections.user(firebaseUser.uid));
+    // 안전망: 어떤 이유로도 8초 안에 초기화 안 되면 강제 탈출
+    const fallbackTimer = setTimeout(() => {
+      console.warn('[Auth] fallback timer triggered');
+      setUser(null);
+      setInitialized(true);
+    }, 8000);
 
-        if (userSnap.exists()) {
-          const userData = userSnap.data() as User;
-          setUser(userData);
-
-          // 학원 정보도 함께 로드 (pending 상태 판단 등에 사용)
-          if (userData.academy_id) {
-            const academySnap = await getDoc(Collections.academy(userData.academy_id));
-            if (academySnap.exists()) {
-              setAcademy({ id: academySnap.id, ...academySnap.data() } as Academy);
-              setAcademyId(userData.academy_id);
+    // onAuthStateChanged 자체가 throw할 수 있으므로 try-catch 적용
+    let unsubscribe: () => void = () => {};
+    try {
+      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        clearTimeout(fallbackTimer);
+        try {
+          if (firebaseUser) {
+            const userSnap = await withTimeout(
+              getDoc(Collections.user(firebaseUser.uid)),
+              5000
+            );
+            if (userSnap.exists()) {
+              const userData = userSnap.data() as User;
+              setUser(userData);
+              if (userData.academy_id) {
+                const academySnap = await withTimeout(
+                  getDoc(Collections.academy(userData.academy_id)),
+                  5000
+                );
+                if (academySnap.exists()) {
+                  setAcademy({ id: academySnap.id, ...academySnap.data() } as Academy);
+                  setAcademyId(userData.academy_id);
+                }
+              }
+            } else {
+              setUser({ uid: firebaseUser.uid, email: firebaseUser.email ?? '' } as User);
             }
+          } else {
+            setUser(null);
+            setAcademy(null);
+            setAcademyId(null);
           }
-        } else {
-          // Firestore 문서 없음 → 가입 미완료 상태
+        } catch (e) {
+          console.error('[Auth] 초기화 오류:', e);
           setUser(null);
+        } finally {
+          setInitialized(true);
         }
-      } else {
-        // 로그아웃 → 모든 상태 초기화
-        setUser(null);
-        setAcademy(null);
-        setAcademyId(null);
-      }
+      });
+    } catch (e) {
+      // auth 객체 자체가 깨진 경우 — 비로그인으로 강제 초기화
+      console.error('[Auth] onAuthStateChanged 설정 실패:', e);
+      clearTimeout(fallbackTimer);
+      setUser(null);
+      setInitialized(true);
+    }
 
-      setLoading(false);
-    });
-
-    // 컴포넌트 언마운트 시 Auth 리스너 해제
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(fallbackTimer);
+      unsubscribe();
+    };
   }, []);
 
-  // 인증 상태에 따라 화면 분기
+  // 초기화 완료 후 라우팅
+  // ⚠️ segments는 의존성에 넣지 않음 — 내비게이션 결과로 segments가 바뀌면
+  // effect가 재실행되어 무한 루프가 발생하기 때문
+  // user/initialized가 바뀔 때만 리다이렉트 판단, segments는 현재 위치 읽기용으로만 사용
   useEffect(() => {
-    if (isLoading) return; // Firebase Auth 확인 중 → 대기
-
+    if (!initialized) return;
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!user && !inAuthGroup) {
-      // 미인증 사용자 → 로그인 화면
-      router.replace('/(auth)/login');
+      // 비로그인 상태인데 앱 안에 있으면 → 로그인 화면으로
+      router.replace('/(auth)');
     } else if (user && inAuthGroup) {
-      // 인증된 사용자 → 앱 메인 (역할 분기는 (app)/_layout.tsx에서)
-      router.replace('/(app)');
+      // 로그인 상태인데 auth 화면에 있을 때:
+      // 온보딩 완료(academy_id + role 모두 있음)인 경우만 앱으로 이동
+      // 온보딩 중인 사용자는 auth 흐름 그대로 유지 — 이름 파라미터 등 보존
+      const onboardingComplete = !!(user.academy_id && user.role);
+      if (onboardingComplete) {
+        router.replace('/(app)');
+      }
     }
-  }, [user, isLoading, segments]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, user]);
 
-  // 인증 상태 확인 중 로딩 스피너 표시
-  if (isLoading) {
+  if (!initialized) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#4F46E5" />
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#0F172A" />
       </View>
     );
   }
 
-  // Slot: 현재 라우트를 그대로 렌더 (Stack 대신 사용 — new arch 호환)
   return <Slot />;
 }
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

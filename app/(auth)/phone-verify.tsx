@@ -14,105 +14,67 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ConfirmationResult } from 'firebase/auth';
-import { sendPhoneOtp, verifyPhoneOtp, createUserDoc } from '../../lib/auth';
+import { sendPhoneOtp, verifyPhoneOtp, updateUserDoc } from '../../lib/auth';
 import { useAuthStore } from '../../store/useAuthStore';
 import { strings } from '../../constants/strings';
-import StepIndicator from '../../components/StepIndicator';
 
-// OTP 칸 개수
 const OTP_LENGTH = 6;
+const TIMER_TOTAL = 179;
 
 export default function PhoneVerifyScreen() {
   const router = useRouter();
-  const { name } = useLocalSearchParams<{ name?: string }>();
+  const { phone } = useLocalSearchParams<{ phone?: string }>();
   const { user } = useAuthStore();
 
-  // ─── 전화번호 입력 단계 ──────────────────────────────────────────
-  const [phone, setPhone] = useState('');
-  const [isSending, setIsSending] = useState(false);
-
-  // ─── OTP 입력 단계 ──────────────────────────────────────────────
-  const [confirmationResult, setConfirmationResult] =
-    useState<ConfirmationResult | null>(null);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-
-  // ─── 재전송 타이머 ───────────────────────────────────────────────
-  const [resendTimer, setResendTimer] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ─── 에러 ────────────────────────────────────────────────────────
+  const [resendTimer, setResendTimer] = useState(TIMER_TOTAL);
   const [error, setError] = useState<string | null>(null);
 
-  // OTP 입력칸 ref 배열
   const inputRefs = useRef<(TextInput | null)[]>(Array(OTP_LENGTH).fill(null));
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 60초 재전송 타이머 시작
-  const startResendTimer = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setResendTimer(60);
+  // 화면 진입 시 OTP 자동 발송 (네이티브 APNs 자동 검증)
+  useEffect(() => {
+    if (!phone) return;
+    setIsSendingOtp(true);
+    setError(null);
+    sendPhoneOtp(phone)
+      .then((result) => setConfirmationResult(result))
+      .catch((e: Error) => {
+        if (e.message === 'DUPLICATE_PHONE') setError(strings.errors.duplicatePhone);
+        else setError(e.message || strings.common.error);
+      })
+      .finally(() => setIsSendingOtp(false));
+  }, [phone]);
+
+  // 타이머 시작
+  useEffect(() => {
     timerRef.current = setInterval(() => {
       setResendTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current!);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timerRef.current!); return 0; }
         return prev - 1;
       });
     }, 1000);
-  };
-
-  // 컴포넌트 언마운트 시 타이머 해제
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
-  // ─── 인증번호 발송 ───────────────────────────────────────────────
-  const handleSendOtp = async () => {
-    if (!phone.trim()) {
-      setError(strings.phoneVerify.phoneRequired);
-      return;
-    }
-    setIsSending(true);
-    setError(null);
-    try {
-      // appVerifier 없이 호출 — 실제 기기(iOS/Android)에서는 APNs/FCM으로 자동 처리
-      const result = await sendPhoneOtp(phone.trim());
-      setConfirmationResult(result);
-      startResendTimer();
-      // OTP 단계로 전환 후 첫 번째 칸에 포커스
-      setTimeout(() => inputRefs.current[0]?.focus(), 300);
-    } catch (e: unknown) {
-      const err = e as Error;
-      if (err.message === 'DUPLICATE_PHONE') {
-        setError(strings.errors.duplicatePhone);
-      } else {
-        setError(err.message || strings.common.error);
-      }
-    } finally {
-      setIsSending(false);
-    }
-  };
+  const timerStr = `${Math.floor(resendTimer / 60)}:${(resendTimer % 60).toString().padStart(2, '0')}`;
+  const timerProgress = resendTimer / TIMER_TOTAL;
 
-  // ─── OTP 한 칸 입력 처리 ────────────────────────────────────────
+  // ─── OTP 입력 ──────────────────────────────────────────────────────
   const handleOtpChange = (text: string, index: number) => {
-    // 숫자만 허용
     const digit = text.replace(/[^0-9]/g, '').slice(-1);
     const newOtp = [...otp];
     newOtp[index] = digit;
     setOtp(newOtp);
     setError(null);
-
-    // 값 입력 시 다음 칸으로 자동 포커스
-    if (digit && index < OTP_LENGTH - 1) {
-      inputRefs.current[index + 1]?.focus();
-    }
+    if (digit && index < OTP_LENGTH - 1) inputRefs.current[index + 1]?.focus();
   };
 
-  // Backspace 시 이전 칸으로 포커스 이동
   const handleKeyPress = (
     e: NativeSyntheticEvent<TextInputKeyPressEventData>,
     index: number
@@ -125,32 +87,28 @@ export default function PhoneVerifyScreen() {
     }
   };
 
-  // ─── OTP 검증 ────────────────────────────────────────────────────
+  // ─── OTP 검증 ──────────────────────────────────────────────────────
   const handleVerify = async () => {
     const code = otp.join('');
-    if (code.length < OTP_LENGTH) {
-      setError(strings.phoneVerify.otpIncomplete);
+    if (code.length < OTP_LENGTH) { setError(strings.phoneVerify.otpIncomplete); return; }
+    if (!confirmationResult) {
+      setError('인증번호 발송 중이에요. 잠시 후 다시 시도해주세요.');
       return;
     }
-    if (!confirmationResult) return;
 
     setIsVerifying(true);
     setError(null);
     try {
       await verifyPhoneOtp(confirmationResult, code);
-
-      // 인증 성공 → Firestore users 문서에 이름과 전화번호 저장
       if (user?.uid) {
-        await createUserDoc(user.uid, {
-          name: name ?? '',
-          phone_number: phone.trim(),
+        await updateUserDoc(user.uid, {
+          phone_number: phone ?? '',
           phone_verified: true,
-          email: user.email ?? '',
-          role: 'student', // 역할 선택 전 임시값 — role-select에서 덮어씀
-          is_active: true,
+          // is_active: Cloud Functions 전용 — 클라이언트 직접 변경 불가
           class_id: null,
           link_code: null,
           children: [],
+          assigned_class_ids: [],
           birth_date: null,
           guardian_phone: null,
           enrollment_date: null,
@@ -158,45 +116,25 @@ export default function PhoneVerifyScreen() {
           academy_id: '',
         });
       }
-
-      // 다음 온보딩 스텝: 역할 선택
       router.push('/(auth)/role-select');
     } catch (e: unknown) {
       const err = e as { code?: string; message?: string };
-      if (err.code === 'auth/invalid-verification-code') {
-        setError('인증번호가 올바르지 않아요. 다시 확인해주세요.');
-      } else if (err.code === 'auth/code-expired') {
-        setError('인증번호가 만료됐어요. 재전송해주세요.');
-      } else {
-        setError(err.message || strings.common.error);
-      }
+      if (err.code === 'auth/invalid-verification-code') setError('인증번호가 올바르지 않아요.');
+      else if (err.code === 'auth/code-expired') setError('인증번호가 만료됐어요. 재전송해주세요.');
+      else setError(err.message || strings.common.error);
     } finally {
       setIsVerifying(false);
     }
   };
 
-  // ─── 재전송 ──────────────────────────────────────────────────────
-  const handleResend = async () => {
-    if (resendTimer > 0) return;
-    setOtp(Array(OTP_LENGTH).fill(''));
-    setError(null);
-    await handleSendOtp();
-  };
-
-  // OTP 칸 한 개의 스타일 결정
+  // OTP 박스 스타일 분기
   const getBoxStyle = (index: number) => {
     const isFocused = focusedIndex === index;
     const isFilled = otp[index] !== '';
-    if (isFilled) return [styles.otpBox, styles.otpBoxFilled];
+    if (isFilled)  return [styles.otpBox, styles.otpBoxFilled];
     if (isFocused) return [styles.otpBox, styles.otpBoxFocused];
     return [styles.otpBox, styles.otpBoxEmpty];
   };
-
-  const getTextStyle = (index: number) => {
-    return otp[index] !== '' ? styles.otpTextFilled : styles.otpText;
-  };
-
-  const isOtpPhase = confirmationResult !== null;
 
   return (
     <KeyboardAvoidingView
@@ -204,135 +142,108 @@ export default function PhoneVerifyScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {/* ── 스텝 인디케이터: 2단계 진행 중 ── */}
-        <StepIndicator steps={3} current={2} />
-
-        {/* ── 타이틀 ── */}
-        <View style={styles.titleArea}>
-          <Text style={styles.title}>{strings.phoneVerify.title}</Text>
-          <Text style={styles.subtitle}>
-            {isOtpPhase
-              ? `${phone}${strings.phoneVerify.otpSentSuffix}`
-              : strings.phoneVerify.subtitle}
-          </Text>
+        {/* ── 스텝 인디케이터: 4개 dot, 2번째 활성 ── */}
+        <View style={styles.stepRow}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={i === 1 ? styles.stepActive : styles.stepInactive} />
+          ))}
         </View>
 
-        {/* ── 에러 메시지 ── */}
+        {/* ── 제목 ── */}
+        <View style={styles.titleArea}>
+          <Text style={styles.title}>휴대폰 인증</Text>
+          <Text style={styles.subtitle}>모든 역할에 필수로 진행돼요</Text>
+        </View>
+
+        {/* ── 에러 ── */}
         {error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
 
-        {/* ── 전화번호 입력 단계 ── */}
-        {!isOtpPhase && (
-          <View style={styles.phoneSection}>
-            <View style={styles.phoneInputRow}>
-              {/* 국가코드 표시 */}
-              <View style={styles.countryCode}>
-                <Text style={styles.countryCodeText}>+82</Text>
-              </View>
+        {/* ── 📱 아이콘 + 발송 안내 ── */}
+        <View style={styles.iconWrap}>
+          <View style={styles.iconCircle}>
+            <Text style={styles.iconEmoji}>📱</Text>
+          </View>
+          <Text style={styles.sentText}>{phone ?? ''} 으로</Text>
+          <Text style={styles.sentText}>인증번호를 발송했어요</Text>
+        </View>
+
+        {/* ── OTP 6칸 ── */}
+        <View style={styles.otpSection}>
+          <Text style={styles.otpLabel}>인증번호 6자리 입력</Text>
+          <View style={styles.otpRow}>
+            {Array.from({ length: OTP_LENGTH }, (_, i) => (
               <TextInput
-                style={styles.phoneInput}
-                placeholder={strings.phoneVerify.phonePlaceholder}
-                placeholderTextColor="#94A3B8"
-                value={phone}
-                onChangeText={(v) => { setPhone(v); setError(null); }}
-                keyboardType="phone-pad"
-                editable={!isSending}
-                returnKeyType="done"
-                onSubmitEditing={handleSendOtp}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.btnPrimary, isSending && styles.btnDisabled]}
-              onPress={handleSendOtp}
-              disabled={isSending}
-              activeOpacity={0.85}
-            >
-              {isSending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnPrimaryText}>
-                  {strings.phoneVerify.sendOtp}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── OTP 입력 단계 ── */}
-        {isOtpPhase && (
-          <View style={styles.otpSection}>
-            {/* OTP 6칸 박스 */}
-            <View style={styles.otpRow}>
-              {Array.from({ length: OTP_LENGTH }, (_, i) => (
-                <TextInput
-                  key={i}
-                  ref={(ref) => { inputRefs.current[i] = ref; }}
-                  style={getBoxStyle(i)}
-                  value={otp[i]}
-                  onChangeText={(text) => handleOtpChange(text, i)}
-                  onKeyPress={(e) => handleKeyPress(e, i)}
-                  onFocus={() => setFocusedIndex(i)}
-                  onBlur={() => setFocusedIndex(null)}
-                  keyboardType="number-pad"
-                  maxLength={1}
-                  textAlign="center"
-                  editable={!isVerifying}
-                  textContentType="oneTimeCode" // iOS 자동완성 힌트
-                  caretHidden
-                >
-                  {/* TextInput 안에 Text 직접 렌더해서 색상 제어 */}
-                  <Text style={getTextStyle(i)}>{otp[i]}</Text>
-                </TextInput>
-              ))}
-            </View>
-
-            {/* 재전송 버튼 */}
-            <TouchableOpacity
-              style={styles.resendBtn}
-              onPress={handleResend}
-              disabled={resendTimer > 0 || isVerifying}
-            >
-              <Text
-                style={[
-                  styles.resendText,
-                  resendTimer > 0 && styles.resendTextDisabled,
-                ]}
+                key={i}
+                ref={(ref) => { inputRefs.current[i] = ref; }}
+                style={getBoxStyle(i)}
+                value={otp[i]}
+                onChangeText={(text) => handleOtpChange(text, i)}
+                onKeyPress={(e) => handleKeyPress(e, i)}
+                onFocus={() => setFocusedIndex(i)}
+                onBlur={() => setFocusedIndex(null)}
+                keyboardType="number-pad"
+                maxLength={1}
+                textAlign="center"
+                editable={!isVerifying}
+                textContentType="oneTimeCode"
+                caretHidden
               >
-                {resendTimer > 0
-                  ? `${resendTimer}${strings.phoneVerify.resendTimerSuffix}`
-                  : strings.phoneVerify.resendOtp}
-              </Text>
-            </TouchableOpacity>
-
-            {/* 확인 버튼 */}
-            <TouchableOpacity
-              style={[
-                styles.btnPrimary,
-                (isVerifying || otp.join('').length < OTP_LENGTH) &&
-                  styles.btnDisabled,
-              ]}
-              onPress={handleVerify}
-              disabled={isVerifying || otp.join('').length < OTP_LENGTH}
-              activeOpacity={0.85}
-            >
-              {isVerifying ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnPrimaryText}>
-                  {strings.phoneVerify.confirm}
+                <Text style={otp[i] ? styles.otpTextFilled : styles.otpText}>
+                  {otp[i]}
                 </Text>
-              )}
-            </TouchableOpacity>
+              </TextInput>
+            ))}
           </View>
-        )}
+        </View>
+
+        {/* ── 타이머 카드 ── */}
+        <View style={styles.timerCard}>
+          <View style={styles.timerRow}>
+            <Text style={styles.timerLabel}>재발송까지</Text>
+            <Text style={styles.timerValue}>{timerStr}</Text>
+          </View>
+          <View style={styles.progressBg}>
+            <View style={[styles.progressFill, { width: `${timerProgress * 100}%` as any }]} />
+          </View>
+        </View>
+
+        {/* ── 인증 확인 버튼 ── */}
+        <TouchableOpacity
+          style={[
+            styles.btnConfirm,
+            (isVerifying || otp.join('').length < OTP_LENGTH) && styles.btnDisabled,
+          ]}
+          onPress={handleVerify}
+          disabled={isVerifying || otp.join('').length < OTP_LENGTH}
+          activeOpacity={0.85}
+        >
+          {isVerifying ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.btnConfirmText}>인증 확인</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* ── 번호 오류 재입력 ── */}
+        <TouchableOpacity
+          style={styles.retryRow}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.retryText}>
+            번호 오류?{' '}
+            <Text style={styles.retryLink}>다시 입력하기</Text>
+          </Text>
+        </TouchableOpacity>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -341,32 +252,53 @@ export default function PhoneVerifyScreen() {
 const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#ffffff',
   },
-  container: {
+  scroll: {
     flex: 1,
   },
-  contentContainer: {
+  content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 56,
+    paddingTop: 24,
     paddingBottom: 40,
   },
 
-  // ── 타이틀 ──
+  // ── 스텝 인디케이터 ──
+  stepRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 20,
+  },
+  stepActive: {
+    width: 28,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#5B50E8',
+  },
+  stepInactive: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
+  },
+
+  // ── 제목 ──
   titleArea: {
-    marginBottom: 28,
+    marginBottom: 8,
   },
   title: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#0F172A',
-    marginBottom: 6,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#64748B',
-    lineHeight: 20,
+    marginTop: 4,
   },
 
   // ── 에러 ──
@@ -375,132 +307,156 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    marginBottom: 20,
+    marginTop: 12,
+    marginBottom: 4,
   },
   errorText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#991B1B',
     lineHeight: 18,
   },
 
-  // ── 전화번호 입력 ──
-  phoneSection: {
-    gap: 16,
-  },
-  phoneInputRow: {
-    flexDirection: 'row',
-    gap: 10,
+  // ── 아이콘 + 발송 안내 ──
+  iconWrap: {
     alignItems: 'center',
+    marginTop: 32,
+    marginBottom: 24,
+    gap: 6,
   },
-  countryCode: {
-    height: 52,
-    paddingHorizontal: 14,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#E6F1FB',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F1F5F9',
+    marginBottom: 4,
   },
-  countryCodeText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#334155',
+  iconEmoji: {
+    fontSize: 30,
   },
-  phoneInput: {
-    flex: 1,
-    height: 52,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    color: '#0F172A',
-    backgroundColor: '#fff',
+  sentText: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
   },
 
-  // ── OTP 입력 ──
+  // ── OTP 6칸 ──
   otpSection: {
-    gap: 24,
     alignItems: 'center',
+    gap: 10,
+    marginBottom: 0,
+  },
+  otpLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+    textAlign: 'center',
   },
   otpRow: {
     flexDirection: 'row',
-    gap: 10,
     justifyContent: 'center',
+    gap: 8,
   },
-
-  // OTP 박스 공통 — ui-screens.md 스펙 준수 (38×46px)
   otpBox: {
-    width: 38,
-    height: 46,
+    width: 46,
+    height: 54,
     borderWidth: 1.5,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 20,
-    fontWeight: '700',
   },
-  // 미입력: border #E2E8F0 + bg #F8FAFC
   otpBoxEmpty: {
     borderColor: '#E2E8F0',
     backgroundColor: '#F8FAFC',
   },
-  // 현재 입력 포커스: border #2176C7 + glow ring #B5D4F4
   otpBoxFocused: {
-    borderColor: '#2176C7',
-    backgroundColor: '#fff',
-    shadowColor: '#B5D4F4',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: '#5B50E8',
+    backgroundColor: '#F8F7FF',
   },
-  // 입력됨: border #378ADD + bg #E6F1FB
   otpBoxFilled: {
-    borderColor: '#378ADD',
-    backgroundColor: '#E6F1FB',
+    borderColor: '#5B50E8',
+    backgroundColor: '#EEEDF9',
   },
   otpText: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#0F172A',
   },
-  // 입력됨: color #0C447C
   otpTextFilled: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#0C447C',
+    color: '#3730A3',
   },
 
-  // ── 재전송 버튼 ──
-  resendBtn: {
-    paddingVertical: 8,
+  // ── 타이머 카드 ──
+  timerCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 20,
+    marginBottom: 20,
+    gap: 10,
   },
-  resendText: {
+  timerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timerLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  timerValue: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#2176C7',
+    fontWeight: '800',
+    color: '#5B50E8',
   },
-  resendTextDisabled: {
-    color: '#94A3B8',
+  progressBg: {
+    height: 5,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#5B50E8',
+    borderRadius: 100,
   },
 
-  // ── Primary 버튼 ──
-  btnPrimary: {
+  // ── 인증 확인 버튼 ──
+  btnConfirm: {
     width: '100%',
     height: 52,
-    backgroundColor: '#2176C7',
-    borderRadius: 10,
+    backgroundColor: '#5B50E8',
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 14,
   },
   btnDisabled: {
     opacity: 0.5,
   },
-  btnPrimaryText: {
-    fontSize: 16,
+  btnConfirmText: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#fff',
+  },
+
+  // ── 번호 오류 재입력 ──
+  retryRow: {
+    alignItems: 'center',
+  },
+  retryText: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  retryLink: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#5B50E8',
   },
 });
