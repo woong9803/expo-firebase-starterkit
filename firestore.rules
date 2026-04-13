@@ -237,12 +237,17 @@ service cloud.firestore {
       // 같은 학원 소속이면 읽기 가능
       allow read: if isAuthenticated()
                   && isAcademyMember(resource.data.academy_id);
-      // teacher, admin만 공지 작성·수정·삭제 가능
+      // teacher, admin만 공지 내용 수정·삭제 가능
       // rejected 학원은 쓰기 차단
       allow update, delete: if isAuthenticated()
                              && isAcademyMember(resource.data.academy_id)
                              && isStaff()
                              && isAcademyPendingOrActive(resource.data.academy_id);
+      // 학생·학부모: read_by 필드만 업데이트 가능 (공지 읽음 처리 전용)
+      // 다른 필드는 수정 불가 — hasOnly(['read_by'])로 제한
+      allow update: if isAuthenticated()
+                    && isAcademyMember(resource.data.academy_id)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read_by']);
       allow create: if isAuthenticated()
                     && isStaff()
                     && isMyAcademyPendingOrActive();

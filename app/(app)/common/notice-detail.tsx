@@ -68,8 +68,10 @@ export default function NoticeDetailScreen() {
         }
         setNotice({ id: snap.id, ...snap.data() } as Notice);
 
-        // 읽음 처리 — 실패해도 화면에 영향 없음
-        markNoticeRead(noticeId, user.uid).catch(() => {});
+        // 읽음 처리 — 실패해도 화면에 영향 없음 (Security Rules 오류 시 콘솔에만 기록)
+        markNoticeRead(noticeId, user.uid).catch((e) => {
+          console.warn('[NoticeDetail] 읽음 처리 실패:', e);
+        });
       } catch (e) {
         console.error('[NoticeDetail] 공지 조회 실패:', e);
         setError(true);
