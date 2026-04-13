@@ -200,6 +200,39 @@ export const strings = {
     noNotice: '공지가 없어요',
     write: '공지 작성',
     readCount: '명이 읽었어요',
+    // 공지 작성 화면
+    createTitle: '공지 작성',
+    titlePlaceholder: '제목을 입력해주세요',
+    contentPlaceholder: '내용을 입력해주세요',
+    importantToggle: '중요 공지로 설정',
+    saveButton: '공지 올리기',
+    deleteConfirm: '이 공지를 삭제할까요?',
+    noContent: '내용이 없어요',
+    // 읽음 현황
+    readStatus: '읽음 현황',
+    proFeatureName: '공지 읽음 현황',
+    readUsers: '읽은 사람',
+    unreadUsers: '아직 안 읽은 사람',
+    noReaders: '아직 아무도 읽지 않았어요',
+  },
+  // 알림 인박스
+  notification: {
+    inbox: '알림',
+    empty: '알림이 없어요',
+    markAllRead: '모두 읽음',
+  },
+  // 학부모 전용 문자열
+  parent: {
+    childHomework: '자녀 숙제',
+    noHomework: '숙제가 없어요',
+    switchChild: '자녀 전환',
+    childAttendance: '자녀 출결',
+    notSubmitted: '미제출',
+    submitted: '제출 완료',
+    feedbackPass: '통과',
+    feedbackRetry: '다시 해오기',
+    noChildren: '연동된 자녀가 없어요',
+    childDetail: '자녀 숙제 상세',
   },
   // 내정보 (학부모 프로필)
   profile: {
