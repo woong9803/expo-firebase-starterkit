@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, getDocs, updateDoc } from 'firebase/firestore';
+import { query, where, getDocs, updateDoc, Timestamp } from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { User, Class, AttendanceRecord } from '../../../types';
@@ -74,6 +74,14 @@ export default function AdminStudentsScreen() {
 
   // ── 초대코드 모달 (+ 추가) ──
   const [isInviteModalVisible, setIsInviteModalVisible] = useState(false);
+
+  // ── 학생 정보 수정 모달 ──
+  const [editTarget, setEditTarget]               = useState<User | null>(null);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editBirthDate, setEditBirthDate]         = useState('');
+  const [editGuardianPhone, setEditGuardianPhone] = useState('');
+  const [editEnrollDate, setEditEnrollDate]       = useState(''); // YYYY-MM-DD 문자열
+  const [isSavingEdit, setIsSavingEdit]           = useState(false);
 
   // ── 1. 학생 + 반 목록 로드 (활성/비활성 모두) ──
   useEffect(() => {
@@ -245,6 +253,68 @@ export default function AdminStudentsScreen() {
     );
   }, []);
 
+  // ── 정보 수정 모달 열기 ──
+  const openEditModal = useCallback((student: User) => {
+    setEditTarget(student);
+    // 기존 값을 입력창에 미리 채움
+    setEditBirthDate(student.birth_date ?? '');
+    setEditGuardianPhone(student.guardian_phone ?? '');
+    // enrollment_date Timestamp → YYYY-MM-DD 문자열 변환
+    if (student.enrollment_date) {
+      const d = student.enrollment_date.toDate();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      setEditEnrollDate(`${y}-${m}-${day}`);
+    } else {
+      setEditEnrollDate('');
+    }
+    setIsEditModalVisible(true);
+  }, []);
+
+  // ── 정보 수정 저장 ──
+  const handleSaveEdit = useCallback(async () => {
+    if (!editTarget) return;
+    setIsSavingEdit(true);
+    try {
+      // enrollment_date: YYYY-MM-DD 문자열 → Firestore Timestamp 변환
+      let enrollTimestamp: Timestamp | null = null;
+      if (editEnrollDate.trim()) {
+        const d = new Date(editEnrollDate.trim() + 'T00:00:00');
+        if (!isNaN(d.getTime())) {
+          enrollTimestamp = Timestamp.fromDate(d);
+        }
+      }
+
+      await updateDoc(Collections.user(editTarget.uid), {
+        birth_date:      editBirthDate.trim() || null,
+        guardian_phone:  editGuardianPhone.trim() || null,
+        enrollment_date: enrollTimestamp,
+      });
+
+      // 로컬 상태 동기화
+      setStudents(prev =>
+        prev.map(s =>
+          s.uid === editTarget.uid
+            ? {
+                ...s,
+                birth_date:      editBirthDate.trim() || null,
+                guardian_phone:  editGuardianPhone.trim() || null,
+                enrollment_date: enrollTimestamp,
+              }
+            : s
+        )
+      );
+      setIsEditModalVisible(false);
+      setEditTarget(null);
+    } catch (e) {
+      console.error('[AdminStudents] 정보 수정 실패:', e);
+      Alert.alert('오류', '저장에 실패했어요. 다시 시도해주세요.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }, [editTarget, editBirthDate, editGuardianPhone, editEnrollDate]);
+
   // ── 로딩 ──
   if (isLoading) {
     return (
@@ -374,6 +444,13 @@ export default function AdminStudentsScreen() {
                 {isActive && (
                   <View style={styles.actions}>
                     <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={() => openEditModal(item)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.editBtnText}>수정</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={styles.moveBtn}
                       onPress={() => { setMoveTargetStudent(item); setIsMoveModalVisible(true); }}
                       activeOpacity={0.8}
@@ -441,6 +518,77 @@ export default function AdminStudentsScreen() {
           <TouchableOpacity
             style={styles.modalCancelBtn}
             onPress={() => setIsMoveModalVisible(false)}
+          >
+            <Text style={styles.modalCancelText}>취소</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ── 학생 정보 수정 모달 ── */}
+      <Modal
+        visible={isEditModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsEditModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsEditModalVisible(false)}
+        />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>학생 정보 수정</Text>
+          <Text style={styles.modalSub}>{editTarget?.name} 학생의 법정 출석부 정보</Text>
+
+          {/* 생년월일 */}
+          <Text style={styles.editFieldLabel}>생년월일</Text>
+          <TextInput
+            style={styles.editInput}
+            placeholder="YYYY-MM-DD (예: 2015-03-15)"
+            placeholderTextColor="#94A3B8"
+            value={editBirthDate}
+            onChangeText={setEditBirthDate}
+            keyboardType="numbers-and-punctuation"
+          />
+
+          {/* 보호자 연락처 */}
+          <Text style={styles.editFieldLabel}>보호자 연락처</Text>
+          <TextInput
+            style={styles.editInput}
+            placeholder="01012345678"
+            placeholderTextColor="#94A3B8"
+            value={editGuardianPhone}
+            onChangeText={setEditGuardianPhone}
+            keyboardType="phone-pad"
+          />
+
+          {/* 수강 시작일 */}
+          <Text style={styles.editFieldLabel}>수강 시작일</Text>
+          <TextInput
+            style={styles.editInput}
+            placeholder="YYYY-MM-DD (예: 2026-03-01)"
+            placeholderTextColor="#94A3B8"
+            value={editEnrollDate}
+            onChangeText={setEditEnrollDate}
+            keyboardType="numbers-and-punctuation"
+          />
+
+          <TouchableOpacity
+            style={styles.editSaveBtn}
+            onPress={handleSaveEdit}
+            disabled={isSavingEdit}
+            activeOpacity={0.85}
+          >
+            {isSavingEdit
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.editSaveBtnText}>저장</Text>
+            }
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.modalCancelBtn}
+            onPress={() => setIsEditModalVisible(false)}
           >
             <Text style={styles.modalCancelText}>취소</Text>
           </TouchableOpacity>
@@ -597,6 +745,15 @@ const styles = StyleSheet.create({
 
   // 액션 버튼
   actions: { flexDirection: 'row', gap: 6 },
+  editBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+  },
+  editBtnText: { fontSize: 13, fontWeight: '600', color: '#1D4ED8' },
   moveBtn: {
     paddingVertical: 5,
     paddingHorizontal: 10,
@@ -679,6 +836,34 @@ const styles = StyleSheet.create({
     fontSize: 20, fontWeight: '800',
     color: '#5B50E8', letterSpacing: 3,
   },
+
+  // 정보 수정 모달 내 필드
+  editFieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  editInput: {
+    backgroundColor: '#F1F0FB',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: '#0F172A',
+  },
+  editSaveBtn: {
+    marginTop: 20,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#5B50E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSaveBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 
   // 모달 취소 버튼
   modalCancelBtn: {

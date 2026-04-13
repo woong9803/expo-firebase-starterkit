@@ -11,7 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { arrayUnion, updateDoc, getDoc } from 'firebase/firestore';
+import { arrayUnion, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import {
   validateAcademyCode,
   validateInviteCode,
@@ -35,6 +35,9 @@ export default function CodeInputScreen() {
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 학생 전용 — 생년월일 입력
+  const [birthDate, setBirthDate] = useState('');
 
   // ─── 미리보기 (선생님: 학원명, 학생: 반명) ──────────────────────────
   const [preview, setPreview] = useState<{ name: string; info: string } | null>(null);
@@ -159,27 +162,46 @@ export default function CodeInputScreen() {
         const result = await validateInviteCode(code.trim());
         if (!result) { handleFailure(strings.errors.invalidCode); return; }
         const linkCode = generateLinkCode();
+        // 생년월일이 입력된 경우에만 birth_date 저장 (선택 항목)
         await updateDoc(Collections.user(user.uid), {
           role: 'student' as UserRole,
           class_id: result.classId,
           academy_id: result.academyId,
           link_code: linkCode,
+          enrollment_date: serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
+          ...(birthDate.trim() ? { birth_date: birthDate.trim() } : {}),
         });
 
       } else if (role === 'parent') {
         const studentUid = await validateLinkCode(code.trim());
         if (!studentUid) { handleFailure(strings.errors.invalidCode); return; }
 
-        const studentSnap = await getDoc(Collections.user(studentUid));
+        const [studentSnap, parentSnap] = await Promise.all([
+          getDoc(Collections.user(studentUid)),
+          getDoc(Collections.user(user.uid)),
+        ]);
+
         const studentAcademyId = studentSnap.exists()
           ? (studentSnap.data().academy_id as string)
           : '';
 
+        // 학부모 문서 업데이트
         await updateDoc(Collections.user(user.uid), {
           role: 'parent' as UserRole,
           children: arrayUnion(studentUid),
           academy_id: studentAcademyId,
         });
+
+        // 학부모의 phone_number를 학생의 guardian_phone에 자동 기록
+        // 법정 출석부 엑셀 내보내기 시 보호자 연락처로 사용
+        const parentPhone = parentSnap.exists()
+          ? (parentSnap.data().phone_number as string | undefined)
+          : undefined;
+        if (parentPhone) {
+          await updateDoc(Collections.user(studentUid), {
+            guardian_phone: parentPhone,
+          });
+        }
       }
 
       const freshSnap = await getDoc(Collections.user(user.uid));
@@ -293,6 +315,27 @@ export default function CodeInputScreen() {
               <Text style={styles.previewName}>{preview.name}</Text>
               <Text style={styles.previewInfo}>{getJoinLabel()}</Text>
             </View>
+          </View>
+        )}
+
+        {/* ── 학생 전용: 생년월일 입력 ── */}
+        {role === 'student' && (
+          <View style={styles.birthDateSection}>
+            <Text style={styles.birthDateLabel}>
+              생년월일 <Text style={styles.birthDateOptional}>(선택)</Text>
+            </Text>
+            <TextInput
+              style={styles.birthDateInput}
+              placeholder="YYYY-MM-DD (예: 2015-03-15)"
+              placeholderTextColor="#94A3B8"
+              value={birthDate}
+              onChangeText={setBirthDate}
+              keyboardType="numbers-and-punctuation"
+              editable={!isLoading}
+            />
+            <Text style={styles.birthDateHint}>
+              법정 출석부 작성에 사용돼요. 나중에 원장님이 입력할 수도 있어요.
+            </Text>
           </View>
         )}
 
@@ -486,6 +529,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
     marginTop: 2,
+  },
+
+  // ── 학생 전용: 생년월일 입력 ──
+  birthDateSection: {
+    marginTop: 16,
+    gap: 6,
+  },
+  birthDateLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  birthDateOptional: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#94A3B8',
+  },
+  birthDateInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    color: '#0F172A',
+  },
+  birthDateHint: {
+    fontSize: 12,
+    color: '#94A3B8',
+    lineHeight: 17,
   },
 
   // ── 버튼 ──
