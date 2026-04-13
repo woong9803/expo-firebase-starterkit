@@ -154,10 +154,21 @@ export default function StudentHomeworkScreen() {
   );
 
   // ── 합친 데이터 ─────────────────────────────────────────────────────────────
-  const items: HomeworkWithSubmission[] = useMemo(
-    () => homeworks.map(hw => ({ ...hw, submission: submissionMap[hw.id] ?? null })),
-    [homeworks, submissionMap]
-  );
+  // 마감일이 오늘 기준 7일 이전이면 자동 제외 (마감 당일 포함 7일간 표시)
+  const items: HomeworkWithSubmission[] = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 7); // 오늘 - 7일 (해당일 포함)
+
+    return homeworks
+      .filter(hw => {
+        const due = (hw.due_date as any).toDate();
+        due.setHours(0, 0, 0, 0);
+        return due >= cutoff; // 마감일이 cutoff 이상이면 표시
+      })
+      .map(hw => ({ ...hw, submission: submissionMap[hw.id] ?? null }));
+  }, [homeworks, submissionMap]);
 
   // ── 탭별 필터 ──────────────────────────────────────────────────────────────
   const tabItems = useMemo(() => {

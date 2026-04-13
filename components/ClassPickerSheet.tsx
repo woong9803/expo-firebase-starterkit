@@ -29,6 +29,8 @@ interface SingleProps {
   classes: Class[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onSelectAll?: () => void;    // "전체" 항목 선택 시 콜백 (showAllOption과 함께 사용)
+  showAllOption?: boolean;     // 목록 최상단에 "전체" 항목 추가 여부
   placeholder?: string;
 }
 
@@ -53,6 +55,8 @@ export default function ClassPickerSheet(props: Props) {
   // ── 트리거에 표시할 라벨 ──
   function triggerLabel(): string {
     if (props.mode === 'single') {
+      // showAllOption 사용 중이고 selectedId가 없으면 "전체" 표시
+      if (props.showAllOption && props.selectedId === null) return '전체';
       const cls = props.classes.find((c) => c.id === props.selectedId);
       return cls ? cls.name : (props.placeholder ?? '반 선택');
     }
@@ -66,9 +70,10 @@ export default function ClassPickerSheet(props: Props) {
   }
 
   // 선택 완료 여부 (트리거 색상 구분용)
+  // showAllOption 모드에서는 항상 활성 상태로 표시 (전체/특정반 둘 다 선택된 상태)
   const isActive =
     props.mode === 'single'
-      ? !!props.selectedId
+      ? (props.showAllOption ? true : !!props.selectedId)
       : props.targetAll || props.selectedIds.length > 0;
 
   // ── multi 모드: 개별 반 항목 토글 ──
@@ -134,6 +139,28 @@ export default function ClassPickerSheet(props: Props) {
               bounces={false}
               contentContainerStyle={styles.listContent}
             >
+              {/* single 모드에서 showAllOption이 true일 때 "전체" 항목 표시 */}
+              {props.mode === 'single' && props.showAllOption && (
+                <TouchableOpacity
+                  style={styles.item}
+                  onPress={() => {
+                    (props as SingleProps).onSelectAll?.();
+                    setOpen(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.itemLeft}>
+                    <View style={[styles.itemDot, props.selectedId === null && styles.itemDotActive]} />
+                    <Text style={[styles.itemText, props.selectedId === null && styles.itemTextActive]}>
+                      전체
+                    </Text>
+                  </View>
+                  {props.selectedId === null && (
+                    <Ionicons name="checkmark" size={20} color="#5B50E8" />
+                  )}
+                </TouchableOpacity>
+              )}
+
               {/* multi 모드에서만 "전체 반" 옵션 표시 */}
               {props.mode === 'multi' && (
                 <TouchableOpacity

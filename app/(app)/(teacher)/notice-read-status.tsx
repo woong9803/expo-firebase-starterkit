@@ -3,11 +3,10 @@
  *
  * router.params: noticeId (string)
  * - Pro 플랜이 아니면 ProUpgradeSheet 표시 후 뒤로 이동
- * - 학생 + 학부모 대상으로 읽음/미읽음 사용자 목록 표시
- * - ReadProgressBar로 전체 진행률 시각화
+ * - 반 필터 칩으로 특정 반 학생·학부모의 읽음/미읽음 확인
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,43 +18,33 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { getDocs, query, where } from 'firebase/firestore';
 
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useProCheck } from '../../../hooks/useProCheck';
 import { getNoticeReadUsers } from '../../../lib/notice';
-import ReadProgressBar from '../../../components/ReadProgressBar';
+import { Collections } from '../../../lib/firestore';
+import ClassPickerSheet from '../../../components/ClassPickerSheet';
 import ProUpgradeSheet from '../../../components/ProUpgradeSheet';
 import { strings } from '../../../constants/strings';
-import type { User } from '../../../types';
+import type { User, Class } from '../../../types';
 
 // ─────────────────────────────────────────────────────────────
 // 사용자 행 컴포넌트
 // ─────────────────────────────────────────────────────────────
 
-interface UserRowProps {
-  user: User;
-  isRead: boolean;
-}
-
-function UserRow({ user, isRead }: UserRowProps) {
+function UserRow({ user, isRead }: { user: User; isRead: boolean }) {
   return (
     <View style={styles.userRow}>
-      {/* 아바타 영역 */}
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>
-          {user.name.slice(0, 1)}
-        </Text>
+        <Text style={styles.avatarText}>{user.name.slice(0, 1)}</Text>
       </View>
-
-      {/* 이름 + 역할 */}
       <View style={styles.userInfo}>
         <Text style={styles.userName}>{user.name}</Text>
         <Text style={styles.userRole}>
           {user.role === 'student' ? strings.roles.student : strings.roles.parent}
         </Text>
       </View>
-
-      {/* 읽음 여부 뱃지 */}
       <View style={[styles.badge, isRead ? styles.badgeRead : styles.badgeUnread]}>
         <Text style={[styles.badgeText, isRead ? styles.badgeTextRead : styles.badgeTextUnread]}>
           {isRead ? '읽음' : '미읽음'}
@@ -82,12 +71,29 @@ export default function TeacherNoticeReadStatusScreen() {
   const [isLoading, setIsLoading]     = useState(true);
   const [error, setError]             = useState<string | null>(null);
 
-  // ── Pro 체크 — academy 로드 후 판단 ─────────────────────────
+  // ── 담당 반 목록 + 선택된 반 ──
+  const [classes, setClasses]           = useState<Class[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null); // null = 전체
+
+  // ── Pro 체크 ──
   useEffect(() => {
     if (isLoaded && !isPro) showUpgradeSheet();
+  // showUpgradeSheet는 useProCheck 내부에서 useCallback으로 안정화됨
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isPro]);
 
-  // ── 읽음 현황 조회 ───────────────────────────────────────────
+  // ── 담당반 로드 ──
+  useEffect(() => {
+    if (!user?.assigned_class_ids?.length) return;
+
+    getDocs(
+      query(Collections.classes(), where('__name__', 'in', user.assigned_class_ids.slice(0, 10)))
+    ).then((snap) => {
+      setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
+    }).catch((e) => console.warn('[NoticeReadStatus] 반 로드 오류:', e));
+  }, [user?.assigned_class_ids]);
+
+  // ── 읽음 현황 조회 ──
   useEffect(() => {
     if (!isPro || !noticeId || !user?.academy_id) return;
 
@@ -106,12 +112,32 @@ export default function TeacherNoticeReadStatusScreen() {
       .finally(() => setIsLoading(false));
   }, [isPro, noticeId, user?.academy_id]);
 
-  const totalCount = readUsers.length + unreadUsers.length;
+  // ── 반 필터링 ──
+  // 선택 반의 학생 uid 세트 (부모 필터링에 사용)
+  const studentUidsInClass = useMemo(() => {
+    if (!selectedClassId) return null;
+    const allStudents = [...readUsers, ...unreadUsers].filter(
+      (u) => u.role === 'student' && u.class_id === selectedClassId
+    );
+    return new Set(allStudents.map((u) => u.uid));
+  }, [selectedClassId, readUsers, unreadUsers]);
 
-  // ── 목록 데이터: 읽은 사람 → 미읽음 순 ──────────────────────
+  function filterByClass(users: User[]): User[] {
+    if (!selectedClassId || !studentUidsInClass) return users;
+    return users.filter((u) => {
+      if (u.role === 'student') return u.class_id === selectedClassId;
+      if (u.role === 'parent')  return u.children?.some((cid) => studentUidsInClass.has(cid));
+      return false;
+    });
+  }
+
+  const filteredRead   = filterByClass(readUsers);
+  const filteredUnread = filterByClass(unreadUsers);
+
+  // FlatList 데이터: 읽은 사람 → 미읽음 순
   const listData: Array<{ item: User; isRead: boolean }> = [
-    ...readUsers.map((u) => ({ item: u, isRead: true })),
-    ...unreadUsers.map((u) => ({ item: u, isRead: false })),
+    ...filteredRead.map((u) => ({ item: u, isRead: true })),
+    ...filteredUnread.map((u) => ({ item: u, isRead: false })),
   ];
 
   return (
@@ -132,6 +158,20 @@ export default function TeacherNoticeReadStatusScreen() {
         <View style={styles.headerRight} />
       </View>
 
+      {/* ── 반 필터 드롭다운 ── */}
+      {!isLoading && !error && classes.length > 0 && (
+        <View style={styles.filterBar}>
+          <ClassPickerSheet
+            mode="single"
+            classes={classes}
+            selectedId={selectedClassId}
+            showAllOption
+            onSelectAll={() => setSelectedClassId(null)}
+            onSelect={(id) => setSelectedClassId(id)}
+          />
+        </View>
+      )}
+
       {/* ── 로딩 ── */}
       {isLoading && (
         <View style={styles.centerBox}>
@@ -146,59 +186,46 @@ export default function TeacherNoticeReadStatusScreen() {
         </View>
       )}
 
-      {/* ── 본문 ── */}
+      {/* ── 목록 ── */}
       {!isLoading && !error && (
-        <>
-          {/* 프로그레스 요약 카드 */}
-          <View style={styles.summaryCard}>
-            <ReadProgressBar
-              readCount={readUsers.length}
-              totalCount={totalCount}
-            />
-          </View>
+        <FlatList
+          data={listData}
+          keyExtractor={(d) => `${d.item.uid}-${d.isRead}`}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            filteredRead.length > 0 ? (
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>
+                  {strings.notice.readUsers} ({filteredRead.length})
+                </Text>
+              </View>
+            ) : null
+          }
+          renderItem={({ item: d, index }) => {
+            // 미읽음 섹션 헤더: 처음 미읽음 항목 앞에 삽입
+            const isFirstUnread =
+              !d.isRead && (index === 0 || listData[index - 1].isRead);
 
-          {/* 섹션 헤더: 읽은 사람 */}
-          {readUsers.length > 0 && (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
-                {strings.notice.readUsers} ({readUsers.length})
-              </Text>
-            </View>
-          )}
-
-          {/* 읽은 사람 없을 때 안내 */}
-          {readUsers.length === 0 && !isLoading && (
+            return (
+              <>
+                {isFirstUnread && filteredUnread.length > 0 && (
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>
+                      {strings.notice.unreadUsers} ({filteredUnread.length})
+                    </Text>
+                  </View>
+                )}
+                <UserRow user={d.item} isRead={d.isRead} />
+              </>
+            );
+          }}
+          ListEmptyComponent={
             <View style={styles.emptyBox}>
               <Text style={styles.emptyText}>{strings.notice.noReaders}</Text>
             </View>
-          )}
-
-          <FlatList
-            data={listData}
-            keyExtractor={(d) => `${d.item.uid}-${d.isRead}`}
-            renderItem={({ item: d, index }) => {
-              // 미읽음 섹션 헤더 삽입
-              const isFirstUnread =
-                !d.isRead &&
-                (index === 0 || listData[index - 1].isRead);
-
-              return (
-                <>
-                  {isFirstUnread && unreadUsers.length > 0 && (
-                    <View style={styles.sectionHeader}>
-                      <Text style={styles.sectionTitle}>
-                        {strings.notice.unreadUsers} ({unreadUsers.length})
-                      </Text>
-                    </View>
-                  )}
-                  <UserRow user={d.item} isRead={d.isRead} />
-                </>
-              );
-            }}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          />
-        </>
+          }
+        />
       )}
 
       {/* ── Pro 업그레이드 시트 ── */}
@@ -219,10 +246,7 @@ export default function TeacherNoticeReadStatusScreen() {
 // ─────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
 
   // ── 헤더 ──
   header: {
@@ -232,11 +256,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
-    backgroundColor: '#ffffff',
   },
-  backButton: {
-    padding: 4,
-  },
+  backButton: { padding: 4 },
   headerTitle: {
     flex: 1,
     fontSize: 18,
@@ -244,32 +265,19 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     marginLeft: 8,
   },
-  headerRight: {
-    width: 30,
+  headerRight: { width: 30 },
+
+  // ── 반 필터 바 ──
+  filterBar: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
 
   // ── 중앙 배치 (로딩/오류) ──
-  centerBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#EF4444',
-    textAlign: 'center',
-    paddingHorizontal: 24,
-  },
-
-  // ── 프로그레스 요약 카드 ──
-  summaryCard: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 14,
-  },
+  centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  errorText: { fontSize: 14, color: '#EF4444', textAlign: 'center', paddingHorizontal: 24 },
 
   // ── 섹션 헤더 ──
   sectionHeader: {
@@ -279,26 +287,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
-  },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#64748B' },
 
   // ── 빈 상태 ──
-  emptyBox: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#94A3B8',
-  },
+  emptyBox: { padding: 48, alignItems: 'center' },
+  emptyText: { fontSize: 14, color: '#94A3B8' },
 
   // ── 목록 ──
-  listContent: {
-    paddingBottom: 32,
-  },
+  listContent: { paddingBottom: 32 },
 
   // ── 사용자 행 ──
   userRow: {
@@ -308,56 +304,23 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-    backgroundColor: '#ffffff',
   },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 38, height: 38, borderRadius: 19,
     backgroundColor: '#E6F1FB',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     marginRight: 12,
   },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#5B50E8',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-  userRole: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
+  avatarText: { fontSize: 16, fontWeight: '700', color: '#5B50E8' },
+  userInfo: { flex: 1 },
+  userName: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  userRole: { fontSize: 12, color: '#64748B', marginTop: 2 },
 
   // ── 읽음/미읽음 뱃지 ──
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  badgeRead: {
-    backgroundColor: '#ECFDF5',
-  },
-  badgeUnread: {
-    backgroundColor: '#F1F5F9',
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  badgeTextRead: {
-    color: '#065F46',
-  },
-  badgeTextUnread: {
-    color: '#64748B',
-  },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  badgeRead: { backgroundColor: '#ECFDF5' },
+  badgeUnread: { backgroundColor: '#F1F5F9' },
+  badgeText: { fontSize: 12, fontWeight: '600' },
+  badgeTextRead: { color: '#065F46' },
+  badgeTextUnread: { color: '#64748B' },
 });

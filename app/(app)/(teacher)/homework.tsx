@@ -124,9 +124,21 @@ export default function TeacherHomeworkScreen() {
   }, [allClassIds.join(','), setHomeworks, setLoading]);
 
   // 선택된 반으로 필터링된 숙제 목록
+  // 마감일이 오늘 기준 7일 이전이면 자동 제외 (마감 당일 포함 7일간 표시)
   const filteredHomeworks = useMemo(() => {
-    if (!selectedClassId) return homeworks;
-    return homeworks.filter(hw => hw.class_id === selectedClassId);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 7); // 오늘 - 7일 (해당일 포함)
+
+    const visible = homeworks.filter(hw => {
+      const due = (hw.due_date as any).toDate();
+      due.setHours(0, 0, 0, 0);
+      return due >= cutoff; // 마감일이 cutoff 이상이면 표시
+    });
+
+    if (!selectedClassId) return visible;
+    return visible.filter(hw => hw.class_id === selectedClassId);
   }, [homeworks, selectedClassId]);
 
   // 선택된 반 이름 (드롭다운 버튼 텍스트)

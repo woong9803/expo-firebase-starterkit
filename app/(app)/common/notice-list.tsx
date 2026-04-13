@@ -79,7 +79,8 @@ export default function NoticeListScreen({ showCreateButton, onCreatePress }: Pr
 
     // cleanup — 화면 언마운트 시 구독 해제
     return () => unsub();
-  }, [user?.academy_id]);
+  // user.class_id(반 배정 변경)·role 변화 시 구독 갱신이 필요하므로 의존성 포함
+  }, [user?.academy_id, user?.class_id, user?.role]);
 
   // ── 중요 공지 상단 정렬 (subscribeNotices가 이미 is_important desc로 정렬하지만
   //    클라이언트에서 한 번 더 보장) ──

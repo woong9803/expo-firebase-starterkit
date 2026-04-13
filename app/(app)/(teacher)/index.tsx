@@ -64,9 +64,6 @@ export default function TeacherHomeScreen() {
   // 숙제 검사 현황
   const [hwStats, setHwStats] = useState<HwStat[]>([]);
 
-  // 전체 학생 수 (공지 읽음률 계산용)
-  const [totalStudents, setTotalStudents] = useState(0);
-
   useEffect(() => {
     if (!user?.uid || !user?.academy_id) return;
 
@@ -126,13 +123,10 @@ export default function TeacherHomeScreen() {
           );
 
           const statsMap: Record<string, ClassStat> = {};
-          let total = 0;
           statsResults.forEach(({ classId, studentCount, presentCount }) => {
             statsMap[classId] = { studentCount, presentCount };
-            total += studentCount;
           });
           setClassStats(statsMap);
-          setTotalStudents(total);
 
           // ③ 이번달 출석률 계산 (1일~오늘까지 records 합산)
           const now = new Date();
@@ -389,23 +383,6 @@ export default function TeacherHomeScreen() {
                   </View>
                 )}
                 <Text style={styles.noticeTitle}>{n.title}</Text>
-                <View style={styles.noticeProgressRow}>
-                  {/* 읽음률 = read_by 명수 / 전체 학생 수 */}
-                  {(() => {
-                    const readCount = n.read_by?.length ?? 0;
-                    const rate = totalStudents > 0
-                      ? Math.round((readCount / totalStudents) * 100)
-                      : 0;
-                    return (
-                      <>
-                        <View style={styles.noticeBarTrack}>
-                          <View style={[styles.noticeBarFill, { width: `${rate}%` as any }]} />
-                        </View>
-                        <Text style={styles.noticeReadCount}>{readCount}/{totalStudents}명</Text>
-                      </>
-                    );
-                  })()}
-                </View>
               </View>
             </View>
           ))
@@ -549,14 +526,4 @@ const styles = StyleSheet.create({
   },
   importantChipText: { fontSize: 11, fontWeight: '700', color: '#fff' },
   noticeTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  noticeProgressRow: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: 8, marginTop: 8,
-  },
-  noticeBarTrack: {
-    flex: 1, height: 4, backgroundColor: '#E2E8F0',
-    borderRadius: 2, overflow: 'hidden',
-  },
-  noticeBarFill: { height: '100%', backgroundColor: '#5B50E8', borderRadius: 2 },
-  noticeReadCount: { fontSize: 11, color: '#64748B' },
 });

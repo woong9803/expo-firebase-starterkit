@@ -143,18 +143,22 @@ export function subscribeNotices(
 
 /**
  * 특정 공지의 읽음/미읽음 사용자 목록을 반환한다.
- * 학생 + 학부모 역할을 대상으로 집계 (선생님/admin 제외).
+ * 공지의 target_roles / target_class_ids를 반영해 실제 수신 대상자만 집계한다.
+ * (선생님/admin 제외)
  */
 export async function getNoticeReadUsers(
   noticeId: string,
   academyId: string
 ): Promise<NoticeReadStatus> {
-  // 1) 공지 문서에서 read_by 배열 조회
+  // 1) 공지 문서에서 read_by 배열 + 대상 설정 조회
   const noticeSnap = await getDoc(Collections.notice(noticeId));
   if (!noticeSnap.exists()) {
     return { readUsers: [], unreadUsers: [] };
   }
-  const readBy: string[] = noticeSnap.data().read_by ?? [];
+  const noticeData = noticeSnap.data() as Notice;
+  const readBy: string[] = noticeData.read_by ?? [];
+  const targetRoles: string[]    = noticeData.target_roles     ?? [];     // 빈 배열 = 모두
+  const targetClassIds: string[] = noticeData.target_class_ids ?? [];     // 빈 배열 = 전체 반
 
   // 2) 해당 학원의 학생 + 학부모 전체 목록 조회
   const usersSnap = await getDocs(
@@ -165,11 +169,34 @@ export async function getNoticeReadUsers(
       where('is_active', '==', true),
     )
   );
-  const allUsers = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() } as User));
+  let allUsers = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() } as User));
 
-  // 3) read_by 배열 기준으로 읽음/미읽음 분리
+  // 3) target_roles 필터 — 빈 배열이면 모두 포함
+  if (targetRoles.length > 0) {
+    allUsers = allUsers.filter((u) => targetRoles.includes(u.role));
+  }
+
+  // 4) target_class_ids 필터 — 빈 배열이면 전체 반 포함
+  //    학생: class_id 직접 비교
+  //    학부모: 자녀(children 배열)가 해당 반에 속하는지 확인
+  if (targetClassIds.length > 0) {
+    // 대상 반에 속한 학생 uid 세트를 미리 구성
+    const studentUidsInTarget = new Set(
+      allUsers
+        .filter((u) => u.role === 'student' && targetClassIds.includes(u.class_id ?? ''))
+        .map((u) => u.uid)
+    );
+
+    allUsers = allUsers.filter((u) => {
+      if (u.role === 'student') return targetClassIds.includes(u.class_id ?? '');
+      if (u.role === 'parent')  return u.children?.some((cid) => studentUidsInTarget.has(cid));
+      return false;
+    });
+  }
+
+  // 5) read_by 배열 기준으로 읽음/미읽음 분리
   const readSet = new Set(readBy);
-  const readUsers = allUsers.filter((u) => readSet.has(u.uid));
+  const readUsers   = allUsers.filter((u) => readSet.has(u.uid));
   const unreadUsers = allUsers.filter((u) => !readSet.has(u.uid));
 
   return { readUsers, unreadUsers };
