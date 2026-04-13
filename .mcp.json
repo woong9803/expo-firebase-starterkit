@@ -1,6 +1,10 @@
 {
   "ENABLE_TOOL_SEARCH": "auto",
   "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    },
     "github": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],

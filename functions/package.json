@@ -1,6 +1,6 @@
 {
-  "name": "eduonepass-functions",
-  "description": "EduOnePass Cloud Functions",
+  "name": "dev-app-first-functions",
+  "description": "dev-app-first Cloud Functions",
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
