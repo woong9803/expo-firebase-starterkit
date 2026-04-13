@@ -44,6 +44,15 @@ export default function AdminTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="homework"
+        options={{
+          title: '숙제',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'book' : 'book-outline'} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="attendance"
         options={{
           title: '출결',
@@ -80,7 +89,9 @@ export default function AdminTabLayout() {
         }}
       />
       {/* 탭바에 표시하지 않는 화면 */}
-      <Tabs.Screen name="teachers" options={{ href: null }} />
+      <Tabs.Screen name="teachers"         options={{ href: null }} />
+      <Tabs.Screen name="homework-create"  options={{ href: null }} />
+      <Tabs.Screen name="homework-review"  options={{ href: null }} />
     </Tabs>
   );
 }
@@ -95,7 +106,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
     marginTop: 2,
   },
