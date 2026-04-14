@@ -5,6 +5,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   query, where, getDocs, getCountFromServer,
   orderBy, limit, documentId,
@@ -45,6 +46,7 @@ function getTodayStr(): string {
 
 export default function TeacherHomeScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
 
@@ -223,7 +225,7 @@ export default function TeacherHomeScreen() {
         colors={['#7C3AED', '#5B50E8']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.headerCard}
+        style={[styles.headerCard, { marginTop: top + 8 }]}
       >
         {/* 상단 Row */}
         <View style={styles.headerTop}>
@@ -366,25 +368,40 @@ export default function TeacherHomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>📢 최근 공지</Text>
-          <TouchableOpacity><Text style={styles.sectionLink}>작성</Text></TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push('/common/notice-list')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sectionLink}>전체보기</Text>
+          </TouchableOpacity>
         </View>
 
         {notices.length === 0 ? (
           <Text style={styles.emptyText}>등록된 공지가 없어요</Text>
         ) : (
           notices.map((n) => (
-            <View key={n.id} style={styles.noticeCard}>
-              {/* 좌측 세로바 */}
-              <View style={[styles.noticeBar, { backgroundColor: n.is_important ? '#EF4444' : '#CBD5E1' }]} />
-              <View style={styles.noticeBody}>
-                {n.is_important && (
-                  <View style={styles.importantChip}>
-                    <Text style={styles.importantChipText}>중요</Text>
-                  </View>
-                )}
-                <Text style={styles.noticeTitle}>{n.title}</Text>
+            <TouchableOpacity
+              key={n.id}
+              style={[styles.noticeCard, n.is_important ? styles.noticeCardImportant : styles.noticeCardNormal]}
+              onPress={() => router.push(`/common/notice-detail?noticeId=${n.id}`)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.noticeRow}>
+                {/* 좌측 세로바 */}
+                <View style={[styles.noticeBar, n.is_important ? styles.noticeBarImportant : styles.noticeBarNormal]} />
+                <View style={styles.noticeContent}>
+                  {n.is_important && (
+                    <View style={styles.importantChip}>
+                      <Text style={styles.importantChipText}>중요</Text>
+                    </View>
+                  )}
+                  <Text style={styles.noticeTitle}>{n.title}</Text>
+                  <Text style={styles.noticeDate}>
+                    {(n.created_at as any).toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                  </Text>
+                </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </View>
@@ -400,11 +417,11 @@ const styles = StyleSheet.create({
 
   // ── 그라데이션 헤더 ──
   headerCard: {
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    borderRadius: 28,
     paddingHorizontal: 20,
-    paddingTop: 56,
+    paddingTop: 20,
     paddingBottom: 20,
+    marginHorizontal: 12,
   },
   headerTop: {
     flexDirection: 'row',
@@ -508,17 +525,14 @@ const styles = StyleSheet.create({
   chipRedText: { fontSize: 11, fontWeight: '700', color: '#991B1B' },
 
   // ── 공지 카드 ──
-  noticeCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-  },
-  noticeBar: { width: 2.5, borderRadius: 2, marginRight: 12 },
-  noticeBody: { flex: 1 },
+  noticeCard: { borderRadius: 14, marginBottom: 8, overflow: 'hidden' },
+  noticeCardImportant: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' },
+  noticeCardNormal: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' },
+  noticeRow: { flexDirection: 'row' },
+  noticeBar: { width: 3 },
+  noticeBarImportant: { backgroundColor: '#EF4444' },
+  noticeBarNormal: { backgroundColor: '#CBD5E1' },
+  noticeContent: { flex: 1, padding: 14 },
   importantChip: {
     backgroundColor: '#EF4444', borderRadius: 6,
     paddingVertical: 2, paddingHorizontal: 7,
@@ -526,4 +540,5 @@ const styles = StyleSheet.create({
   },
   importantChipText: { fontSize: 11, fontWeight: '700', color: '#fff' },
   noticeTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  noticeDate: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
 });

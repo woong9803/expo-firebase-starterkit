@@ -39,7 +39,9 @@ import type { User, Homework, Submission } from '../../../types';
 
 interface HomeworkWithStatus extends Homework {
   submitted: boolean;
+  subStatus: 'submitted' | 'checked' | null; // Firestore submission.status
   feedback: '👍' | '💧' | null;
+  feedback_comment?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -61,52 +63,72 @@ interface HwCardProps {
 }
 
 function HwCard({ hw, onPress }: HwCardProps) {
+  // 마감 초과 여부 (오늘 자정 기준)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = hw.due_date.toDate();
+  due.setHours(0, 0, 0, 0);
+  const isPastDue = due.getTime() < today.getTime();
+
+  // 5가지 상태 분류
+  const isRetry    = hw.subStatus === 'checked' && hw.feedback === '💧';
+  const isDone     = hw.subStatus === 'checked' && hw.feedback !== '💧';
+  const isWaiting  = hw.subStatus === 'submitted'; // 제출 후 검사 전
+  const isOverdue  = !isRetry && !isDone && !isWaiting && isPastDue;  // 마감 초과 미제출
+  // 위 넷 모두 false면 마감 전 미제출 (중립)
+
+  const cardStyle = isRetry   ? styles.cardRetry   :
+                    isDone    ? styles.cardDone     :
+                    isWaiting ? styles.cardWaiting  :
+                    isOverdue ? styles.cardMissing  :
+                    styles.card; // 마감 전 미제출 — 기본 흰 카드
+
+  const barStyle  = isRetry   ? styles.cardBarRetry   :
+                    isDone    ? styles.cardBarDone     :
+                    isWaiting ? styles.cardBarWaiting  :
+                    isOverdue ? styles.cardBarMissing  :
+                    styles.cardBarPending; // 마감 전 — 회색
+
+  const badgeStyle     = isRetry   ? styles.badgeRetry   :
+                         isDone    ? styles.badgeDone     :
+                         isWaiting ? styles.badgeWaiting  :
+                         isOverdue ? styles.badgeMissing  :
+                         styles.badgePending; // 마감 전 — 회색
+
+  const badgeTextStyle = isRetry   ? styles.badgeRetryText   :
+                         isDone    ? styles.badgeDoneText     :
+                         isWaiting ? styles.badgeWaitingText  :
+                         isOverdue ? styles.badgeMissingText  :
+                         styles.badgePendingText;
+
+  const badgeLabel = isRetry   ? strings.parent.feedbackRetry :
+                     isDone    ? strings.parent.done           :
+                     isWaiting ? strings.parent.submitted      :
+                     isOverdue ? strings.parent.notSubmitted   :
+                     '미제출';
+
   return (
     <TouchableOpacity
-      style={[
-        styles.card,
-        hw.submitted ? styles.cardDone : styles.cardPending,
-      ]}
+      style={[styles.card, cardStyle]}
       onPress={onPress}
       activeOpacity={0.75}
     >
-      {/* 제출 상태 좌측 세로바 */}
-      <View style={[styles.cardBar, hw.submitted ? styles.cardBarDone : styles.cardBarPending]} />
+      {/* 좌측 세로바 */}
+      <View style={[styles.cardBar, barStyle]} />
 
       <View style={styles.cardContent}>
         <Text style={styles.cardTitle} numberOfLines={1}>{hw.title}</Text>
         <Text style={styles.cardDue}>{formatDueDate(hw)}</Text>
+        {/* 💧 상태일 때 선생님 코멘트 미리보기 */}
+        {isRetry && !!hw.feedback_comment && (
+          <Text style={styles.cardComment} numberOfLines={1}>{hw.feedback_comment}</Text>
+        )}
       </View>
 
-      {/* 피드백 칩 */}
-      {hw.feedback && (
-        <View style={[
-          styles.feedbackChip,
-          hw.feedback === '👍' ? styles.feedbackPass : styles.feedbackRetry,
-        ]}>
-          <Text style={[
-            styles.feedbackText,
-            hw.feedback === '👍' ? styles.feedbackPassText : styles.feedbackRetryText,
-          ]}>
-            {hw.feedback === '👍' ? strings.parent.feedbackPass : strings.parent.feedbackRetry}
-          </Text>
-        </View>
-      )}
-
-      {/* 제출 여부 뱃지 (피드백 없을 때) */}
-      {!hw.feedback && (
-        <View style={[
-          styles.statusBadge,
-          hw.submitted ? styles.statusBadgeDone : styles.statusBadgePending,
-        ]}>
-          <Text style={[
-            styles.statusBadgeText,
-            hw.submitted ? styles.statusBadgeDoneText : styles.statusBadgePendingText,
-          ]}>
-            {hw.submitted ? strings.parent.submitted : strings.parent.notSubmitted}
-          </Text>
-        </View>
-      )}
+      {/* 상태 뱃지 */}
+      <View style={[styles.statusBadge, badgeStyle]}>
+        <Text style={[styles.statusBadgeText, badgeTextStyle]}>{badgeLabel}</Text>
+      </View>
 
       <Ionicons name="chevron-forward" size={16} color="#94A3B8" style={styles.chevron} />
     </TouchableOpacity>
@@ -181,10 +203,12 @@ export default function ParentHomeworkScreen() {
               return {
                 ...hw,
                 submitted: !!sub,
+                subStatus: sub?.status ?? null,
                 feedback: sub?.feedback ?? null,
+                feedback_comment: sub?.feedback_comment ?? '',
               } as HomeworkWithStatus;
             } catch {
-              return { ...hw, submitted: false, feedback: null } as HomeworkWithStatus;
+              return { ...hw, submitted: false, subStatus: null, feedback: null } as HomeworkWithStatus;
             }
           })
         );
@@ -352,96 +376,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     borderRadius: 14,
     marginBottom: 10,
     overflow: 'hidden',
     backgroundColor: '#ffffff',
+    borderColor: '#E2E8F0',
   },
-  cardDone: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#A7F3D0',
-  },
-  cardPending: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
-  },
-  cardBar: {
-    width: 4,
-    alignSelf: 'stretch',
-  },
-  cardBarDone: {
-    backgroundColor: '#10B981',
-  },
-  cardBarPending: {
-    backgroundColor: '#EF4444',
-  },
+  cardMissing:  { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },  // 미제출 — 빨강
+  cardWaiting:  { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },  // 검사대기 — 노랑
+  cardRetry:    { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' },  // 다시제출 — 주황
+  cardDone:     { backgroundColor: '#F0FDF4', borderColor: '#A7F3D0' },  // 완료 — 초록
+
+  cardBar: { width: 4, alignSelf: 'stretch' },
+  cardBarMissing:  { backgroundColor: '#EF4444' },
+  cardBarWaiting:  { backgroundColor: '#F59E0B' },
+  cardBarRetry:    { backgroundColor: '#F97316' },
+  cardBarDone:     { backgroundColor: '#10B981' },
+  cardBarPending:  { backgroundColor: '#CBD5E1' }, // 마감 전 미제출 — 회색
+
   cardContent: {
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 12,
   },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-  cardDue: {
-    fontSize: 12,
-    color: '#64748B',
-  },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
+  cardDue:   { fontSize: 12, color: '#64748B' },
+  cardComment: { fontSize: 12, color: '#C2410C', marginTop: 4 },
 
-  // ── 피드백 칩 ──
-  feedbackChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  feedbackPass: {
-    backgroundColor: '#ECFDF5',
-  },
-  feedbackRetry: {
-    backgroundColor: '#FEF2F2',
-  },
-  feedbackText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  feedbackPassText: {
-    color: '#065F46',
-  },
-  feedbackRetryText: {
-    color: '#991B1B',
-  },
-
-  // ── 제출 여부 뱃지 ──
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  statusBadgeDone: {
-    backgroundColor: '#ECFDF5',
-  },
-  statusBadgePending: {
-    backgroundColor: '#FEF2F2',
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  statusBadgeDoneText: {
-    color: '#065F46',
-  },
-  statusBadgePendingText: {
-    color: '#991B1B',
-  },
+  // ── 상태 뱃지 ──
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 8 },
+  badgeMissing:  { backgroundColor: '#FEE2E2' },
+  badgeWaiting:  { backgroundColor: '#FEF3C7' },
+  badgeRetry:    { backgroundColor: '#FFEDD5' },
+  badgeDone:     { backgroundColor: '#ECFDF5' },
+  badgePending:  { backgroundColor: '#F1F5F9' }, // 마감 전 미제출 — 회색
+  statusBadgeText: { fontSize: 12, fontWeight: '700' },
+  badgeMissingText:  { color: '#991B1B' },
+  badgeWaitingText:  { color: '#78350F' },
+  badgeRetryText:    { color: '#C2410C' },
+  badgeDoneText:     { color: '#065F46' },
+  badgePendingText:  { color: '#64748B' }, // 마감 전 미제출 — 회색
 
   // ── 화살표 ──
-  chevron: {
-    marginRight: 12,
-  },
+  chevron: { marginRight: 12 },
 });

@@ -6,6 +6,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { query, where, getDocs, getDoc, orderBy, limit } from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -18,6 +19,7 @@ const BAR_COUNT = 14;
 // 숙제 + 제출 상태를 합친 타입
 interface HwItem extends Homework {
   submitted: boolean;
+  needsRetry: boolean; // 선생님이 💧(다시풀기) 피드백 → 재제출 필요
   feedback: '👍' | '💧' | null;
   isLate: boolean;
   dDays: number; // 0=오늘, 양수=남은 일수, 음수=마감 초과
@@ -33,6 +35,7 @@ function calcDDays(dueTimestamp: Homework['due_date']): number {
 }
 
 export default function StudentHomeScreen() {
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
   const streak = user?.streak ?? 0;
   const unreadCount = useNotificationStore((s) => s.unreadCount);
@@ -71,6 +74,7 @@ export default function StudentHomeScreen() {
               return {
                 ...hw,
                 submitted: !!sub,
+                needsRetry: sub?.feedback === '💧', // 선생님이 다시풀기 피드백 → 재제출 필요
                 feedback: sub?.feedback ?? null,
                 isLate: sub?.is_late ?? false,
                 dDays: calcDDays(hw.due_date),
@@ -78,13 +82,17 @@ export default function StudentHomeScreen() {
             })
           );
 
-          // 정렬: 미제출 D-0 → 미제출 D-n → 제출 완료
-          hwWithSubs.sort((a, b) => {
-            if (a.submitted !== b.submitted) return a.submitted ? 1 : -1;
+          // 홈에는 제출이 필요한 숙제만 표시 (미제출 + 다시풀기 대상)
+          // 제출완료(👍 or 검사 대기 중)는 홈에서 제외
+          const pendingHws = hwWithSubs.filter((hw) => !hw.submitted || hw.needsRetry);
+
+          // 정렬: 다시풀기 → D-0(긴급) → D-n(여유)
+          pendingHws.sort((a, b) => {
+            if (a.needsRetry !== b.needsRetry) return a.needsRetry ? -1 : 1;
             return a.dDays - b.dDays;
           });
 
-          setHomeworks(hwWithSubs);
+          setHomeworks(pendingHws);
         }
       } catch (e) {
         console.error('[StudentHome] 데이터 조회 실패:', e);
@@ -105,7 +113,7 @@ export default function StudentHomeScreen() {
       showsVerticalScrollIndicator={false}
     >
       {/* ── 헤더 (흰 배경) ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
         <View style={styles.headerLeft}>
           <Text style={styles.greeting}>안녕하세요! 👋</Text>
           <View style={styles.nameRow}>
@@ -149,7 +157,7 @@ export default function StudentHomeScreen() {
         >
           <View style={styles.streakTop}>
             <View>
-              <Text style={styles.streakLabel}>연속 제출 스트릭</Text>
+              <Text style={styles.streakLabel}>연속 제출</Text>
               <Text style={styles.streakNum}>🔥 {streak}일</Text>
             </View>
             <View>
@@ -189,25 +197,26 @@ export default function StudentHomeScreen() {
         ) : (
           <View style={styles.hwList}>
             {homeworks.map((hw) => {
-              // ── 제출 완료 카드 ──
-              if (hw.submitted) {
+              // ── 다시 제출 필요 카드 (💧 다시풀기 피드백) ──
+              if (hw.needsRetry) {
                 return (
-                  <View key={hw.id} style={styles.hwDone}>
-                    <View style={styles.hwDoneBar} />
+                  <View key={hw.id} style={styles.hwUrgent}>
+                    <View style={styles.hwUrgentBar} />
                     <View style={styles.hwBody}>
                       <View style={styles.hwTopRow}>
                         <Text style={styles.hwTitle} numberOfLines={1}>{hw.title}</Text>
-                        <View style={styles.chipDone}>
-                          <Text style={styles.chipDoneText}>✅ 제출완료</Text>
+                        <View style={styles.chipRetry}>
+                          <Text style={styles.chipRetryText}>💧 다시풀기</Text>
                         </View>
                       </View>
                       <Text style={styles.hwSub}>마감 {hw.due_date.toDate().toLocaleDateString('ko-KR')}</Text>
-                      {hw.feedback && (
-                        <Text style={styles.hwFeedback}>선생님 피드백: {hw.feedback}</Text>
-                      )}
-                      {hw.isLate && (
-                        <Text style={[styles.hwFeedback, { color: '#F59E0B' }]}>지각 제출</Text>
-                      )}
+                      <TouchableOpacity
+                        style={styles.submitBtn}
+                        activeOpacity={0.85}
+                        onPress={() => router.push(`/(app)/(student)/homework-submit?hwId=${hw.id}&skipAlert=true`)}
+                      >
+                        <Text style={styles.submitBtnText}>📷 다시 제출하기</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -226,7 +235,11 @@ export default function StudentHomeScreen() {
                         </View>
                       </View>
                       <Text style={styles.hwSub}>마감 {hw.due_date.toDate().toLocaleDateString('ko-KR')}</Text>
-                      <TouchableOpacity style={styles.submitBtn} activeOpacity={0.85}>
+                      <TouchableOpacity
+                        style={styles.submitBtn}
+                        activeOpacity={0.85}
+                        onPress={() => router.push(`/(app)/(student)/homework-submit?hwId=${hw.id}`)}
+                      >
                         <Text style={styles.submitBtnText}>📷 지금 제출하기</Text>
                       </TouchableOpacity>
                     </View>
@@ -246,9 +259,13 @@ export default function StudentHomeScreen() {
                       </View>
                     </View>
                     <Text style={styles.hwSub}>마감 {hw.due_date.toDate().toLocaleDateString('ko-KR')}</Text>
-                    <View style={styles.chipPending}>
-                      <Text style={styles.chipPendingText}>미제출</Text>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.chipPending}
+                      activeOpacity={0.75}
+                      onPress={() => router.push(`/(app)/(student)/homework-submit?hwId=${hw.id}`)}
+                    >
+                      <Text style={styles.chipPendingText}>미제출 · 제출하기</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               );
@@ -261,22 +278,36 @@ export default function StudentHomeScreen() {
       {notices.length > 0 && (
         <View style={styles.sectionPad}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>📢 공지사항</Text>
+            <Text style={styles.sectionTitle}>📢 최근 공지</Text>
+            <TouchableOpacity
+              onPress={() => router.push('/common/notice-list')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sectionLink}>전체보기</Text>
+            </TouchableOpacity>
           </View>
           {notices.map((n) => (
             <TouchableOpacity
               key={n.id}
-              style={[styles.noticeCard, !n.is_important && styles.noticeCardNormal]}
+              style={[styles.noticeCard, n.is_important ? styles.noticeCardImportant : styles.noticeCardNormal]}
               onPress={() => router.push(`/common/notice-detail?noticeId=${n.id}`)}
               activeOpacity={0.75}
             >
-              {n.is_important && (
-                <View style={styles.noticeTop}>
-                  <Text style={styles.noticeRedDot}>🔴</Text>
-                  <Text style={styles.noticeImportantLabel}>중요 공지</Text>
+              <View style={styles.noticeRow}>
+                {/* 좌측 세로바 */}
+                <View style={[styles.noticeBar, n.is_important ? styles.noticeBarImportant : styles.noticeBarNormal]} />
+                <View style={styles.noticeContent}>
+                  {n.is_important && (
+                    <View style={styles.importantChip}>
+                      <Text style={styles.importantChipText}>중요</Text>
+                    </View>
+                  )}
+                  <Text style={styles.noticeTitle}>{n.title}</Text>
+                  <Text style={styles.noticeDate}>
+                    {(n.created_at as any).toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                  </Text>
                 </View>
-              )}
-              <Text style={styles.noticeTitle}>{n.title}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -300,7 +331,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 14,
   },
   headerLeft: { flex: 1 },
@@ -414,46 +444,36 @@ const styles = StyleSheet.create({
   chipDnText: { fontSize: 11, fontWeight: '700', color: '#334155' },
   chipPending: {
     alignSelf: 'flex-start',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8,
+    backgroundColor: '#5B50E8',
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
     marginTop: 8,
   },
-  chipPendingText: { fontSize: 11, fontWeight: '600', color: '#334155' },
+  chipPendingText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 
-  // 완료 카드
-  hwDone: {
-    flexDirection: 'row',
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  hwDoneBar: { width: 3, backgroundColor: '#10B981' },
-  chipDone: {
-    backgroundColor: '#ECFDF5',
+  // 다시풀기 칩
+  chipRetry: {
+    backgroundColor: '#FEF3C7',
     borderRadius: 8, paddingVertical: 3, paddingHorizontal: 8,
   },
-  chipDoneText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
-  hwFeedback: { fontSize: 12, color: '#10B981', fontWeight: '600', marginTop: 4 },
+  chipRetryText: { fontSize: 11, fontWeight: '700', color: '#92400E' },
 
   // ── 공지 카드 ──
-  noticeCard: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1.5,
-    borderColor: '#FECACA',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
+  noticeCard: { borderRadius: 14, marginBottom: 8, overflow: 'hidden' },
+  noticeCardImportant: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' },
+  noticeCardNormal: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' },
+  noticeRow: { flexDirection: 'row' },
+  noticeBar: { width: 3 },
+  noticeBarImportant: { backgroundColor: '#EF4444' },
+  noticeBarNormal: { backgroundColor: '#CBD5E1' },
+  noticeContent: { flex: 1, padding: 14 },
+  importantChip: {
+    backgroundColor: '#EF4444', borderRadius: 6,
+    paddingVertical: 2, paddingHorizontal: 7,
+    alignSelf: 'flex-start', marginBottom: 4,
   },
-  noticeCardNormal: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  noticeTop: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  noticeRedDot: { fontSize: 15 },
-  noticeImportantLabel: { fontSize: 13, fontWeight: '700', color: '#991B1B' },
+  importantChipText: { fontSize: 11, fontWeight: '700', color: '#fff' },
   noticeTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  noticeBody: { fontSize: 13, color: '#991B1B', marginTop: 2 },
+  noticeDate: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
 });

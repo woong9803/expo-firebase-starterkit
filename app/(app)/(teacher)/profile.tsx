@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { getDocs, query, where } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,10 +41,11 @@ interface Stats {
 
 export default function TeacherProfileScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user, academy, clearUser } = useAuthStore();
 
   // ── 상태 ──────────────────────────────────────
-  const [classNames, setClassNames] = useState<string[]>([]);
+  const [assignedClasses, setAssignedClasses] = useState<Class[]>([]);
   const [stats, setStats] = useState<Stats>({ studentCount: 0, checkedCount: 0, attendanceRate: 0 });
   const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(true);
@@ -66,24 +68,44 @@ export default function TeacherProfileScreen() {
   useEffect(() => {
     const classIds = user?.assigned_class_ids ?? [];
     if (classIds.length === 0) {
-      setClassNames([]);
+      setAssignedClasses([]);
       setIsStatsLoading(false);
       return;
     }
 
     (async () => {
       try {
-        // 1) 담당 반 문서 조회 — 이름 + student_count 동시 획득
+        // 1) 담당 반 문서 조회
         const classSnap = await getDocs(
           query(Collections.classes(), where('academy_id', '==', user?.academy_id ?? ''))
         );
         const assignedDocs = classSnap.docs.filter((d) => classIds.includes(d.id));
-        const names = assignedDocs.map((d) => (d.data() as Class).name);
-        const totalStudents = assignedDocs.reduce(
-          (sum, d) => sum + ((d.data() as Class).student_count ?? 0),
-          0
+        const loadedClasses = assignedDocs.map((d) => ({ id: d.id, ...d.data() } as Class));
+
+        // 실제 학생 수 직접 쿼리 — student_count 캐시 필드가 부정확할 수 있으므로
+        const studentSnap = await getDocs(
+          query(
+            Collections.users(),
+            where('academy_id', '==', user?.academy_id ?? ''),
+            where('role', '==', 'student'),
+            where('is_active', '==', true),
+          )
         );
-        setClassNames(names);
+        // class_id별 학생 수 집계
+        const countByClass: Record<string, number> = {};
+        studentSnap.docs.forEach((d) => {
+          const cid = d.data().class_id as string | null;
+          if (cid && classIds.includes(cid)) {
+            countByClass[cid] = (countByClass[cid] ?? 0) + 1;
+          }
+        });
+        // loadedClasses에 실제 학생 수 반영
+        const classesWithCount = loadedClasses.map((c) => ({
+          ...c,
+          student_count: countByClass[c.id] ?? 0,
+        }));
+        const totalStudents = classesWithCount.reduce((sum, c) => sum + c.student_count!, 0);
+        setAssignedClasses(classesWithCount);
 
         // 2) 숙제 검사 완료 수 — 이 선생님이 만든 숙제의 checked 제출물 집계
         //    Firestore 비용 절감을 위해 최근 20개 숙제만 처리
@@ -199,7 +221,7 @@ export default function TeacherProfileScreen() {
       {/* ── 보라 그라데이션 프로필 영역 ── */}
       <LinearGradient
         colors={['#7C3AED', '#5B50E8']}
-        style={styles.gradientHeader}
+        style={[styles.gradientHeader, { paddingTop: top + 12 }]}
       >
         {/* 상단 타이틀 */}
         <Text style={styles.headerTitle}>내 정보</Text>
@@ -220,9 +242,9 @@ export default function TeacherProfileScreen() {
           <View style={styles.chip}>
             <Text style={styles.chipText}>선생님</Text>
           </View>
-          {classNames.length > 0 && (
+          {assignedClasses.length > 0 && (
             <View style={styles.chip}>
-              <Text style={styles.chipText}>담당반 {classNames.length}개</Text>
+              <Text style={styles.chipText}>담당반 {assignedClasses.length}개</Text>
             </View>
           )}
         </View>
@@ -236,7 +258,7 @@ export default function TeacherProfileScreen() {
           <View style={styles.statsRow}>
             {/* 담당 학생 수 */}
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#3B82F6' }]}>
+              <Text style={[styles.statValue, { color: '#5B50E8' }]}>
                 {stats.studentCount}
               </Text>
               <Text style={styles.statLabel}>담당 학생</Text>
@@ -246,7 +268,7 @@ export default function TeacherProfileScreen() {
 
             {/* 숙제 검사 완료 수 */}
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#10B981' }]}>
+              <Text style={[styles.statValue, { color: '#5B50E8' }]}>
                 {stats.checkedCount}
               </Text>
               <Text style={styles.statLabel}>검사 완료</Text>
@@ -256,7 +278,7 @@ export default function TeacherProfileScreen() {
 
             {/* 이번 달 출석률 */}
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#F59E0B' }]}>
+              <Text style={[styles.statValue, { color: '#5B50E8' }]}>
                 {stats.attendanceRate > 0 ? `${stats.attendanceRate}%` : '-'}
               </Text>
               <Text style={styles.statLabel}>출석률</Text>
@@ -264,6 +286,39 @@ export default function TeacherProfileScreen() {
           </View>
         )}
       </View>
+
+      {/* ── 담당 반 섹션 — 반 카드 클릭 시 학생 화면으로 이동 ── */}
+      {assignedClasses.length > 0 && (
+        <View style={styles.classSection}>
+          <Text style={styles.classSectionTitle}>담당 반</Text>
+          {assignedClasses.map((cls) => (
+            <TouchableOpacity
+              key={cls.id}
+              style={styles.classCard}
+              onPress={() =>
+                router.push(`/(app)/(teacher)/students?classId=${cls.id}`)
+              }
+              activeOpacity={0.75}
+            >
+              <View style={styles.classCardLeft}>
+                <View style={styles.classIconBox}>
+                  <Text style={styles.classIconText}>🏫</Text>
+                </View>
+                <View>
+                  <Text style={styles.className}>{cls.name}</Text>
+                  <Text style={styles.classStudentCount}>
+                    학생 {cls.student_count ?? 0}명
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.classCardRight}>
+                <Text style={styles.classActionLabel}>학생 보기</Text>
+                <Ionicons name="chevron-forward" size={16} color="#5B50E8" />
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* ── 설정 메뉴 카드 ── */}
       <View style={styles.menuCard}>
@@ -334,7 +389,6 @@ const styles = StyleSheet.create({
 
   // ── 그라데이션 헤더 ──
   gradientHeader: {
-    paddingTop: 56,
     paddingBottom: 60, // 통계 카드가 겹칠 공간
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -437,6 +491,54 @@ const styles = StyleSheet.create({
     height: 36,
     backgroundColor: '#E2E8F0',
   },
+
+  // ── 담당 반 섹션 ──
+  classSection: {
+    marginHorizontal: 20,
+    marginTop: 16,
+  },
+  classSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  classCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  classCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  classIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#EEEDF9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  classIconText: { fontSize: 20 },
+  className: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  classStudentCount: { fontSize: 13, color: '#64748B', marginTop: 2 },
+  classCardRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  classActionLabel: { fontSize: 13, fontWeight: '700', color: '#5B50E8' },
 
   // ── 설정 메뉴 카드 ──
   menuCard: {

@@ -21,8 +21,10 @@ import {
   Modal,
   Pressable,
   FlatList,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getDoc,
   getDocs,
@@ -48,6 +50,7 @@ interface SubmissionWithStudent extends Submission {
 
 export default function AdminHomeworkReviewScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { hwId } = useLocalSearchParams<{ hwId: string }>();
   const { user } = useAuthStore();
 
@@ -144,10 +147,23 @@ export default function AdminHomeworkReviewScreen() {
       await updateDoc(Collections.submission(hwId, studentUid), {
         feedback: newFeedback,
         status: newFeedback ? 'checked' : 'submitted',
+        // 피드백 취소 또는 👍로 변경 시 기존 코멘트도 초기화
+        ...(newFeedback !== '💧' && { feedback_comment: '' }),
       });
     } catch (e) {
       console.error('[AdminHomeworkReview] 피드백 저장 실패:', e);
     }
+  }, [hwId]);
+
+  // ── 💧 코멘트 저장 ────────────────────────────────────────────────────────
+  const saveComment = useCallback(async (
+    studentUid: string,
+    comment: string,
+  ) => {
+    if (!hwId) return;
+    await updateDoc(Collections.submission(hwId, studentUid), {
+      feedback_comment: comment.trim(),
+    });
   }, [hwId]);
 
   // ── 파생 데이터 ───────────────────────────────────────────────────────────
@@ -159,7 +175,7 @@ export default function AdminHomeworkReviewScreen() {
   return (
     <View style={styles.container}>
       {/* 헤더 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.navigate('/(app)/(admin)/homework')}
           style={styles.backBtn}
@@ -227,6 +243,7 @@ export default function AdminHomeworkReviewScreen() {
                   key={sub.studentUid}
                   submission={sub}
                   onFeedback={(fb) => saveFeedback(sub.studentUid, fb, sub.feedback)}
+                  onSaveComment={(comment) => saveComment(sub.studentUid, comment)}
                   onImagePress={(imgs, idx) => {
                     setPreviewImages(imgs);
                     setPreviewIndex(idx);
@@ -286,15 +303,38 @@ export default function AdminHomeworkReviewScreen() {
 interface SubmissionCardProps {
   submission: SubmissionWithStudent;
   onFeedback: (fb: '👍' | '💧') => void;
+  onSaveComment: (comment: string) => Promise<void>;
   onImagePress: (images: string[], index: number) => void;
 }
 
-function SubmissionCard({ submission, onFeedback, onImagePress }: SubmissionCardProps) {
-  const { studentName, image_urls, is_late, feedback, submitted_at } = submission;
+function SubmissionCard({ submission, onFeedback, onSaveComment, onImagePress }: SubmissionCardProps) {
+  const { studentName, image_urls, is_late, feedback, feedback_comment, submitted_at } = submission;
 
+  // 💧 코멘트 입력 상태 — 현재 저장된 코멘트로 초기화
+  const [commentText, setCommentText] = useState(feedback_comment ?? '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 외부에서 feedback_comment가 바뀌면(Firestore 실시간 반영) 입력값 동기화
+  useEffect(() => {
+    setCommentText(feedback_comment ?? '');
+  }, [feedback_comment]);
+
+  // 제출 시각 포맷
   const submittedAt = submitted_at
     ? submitted_at.toDate().toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     : '';
+
+  const handleSaveComment = async () => {
+    setIsSaving(true);
+    try {
+      await onSaveComment(commentText);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 저장된 코멘트와 현재 입력값이 같으면 저장 불필요
+  const isCommentChanged = commentText.trim() !== (feedback_comment ?? '').trim();
 
   return (
     <View style={[styles.submissionCard, submission.status === 'checked' && styles.submissionCardChecked]}>
@@ -359,6 +399,34 @@ function SubmissionCard({ submission, onFeedback, onImagePress }: SubmissionCard
           onPress={() => onFeedback('💧')}
         />
       </View>
+
+      {/* 💧 선택 시 코멘트 입력란 */}
+      {feedback === '💧' && (
+        <View style={styles.commentArea}>
+          <TextInput
+            style={styles.commentInput}
+            value={commentText}
+            onChangeText={setCommentText}
+            placeholder="학생에게 전달할 피드백을 입력하세요 (선택)"
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={200}
+          />
+          {/* 입력값이 바뀌었을 때만 저장 버튼 활성화 */}
+          <TouchableOpacity
+            style={[styles.commentSaveBtn, !isCommentChanged && styles.commentSaveBtnOff]}
+            disabled={!isCommentChanged || isSaving}
+            onPress={handleSaveComment}
+            activeOpacity={0.8}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.commentSaveBtnText}>저장</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -441,7 +509,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -454,7 +521,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerCenter: { flex: 1 },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', letterSpacing: -0.4 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
   headerSub: { fontSize: 13, color: '#64748B', marginTop: 2 },
 
   // ── 로딩 / 빈 화면
@@ -554,6 +621,34 @@ const styles = StyleSheet.create({
 
   // 피드백 버튼 행
   feedbackRow: { flexDirection: 'row', gap: 8 },
+
+  // 💧 코멘트 입력 영역
+  commentArea: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  commentInput: {
+    fontSize: 14,
+    color: '#0F172A',
+    lineHeight: 20,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  commentSaveBtn: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#5B50E8',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  commentSaveBtnOff: { backgroundColor: '#CBD5E1' },
+  commentSaveBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
   // ── 미제출자 카드
   nonSubmitCard: {

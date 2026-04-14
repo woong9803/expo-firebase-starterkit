@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,7 @@ interface Stats {
 }
 
 export default function StudentProfileScreen() {
+  const { top } = useSafeAreaInsets();
   const { user, academy, clearUser } = useAuthStore();
 
   // ── 상태 ──────────────────────────────────────
@@ -205,7 +207,7 @@ export default function StudentProfileScreen() {
       {/* ── 초록 그라데이션 프로필 영역 ── */}
       <LinearGradient
         colors={['#10B981', '#059669']}
-        style={styles.gradientHeader}
+        style={[styles.gradientHeader, { paddingTop: top + 12 }]}
       >
         {/* 상단 타이틀 */}
         <Text style={styles.headerTitle}>내 정보</Text>
@@ -229,7 +231,7 @@ export default function StudentProfileScreen() {
         <View style={styles.chipRow}>
           {(stats.streak > 0) && (
             <View style={styles.chip}>
-              <Text style={styles.chipText}>🔥 {stats.streak}일 스트릭</Text>
+              <Text style={styles.chipText}>🔥 {stats.streak}일 연속제출</Text>
             </View>
           )}
           {stats.attendanceRate > 0 && (
@@ -248,7 +250,7 @@ export default function StudentProfileScreen() {
           <View style={styles.statsRow}>
             {/* 제출 완료 */}
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#0F172A' }]}>
+              <Text style={[styles.statValue, { color: '#10B981' }]}>
                 {stats.submitCount}
               </Text>
               <Text style={styles.statLabel}>제출 완료</Text>
@@ -258,17 +260,17 @@ export default function StudentProfileScreen() {
 
             {/* 스트릭 */}
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#F59E0B' }]}>
+              <Text style={[styles.statValue, { color: '#10B981' }]}>
                 🔥{stats.streak}
               </Text>
-              <Text style={styles.statLabel}>스트릭</Text>
+              <Text style={styles.statLabel}>연속제출</Text>
             </View>
 
             <View style={styles.statDivider} />
 
             {/* 출석률 */}
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#F59E0B' }]}>
+              <Text style={[styles.statValue, { color: '#10B981' }]}>
                 {stats.attendanceRate > 0 ? `${stats.attendanceRate}%` : '-'}
               </Text>
               <Text style={styles.statLabel}>출석률</Text>
@@ -356,7 +358,6 @@ const styles = StyleSheet.create({
 
   // ── 그라데이션 헤더 ──
   gradientHeader: {
-    paddingTop: 56,
     paddingBottom: 60, // 통계 카드가 겹칠 공간
     alignItems: 'center',
     paddingHorizontal: 24,
