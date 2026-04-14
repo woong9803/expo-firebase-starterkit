@@ -15,10 +15,14 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { signOut } from 'firebase/auth';
-import { getDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -26,6 +30,7 @@ import { auth } from '../../../lib/firebase';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { strings } from '../../../constants/strings';
+import { validateLinkCode } from '../../../lib/auth';
 import type { User, Class } from '../../../types';
 
 // AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
@@ -45,6 +50,12 @@ export default function ParentProfileScreen() {
   // ── 자녀 목록 ──────────────────────────────────────────
   const [children, setChildren] = useState<ChildInfo[]>([]);
   const [isLoadingChildren, setIsLoadingChildren] = useState(true);
+
+  // ── 자녀 추가 연동 모달 ────────────────────────────────
+  const [addChildModalVisible, setAddChildModalVisible] = useState(false);
+  const [linkCodeInput, setLinkCodeInput] = useState('');
+  const [isLinking, setIsLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   // ── 알림 설정 ──────────────────────────────────────────
   const [homeworkNotif, setHomeworkNotif] = useState(true);
@@ -151,12 +162,83 @@ export default function ParentProfileScreen() {
     [user, setUser]
   );
 
-  // ── 자녀 추가 연동 (준비 중) ────────────────────────────
+  // ── 자녀 추가 연동 모달 열기 ───────────────────────────
   const handleAddChild = useCallback(() => {
-    Alert.alert('준비 중', '자녀 추가 연동 기능은 곧 업데이트될 예정이에요.', [
-      { text: strings.common.confirm },
-    ]);
+    setLinkCodeInput('');
+    setLinkError(null);
+    setAddChildModalVisible(true);
   }, []);
+
+  // ── 연동코드 확인 및 자녀 추가 ─────────────────────────
+  const handleConfirmAddChild = useCallback(async () => {
+    if (!user || !linkCodeInput.trim()) return;
+
+    setIsLinking(true);
+    setLinkError(null);
+
+    try {
+      const code = linkCodeInput.trim().toUpperCase();
+
+      // 학생 uid 조회
+      const studentUid = await validateLinkCode(code);
+      if (!studentUid) {
+        setLinkError(strings.errors.invalidCode);
+        return;
+      }
+
+      // 이미 연동된 자녀인지 확인
+      if (user.children?.includes(studentUid)) {
+        setLinkError('이미 연동된 자녀예요.');
+        return;
+      }
+
+      // 학생 문서 조회 (학원 ID + guardian_phone 기록용)
+      const studentSnap = await getDoc(Collections.user(studentUid));
+      if (!studentSnap.exists()) {
+        setLinkError(strings.errors.invalidCode);
+        return;
+      }
+      const studentData = studentSnap.data() as User;
+
+      // 학부모 children 배열에 자녀 uid 추가
+      await updateDoc(Collections.user(user.uid), {
+        children: arrayUnion(studentUid),
+        // 첫 자녀 연동 시 academy_id가 없을 경우 자동 설정
+        ...(user.academy_id ? {} : { academy_id: studentData.academy_id }),
+      });
+
+      // guardian_phone 기록 — 법정 출석부 보호자 연락처용 (논블로킹)
+      if (user.phone_number) {
+        updateDoc(Collections.user(studentUid), {
+          guardian_phone: user.phone_number,
+        }).catch((e) => {
+          console.warn('[ParentProfile] guardian_phone 기록 실패:', e);
+        });
+      }
+
+      // 로컬 상태 업데이트
+      const updatedChildren = [...(user.children ?? []), studentUid];
+      setUser({ ...user, children: updatedChildren });
+
+      // 자녀 목록 UI 갱신 (반 이름 포함)
+      let className = strings.profile.noClass;
+      if (studentData.class_id) {
+        const classSnap = await getDoc(Collections.class(studentData.class_id));
+        if (classSnap.exists()) className = (classSnap.data() as Class).name;
+      }
+      setChildren((prev) => [
+        ...prev,
+        { uid: studentUid, name: studentData.name, className },
+      ]);
+
+      setAddChildModalVisible(false);
+    } catch (e) {
+      console.error('[ParentProfile] 자녀 추가 연동 실패:', e);
+      setLinkError(strings.common.error);
+    } finally {
+      setIsLinking(false);
+    }
+  }, [user, linkCodeInput, setUser]);
 
   // ── 문의하기 ───────────────────────────────────────────
   const handleInquiry = useCallback(() => {
@@ -193,6 +275,73 @@ export default function ParentProfileScreen() {
 
   return (
     <ScrollView style={styles.container} bounces={false} showsVerticalScrollIndicator={false}>
+
+      {/* ── 자녀 추가 연동 모달 ── */}
+      <Modal
+        visible={addChildModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddChildModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalBox}>
+            {/* 헤더 */}
+            <Text style={styles.modalTitle}>자녀 추가 연동</Text>
+            <Text style={styles.modalDesc}>
+              {'자녀 앱 → 내정보에서\n6자리 연동코드를 확인하세요.'}
+            </Text>
+
+            {/* 코드 입력 */}
+            <TextInput
+              style={[styles.codeInput, linkError ? styles.codeInputError : null]}
+              value={linkCodeInput}
+              onChangeText={(t) => {
+                setLinkCodeInput(t.toUpperCase());
+                setLinkError(null);
+              }}
+              placeholder="예: A1B2C3"
+              placeholderTextColor="#94A3B8"
+              maxLength={6}
+              autoCapitalize="characters"
+              autoFocus
+            />
+
+            {/* 에러 메시지 */}
+            {linkError && (
+              <Text style={styles.errorText}>{linkError}</Text>
+            )}
+
+            {/* 버튼 */}
+            <TouchableOpacity
+              style={[
+                styles.modalConfirmBtn,
+                (!linkCodeInput.trim() || isLinking) && styles.modalConfirmBtnDisabled,
+              ]}
+              onPress={handleConfirmAddChild}
+              disabled={!linkCodeInput.trim() || isLinking}
+              activeOpacity={0.8}
+            >
+              {isLinking ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.modalConfirmText}>연동하기</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancelBtn}
+              onPress={() => setAddChildModalVisible(false)}
+              disabled={isLinking}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalCancelText}>{strings.common.cancel}</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* ── 주황 그라데이션 프로필 영역 ── */}
       <LinearGradient
@@ -514,6 +663,90 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#F1F5F9',
     marginLeft: 58, // 아이콘 너비만큼 들여쓰기
+  },
+
+  // ── 자녀 추가 연동 모달 ────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalBox: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalDesc: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  codeInput: {
+    backgroundColor: '#F1F0FB',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#3730A3',
+    letterSpacing: 4,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  codeInputError: {
+    borderColor: '#EF4444',
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalConfirmBtn: {
+    height: 52,
+    backgroundColor: '#F59E0B',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  modalConfirmBtnDisabled: {
+    backgroundColor: '#E2E8F0',
+  },
+  modalConfirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  modalCancelBtn: {
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontSize: 15,
+    color: '#64748B',
+    fontWeight: '600',
   },
 
   // ── 로그아웃 버튼 ──────────────────────────────────────
