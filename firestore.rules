@@ -154,9 +154,13 @@ service cloud.firestore {
     // ─────────────────────────────────────────────
     match /homeworks/{homeworkId} {
       // 같은 반 소속이면 읽기 가능
+      // 학부모: 해당 반이 자신과 같은 학원 소속이면 읽기 가능 (자녀 숙제 현황 확인용)
       allow read: if isAuthenticated()
                   && (getUserData().class_id == resource.data.class_id
-                      || isStaff());
+                      || isStaff()
+                      || (getUserRole() == 'parent'
+                          && get(/databases/$(database)/documents/classes/$(resource.data.class_id)).data.academy_id
+                             == getUserData().academy_id));
       // teacher 또는 admin만 숙제 출제 가능
       // rejected 학원은 쓰기 차단
       allow update, delete: if isAuthenticated()
@@ -168,9 +172,12 @@ service cloud.firestore {
 
       // homeworks/{homeworkId}/submissions/{studentUid} — 제출물
       match /submissions/{studentUid} {
-        // 본인(학생), teacher, admin 읽기 가능
+        // 본인(학생), teacher, admin, 자녀의 학부모 읽기 가능
         allow read: if isAuthenticated()
-                    && (request.auth.uid == studentUid || isStaff());
+                    && (request.auth.uid == studentUid
+                        || isStaff()
+                        || (getUserRole() == 'parent'
+                            && studentUid in getUserData().children));
         // 학생 본인만 제출(create/write) 가능 (rejected 학원은 제출 차단)
         allow write: if isAuthenticated()
                      && request.auth.uid == studentUid
