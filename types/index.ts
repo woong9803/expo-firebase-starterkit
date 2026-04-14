@@ -21,7 +21,13 @@ export interface User {
   enrollment_date: Timestamp | null; // 법정 출석부 대응
   phone_number: string;
   phone_verified: boolean;
+  fcm_token?: string;               // 푸시 알림용 FCM 토큰 (없으면 알림 발송 안 함)
   streak?: number;                 // 학생 전용 — 연속 제출 일수 (없으면 0)
+  teacher_feedback?: {             // 선생님/원장님이 학생에게 직접 남기는 메모
+    text: string;
+    author_name: string;
+    created_at: Timestamp;
+  };
   deleted_at: Timestamp | null;   // 탈퇴 처리 시 기록
   created_at: Timestamp;
 }
@@ -69,6 +75,7 @@ export interface Submission {
   status: 'submitted' | 'checked';
   is_late: boolean;                      // 마감 초과 제출 시 true
   feedback: '👍' | '💧' | null;         // 선생님 원터치 피드백
+  feedback_comment?: string;             // 💧 선택 시 선생님이 남기는 텍스트 코멘트
   submitted_at: Timestamp;
 }
 
@@ -101,6 +108,7 @@ export interface AppNotification {
   title: string;
   body: string;
   is_read: boolean;
+  deep_link?: string;   // 알림 클릭 시 이동할 화면 경로 (예: '/(app)/(student)/homework-submit?hwId=xxx')
   created_at: Timestamp;
 }
 

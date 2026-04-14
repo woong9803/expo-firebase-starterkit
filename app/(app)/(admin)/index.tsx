@@ -194,13 +194,12 @@ export default function AdminHomeScreen() {
         colors={['#7C3AED', '#5B50E8']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.headerCard, { paddingTop: top + 16 }]}
+        style={[styles.headerCard, { marginTop: top + 8 }]}
       >
         {/* 상단 Row: 학원명 + 알림 아이콘 */}
         <View style={styles.headerTop}>
           <View>
-            <Text style={styles.headerLabel}>원장님 대시보드 👑</Text>
-            <Text style={styles.headerAcademy}>{academy?.name ?? '학원'}</Text>
+            <Text style={styles.headerAcademy}>{academy?.name ?? '학원'} 운영 현황</Text>
           </View>
           <TouchableOpacity
             style={styles.bellBtn}
@@ -346,11 +345,11 @@ const styles = StyleSheet.create({
 
   // ── 그라데이션 헤더 카드 ──
   headerCard: {
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderRadius: 24,
     paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 20,
-    // paddingTop은 JSX에서 top + 16으로 동적 적용
+    marginHorizontal: 12,
   },
   headerTop: {
     flexDirection: 'row',

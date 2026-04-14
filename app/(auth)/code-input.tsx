@@ -194,12 +194,15 @@ export default function CodeInputScreen() {
 
         // 학부모의 phone_number를 학생의 guardian_phone에 자동 기록
         // 법정 출석부 엑셀 내보내기 시 보호자 연락처로 사용
+        // ⚠️ 논블로킹 처리 — 실패해도 온보딩 흐름 차단하지 않음
         const parentPhone = parentSnap.exists()
           ? (parentSnap.data().phone_number as string | undefined)
           : undefined;
         if (parentPhone) {
-          await updateDoc(Collections.user(studentUid), {
+          updateDoc(Collections.user(studentUid), {
             guardian_phone: parentPhone,
+          }).catch((e) => {
+            console.warn('[CodeInput] guardian_phone 자동 기록 실패:', e);
           });
         }
       }

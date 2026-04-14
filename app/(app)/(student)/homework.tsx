@@ -24,6 +24,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onSnapshot, query, where, orderBy, getDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -58,6 +59,7 @@ function calcDDay(dueDate: { toDate: () => Date }): number {
 
 export default function StudentHomeworkScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
 
   // 숙제 목록 (onSnapshot)
@@ -202,7 +204,7 @@ export default function StudentHomeworkScreen() {
   return (
     <View style={styles.container}>
       {/* 헤더 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
         <Text style={styles.headerTitle}>숙제</Text>
       </View>
 
@@ -315,6 +317,12 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
             {submission.feedback === '👍' ? '선생님이 잘했어요!' : '검사 완료 · 피드백 대기 중'}
           </Text>
         </View>
+        {/* 선생님 텍스트 코멘트 */}
+        {!!submission.feedback_comment && (
+          <View style={styles.commentBox}>
+            <Text style={styles.commentText}>{submission.feedback_comment}</Text>
+          </View>
+        )}
         <Text style={styles.viewPhotoHint}>사진 보기 →</Text>
       </TouchableOpacity>
     );
@@ -334,6 +342,12 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
           <Text style={styles.feedbackEmoji}>💧</Text>
           <Text style={[styles.feedbackLabel, { color: '#78350F' }]}>선생님이 다시 풀어보래요</Text>
         </View>
+        {/* 선생님 텍스트 코멘트 */}
+        {!!submission.feedback_comment && (
+          <View style={[styles.commentBox, styles.commentBoxRetry]}>
+            <Text style={[styles.commentText, styles.commentTextRetry]}>{submission.feedback_comment}</Text>
+          </View>
+        )}
         <TouchableOpacity style={styles.retrySubmitBtn} onPress={onResubmit} activeOpacity={0.85}>
           <Ionicons name="camera" size={14} color="#fff" />
           <Text style={styles.retrySubmitBtnText}>다시 제출하기</Text>
@@ -410,6 +424,7 @@ interface SubmissionDetailModalProps {
 }
 
 function SubmissionDetailModal({ item, previewIndex, onIndexChange, onClose, onResubmit }: SubmissionDetailModalProps) {
+  const { top } = useSafeAreaInsets();
   if (!item) return null;
   const { submission } = item;
   const images = submission?.image_urls ?? [];
@@ -420,7 +435,7 @@ function SubmissionDetailModal({ item, previewIndex, onIndexChange, onClose, onR
     <Modal visible={!!item} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         {/* 헤더 */}
-        <View style={styles.modalHeader}>
+        <View style={[styles.modalHeader, { paddingTop: top + 12 }]}>
           <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} activeOpacity={0.7}>
             <Ionicons name="close" size={22} color="#0F172A" />
           </TouchableOpacity>
@@ -471,9 +486,17 @@ function SubmissionDetailModal({ item, previewIndex, onIndexChange, onClose, onR
           {submission?.feedback && (
             <View style={[styles.feedbackBanner, isRetry ? styles.feedbackBannerRetry : styles.feedbackBannerPass]}>
               <Text style={styles.feedbackBannerEmoji}>{submission.feedback}</Text>
-              <Text style={[styles.feedbackBannerText, isRetry ? { color: '#78350F' } : { color: '#065F46' }]}>
-                {isRetry ? '선생님이 다시 풀어보래요' : '선생님이 잘했어요!'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.feedbackBannerText, isRetry ? { color: '#78350F' } : { color: '#065F46' }]}>
+                  {isRetry ? '선생님이 다시 풀어보래요' : '선생님이 잘했어요!'}
+                </Text>
+                {/* 선생님 텍스트 코멘트 */}
+                {!!submission.feedback_comment && (
+                  <Text style={[styles.feedbackBannerComment, isRetry ? { color: '#92400E' } : { color: '#065F46' }]}>
+                    {submission.feedback_comment}
+                  </Text>
+                )}
+              </View>
             </View>
           )}
 
@@ -505,7 +528,7 @@ const styles = StyleSheet.create({
 
   header: {
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
-    paddingHorizontal: 16, paddingTop: 52, paddingBottom: 14,
+    paddingHorizontal: 16, paddingBottom: 14,
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
 
@@ -608,7 +631,7 @@ const styles = StyleSheet.create({
   modalContainer: { flex: 1, backgroundColor: '#fff' },
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 16, paddingTop: 54, paddingBottom: 14,
+    paddingHorizontal: 16, paddingBottom: 14,
     borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
   modalCloseBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
@@ -640,6 +663,16 @@ const styles = StyleSheet.create({
   feedbackBannerRetry: { backgroundColor: '#FFFBEB' },
   feedbackBannerEmoji: { fontSize: 24 },
   feedbackBannerText: { fontSize: 15, fontWeight: '700' },
+  feedbackBannerComment: { fontSize: 13, fontWeight: '500', marginTop: 4, lineHeight: 18 },
+
+  // 선생님 코멘트 박스 (카드 내)
+  commentBox: {
+    backgroundColor: '#ECFDF5', borderRadius: 10,
+    paddingVertical: 8, paddingHorizontal: 12,
+  },
+  commentBoxRetry: { backgroundColor: '#FFFBEB' },
+  commentText: { fontSize: 13, color: '#065F46', lineHeight: 18 },
+  commentTextRetry: { color: '#92400E' },
   modalActionBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, height: 52, borderRadius: 14, backgroundColor: '#5B50E8',

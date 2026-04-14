@@ -150,9 +150,15 @@ export default function NotificationInboxScreen() {
     return () => unsub();
   }, [user?.uid]);
 
-  // ── 단건 읽음 처리 ──────────────────────────────────────────
+  // ── 단건 읽음 처리 + 딥링크 이동 ────────────────────────────
   function handlePressItem(id: string) {
     markAsRead(id);
+
+    // 해당 알림의 deep_link가 있으면 해당 화면으로 이동
+    const notif = notifications.find((n) => n.id === id);
+    if (notif?.deep_link) {
+      router.push(notif.deep_link as Parameters<typeof router.push>[0]);
+    }
   }
 
   // ── 모두 읽음 처리 ──────────────────────────────────────────

@@ -52,7 +52,7 @@ export default function PhoneInputScreen() {
       await updateUserDoc(currentUser.uid, {
         phone_number: phone.trim(),
         phone_verified: true,
-        is_active: true,
+        // is_active: Cloud Functions 전용 — 클라이언트 직접 변경 불가 (Rules에서 차단)
         class_id: null,
         link_code: null,
         children: [],

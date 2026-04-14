@@ -321,7 +321,7 @@ export default function ParentHomeScreen() {
       {/* ── 헤더 ── */}
       <View style={[styles.header, { paddingTop: top + 12 }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>자녀 현황을 확인하세요</Text>
+          <Text style={styles.greeting}>오늘도 믿고 맡겨주세요 🙏</Text>
           <Text style={styles.name}>{parentName} 부모님 👋</Text>
 
           {/* 자녀 탭 — Firestore 로드 후 렌더링 */}

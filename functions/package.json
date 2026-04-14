@@ -9,9 +9,9 @@
     "lint": "eslint --ext .js,.ts ."
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
-  "main": "lib/src/index.js",
+  "main": "lib/index.js",
   "dependencies": {
     "axios": "^1.7.2",
     "firebase-admin": "^12.0.0",

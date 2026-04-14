@@ -230,7 +230,7 @@ export default function TeacherHomeScreen() {
         {/* 상단 Row */}
         <View style={styles.headerTop}>
           <View>
-            <Text style={styles.headerGreeting}>좋은 아침이에요 ☀️</Text>
+            <Text style={styles.headerGreeting}>오늘도 좋은 수업 되세요 🍀</Text>
             <Text style={styles.headerName}>{user?.name ?? ''} 선생님</Text>
           </View>
           <View style={styles.headerActions}>

@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getDoc } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { Collections } from '../lib/firestore';
 import { useAuthStore } from '../store/useAuthStore';
+import { initFCM, registerFCMListeners } from '../lib/fcm';
 import { User, Academy } from '../types';
 
 // Firestore 조회에 타임아웃 적용 — 네트워크 지연 시 무한 대기 방지
@@ -22,6 +25,8 @@ export default function RootLayout() {
   const router   = useRouter();
   const segments = useSegments();
   const { user, setUser, setAcademy, setAcademyId } = useAuthStore();
+  // 노치/상태바 영역 높이 — 흰색 오버레이에 사용
+  const { top } = useSafeAreaInsets();
 
   const [initialized, setInitialized] = useState(false);
 
@@ -57,6 +62,12 @@ export default function RootLayout() {
                   setAcademyId(userData.academy_id);
                 }
               }
+              // 온보딩 완료된 사용자에게만 FCM 초기화 (토큰 발급 + Firestore 저장)
+              if (userData.academy_id && userData.role) {
+                initFCM(firebaseUser.uid).catch((e) =>
+                  console.warn('[Layout] FCM 초기화 실패:', e)
+                );
+              }
             } else {
               setUser({ uid: firebaseUser.uid, email: firebaseUser.email ?? '' } as User);
             }
@@ -85,6 +96,14 @@ export default function RootLayout() {
       unsubscribe();
     };
   }, []);
+
+  // FCM 리스너 등록 — 로그인된 사용자에게만 적용
+  // 알림 클릭 딥링크 이동 + 토큰 갱신 자동 업데이트
+  useEffect(() => {
+    if (!user?.uid || !user?.academy_id || !user?.role) return;
+    const cleanup = registerFCMListeners(user.uid);
+    return cleanup;
+  }, [user?.uid]);
 
   // 초기화 완료 후 라우팅
   // ⚠️ segments는 의존성에 넣지 않음 — 내비게이션 결과로 segments가 바뀌면
@@ -117,7 +136,24 @@ export default function RootLayout() {
     );
   }
 
-  return <Slot />;
+  return (
+    <>
+      {/* 상태바 텍스트(시각, 배터리 등)를 항상 어두운 색으로 표시 */}
+      <StatusBar style="dark" />
+      <Slot />
+      {/* 노치/상태바 영역을 흰색으로 고정 — 모든 화면에 공통 적용
+          pointerEvents="none" 으로 터치 이벤트는 아래 화면으로 그대로 전달 */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          height: top,
+          backgroundColor: '#ffffff',
+        }}
+      />
+    </>
+  );
 }
 
 const styles = StyleSheet.create({

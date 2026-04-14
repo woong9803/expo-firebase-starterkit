@@ -245,7 +245,8 @@ export default function AdminNoticeReadStatusScreen() {
         visible={upgradeSheetVisible}
         onClose={() => {
           hideUpgradeSheet();
-          router.back();
+          // Tabs 구조에서 router.back()이 홈으로 가는 버그 → 명시적으로 공지 탭으로 이동
+          router.navigate('/(app)/(admin)/notices');
         }}
         featureName={strings.notice.proFeatureName}
       />

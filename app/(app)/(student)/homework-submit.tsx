@@ -18,6 +18,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import {
@@ -97,6 +98,7 @@ type Phase = 'loading' | 'camera' | 'preview' | 'uploading' | 'done';
 
 export default function HomeworkSubmitScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { hwId, skipAlert, restorePending } = useLocalSearchParams<{
     hwId: string;
     skipAlert?: string;
@@ -130,7 +132,7 @@ export default function HomeworkSubmitScreen() {
         const hwSnap = await getDoc(Collections.homework(hwId));
         if (!hwSnap.exists()) {
           Alert.alert('오류', '숙제를 찾을 수 없어요.');
-          router.back();
+          router.navigate('/(app)/(student)/homework');
           return;
         }
         setHomework({ id: hwSnap.id, ...hwSnap.data() } as Homework);
@@ -160,7 +162,7 @@ export default function HomeworkSubmitScreen() {
               '이미 제출했어요',
               '다시 제출하면 이전 제출물이 사라져요. 재제출할까요?',
               [
-                { text: '취소', style: 'cancel', onPress: () => router.back() },
+                { text: '취소', style: 'cancel', onPress: () => router.navigate('/(app)/(student)/homework') },
                 { text: '재제출', style: 'destructive', onPress: () => setShouldStartCamera(true) },
               ]
             );
@@ -171,7 +173,7 @@ export default function HomeworkSubmitScreen() {
       } catch (e) {
         console.error('[HomeworkSubmit] 초기 로드 실패:', e);
         Alert.alert('오류', '데이터를 불러오지 못했어요.');
-        router.back();
+        router.navigate('/(app)/(student)/homework');
       }
     })();
   }, [hwId, user?.uid, skipAlert, restorePending, router]);
@@ -193,7 +195,7 @@ export default function HomeworkSubmitScreen() {
           Alert.alert(
             '카메라 권한 필요',
             '설정에서 카메라 권한을 허용해주세요.',
-            [{ text: '확인', onPress: () => router.back() }]
+            [{ text: '확인', onPress: () => router.navigate('/(app)/(student)/homework') }]
           );
         }
       });
@@ -376,9 +378,9 @@ export default function HomeworkSubmitScreen() {
   // 미리보기 화면
   if (phase === 'preview') {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         {/* 헤더 */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: top + 12 }]}>
           <TouchableOpacity onPress={() => setPhase('camera')} style={styles.backBtn} activeOpacity={0.7}>
             <Ionicons name="arrow-back" size={22} color="#0F172A" />
           </TouchableOpacity>
@@ -430,7 +432,7 @@ export default function HomeworkSubmitScreen() {
             <Text style={styles.submitBtnText}>제출하기</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -440,7 +442,7 @@ export default function HomeworkSubmitScreen() {
       <CameraView ref={cameraRef} style={styles.camera} facing="back">
         {/* 상단 오버레이 */}
         <SafeAreaView style={styles.cameraTop}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.cameraCloseBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => router.navigate('/(app)/(student)/homework')} style={styles.cameraCloseBtn} activeOpacity={0.7}>
             <Ionicons name="close" size={24} color="#fff" />
           </TouchableOpacity>
           <View style={styles.cameraInfo}>
@@ -547,7 +549,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 14,
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },

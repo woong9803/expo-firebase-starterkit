@@ -21,6 +21,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +29,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { auth } from '../../../lib/firebase';
 import { Collections } from '../../../lib/firestore';
+import { initFCM } from '../../../lib/fcm';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { strings } from '../../../constants/strings';
 import { validateLinkCode } from '../../../lib/auth';
@@ -45,6 +47,7 @@ interface ChildInfo {
 }
 
 export default function ParentProfileScreen() {
+  const { top } = useSafeAreaInsets();
   const { user, academy, setUser, clearUser } = useAuthStore();
 
   // ── 자녀 목록 ──────────────────────────────────────────
@@ -81,12 +84,40 @@ export default function ParentProfileScreen() {
   const handleHomeworkNotifToggle = useCallback(async (value: boolean) => {
     setHomeworkNotif(value);
     await AsyncStorage.setItem(NOTIF_HOMEWORK_KEY, String(value));
-  }, []);
+
+    if (!user?.uid) return;
+    const bothOff = value === false && !noticeNotif;
+    if (bothOff) {
+      // 두 토글 모두 OFF: FCM 토큰 null → Cloud Functions가 발송 건너뜀
+      await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
+        console.warn('[ParentProfile] fcm_token 제거 실패:', e)
+      );
+    } else if (value === true && !homeworkNotif) {
+      // OFF에서 ON으로 전환: 토큰 재발급 + Firestore 저장
+      await initFCM(user.uid).catch((e) =>
+        console.warn('[ParentProfile] FCM 재초기화 실패:', e)
+      );
+    }
+  }, [user?.uid, noticeNotif, homeworkNotif]);
 
   const handleNoticeNotifToggle = useCallback(async (value: boolean) => {
     setNoticeNotif(value);
     await AsyncStorage.setItem(NOTIF_NOTICE_KEY, String(value));
-  }, []);
+
+    if (!user?.uid) return;
+    const bothOff = value === false && !homeworkNotif;
+    if (bothOff) {
+      // 두 토글 모두 OFF: FCM 토큰 null
+      await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
+        console.warn('[ParentProfile] fcm_token 제거 실패:', e)
+      );
+    } else if (value === true && !noticeNotif) {
+      // OFF에서 ON으로 전환: 토큰 재발급
+      await initFCM(user.uid).catch((e) =>
+        console.warn('[ParentProfile] FCM 재초기화 실패:', e)
+      );
+    }
+  }, [user?.uid, homeworkNotif, noticeNotif]);
 
   // ── 자녀 데이터 조회 ────────────────────────────────────
   useEffect(() => {
@@ -346,7 +377,7 @@ export default function ParentProfileScreen() {
       {/* ── 주황 그라데이션 프로필 영역 ── */}
       <LinearGradient
         colors={['#F59E0B', '#D97706']}
-        style={styles.gradientHeader}
+        style={[styles.gradientHeader, { paddingTop: top + 12 }]}
       >
         {/* 타이틀 */}
         <Text style={styles.headerTitle}>{strings.profile.title}</Text>
@@ -480,7 +511,6 @@ const styles = StyleSheet.create({
 
   // ── 그라데이션 헤더 ──────────────────────────────────
   gradientHeader: {
-    paddingTop: 56,
     paddingBottom: 32,
     alignItems: 'center',
     paddingHorizontal: 24,

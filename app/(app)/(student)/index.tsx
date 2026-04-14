@@ -115,7 +115,7 @@ export default function StudentHomeScreen() {
       {/* ── 헤더 (흰 배경) ── */}
       <View style={[styles.header, { paddingTop: top + 12 }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>안녕하세요! 👋</Text>
+          <Text style={styles.greeting}>꾸준함이 실력이에요 ✨</Text>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{user?.name ?? ''}</Text>
             {/* 스트릭 뱃지 — 인라인, 작게 */}

@@ -2,19 +2,21 @@ import React from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, FontSize, FontWeight, Radius } from '../../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, FontSize, FontWeight } from '../../constants/theme';
 
-// 특징 리스트 (카드 박스 없는 심플 리스트)
-const FEATURES = [
-  { icon: '📋', text: '숙제 스캔 제출 · 실시간 피드백' },
-  { icon: '✅', text: '원터치 출결 · 학부모 즉시 알림' },
-  { icon: '📊', text: '법정 출석부 엑셀 자동 생성' },
-] as const;
+// 특징 리스트 — Ionicons 벡터 아이콘으로 통일
+const FEATURES: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
+  { icon: 'book-outline',              text: '숙제 제출 · 실시간 피드백' },
+  { icon: 'checkmark-circle-outline',  text: '원터치 출결 · 학부모 즉시 알림' },
+  { icon: 'document-text-outline',     text: '출석부 엑셀 파일 자동 생성' },
+];
 
 export default function StartScreen() {
   const router = useRouter();
@@ -34,19 +36,23 @@ export default function StartScreen() {
       {/* ── 상단 콘텐츠: 로고 + 앱명 + 특징 리스트 ── */}
       <View style={styles.topContent}>
 
-        {/* 로고 박스: 72×72, #4F46E5, 📚 이모지 */}
-        <View style={styles.logoBox}>
-          <Text style={styles.logoEmoji}>📚</Text>
-        </View>
+        {/* 로고 이미지: 72×72, borderRadius 20 */}
+        <Image
+          source={require('../../assets/app_icon_2.png')}
+          style={styles.logoImage}
+        />
 
-        <Text style={styles.appName}>EduOnePass</Text>
-        <Text style={styles.appSlogan}>선생님 퇴근 시간을 앞당기다</Text>
+        {/* 한글 메인 타이틀 */}
+        <Text style={styles.appName}>웅깅</Text>
+        {/* 영문 서브 타이틀 */}
+        <Text style={styles.appNameSub}>Woongking</Text>
+        <Text style={styles.appSlogan}>웅차게 배우고, 왕처럼 성장하다</Text>
 
-        {/* 특징 리스트 — 아이콘 + 텍스트, 카드 없음 */}
+        {/* 특징 리스트 — 벡터 아이콘 + 텍스트 */}
         <View style={styles.featureList}>
           {FEATURES.map((item) => (
             <View key={item.text} style={styles.featureRow}>
-              <Text style={styles.featureIcon}>{item.icon}</Text>
+              <Ionicons name={item.icon} size={20} color="#4338CA" style={styles.featureIcon} />
               <Text style={styles.featureText}>{item.text}</Text>
             </View>
           ))}
@@ -56,7 +62,7 @@ export default function StartScreen() {
       {/* ── 하단 바텀시트: 흰색 둥근 상단 ── */}
       <View style={styles.bottomSheet}>
 
-        {/* 시작하기 Primary 버튼 — #4F46E5 (인디고) */}
+        {/* 시작하기 Primary 버튼 */}
         <TouchableOpacity
           style={styles.btnPrimary}
           onPress={() => router.push('/(auth)/register')}
@@ -99,7 +105,6 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 130,
     backgroundColor: 'rgba(79,70,229,0.2)',
-    // React Native는 CSS blur 미지원 — 반투명으로 표현
   },
   glowGreen: {
     position: 'absolute',
@@ -111,51 +116,54 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(16,185,129,0.12)',
   },
 
-  // ── 상단 콘텐츠 ──
+  // ── 상단 콘텐츠 — paddingBottom 줄여서 빈 공간 제거 ──
   topContent: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 80,
+    paddingTop: 72,
     paddingHorizontal: 32,
-    paddingBottom: 40,
+    paddingBottom: 24,
+    justifyContent: 'center',
   },
 
-  // 로고 박스 72×72, #4F46E5, borderRadius 20
-  logoBox: {
-    width: 72,
-    height: 72,
+  // 로고 이미지 72×72
+  logoImage: {
+    width: 88,
+    height: 88,
     borderRadius: 20,
-    backgroundColor: '#4F46E5',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 16,
-    // 그림자
     shadowColor: '#4F46E5',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
     shadowRadius: 24,
     elevation: 12,
   },
-  logoEmoji: {
-    fontSize: 36,
-  },
 
+  // 한글 메인 타이틀
   appName: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: FontWeight.extrabold,  // 800
     color: '#ffffff',
     letterSpacing: -1,
   },
+  // 영문 서브 타이틀 — 메인보다 작게
+  appNameSub: {
+    fontSize: 14,
+    fontWeight: FontWeight.medium,     // 500
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 2,
+    marginTop: 4,
+  },
   appSlogan: {
-    fontSize: FontSize.lg,             // 13px
+    fontSize: FontSize.lg,             // 14px
     color: 'rgba(255,255,255,0.5)',
-    marginTop: 6,
+    marginTop: 8,
   },
 
-  // 특징 리스트 — marginTop 48, gap 12
+  // 특징 리스트 — marginTop 줄여서 여백 축소
   featureList: {
-    marginTop: 48,
-    gap: 12,
+    marginTop: 32,
+    gap: 14,
     alignSelf: 'stretch',
     alignItems: 'center',
   },
@@ -165,10 +173,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   featureIcon: {
-    fontSize: 22,
+    width: 24,
+    textAlign: 'center',
   },
   featureText: {
-    fontSize: FontSize.lg,             // 13px
+    fontSize: FontSize.lg,             // 14px
     color: 'rgba(255,255,255,0.7)',
   },
 
@@ -178,12 +187,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     paddingHorizontal: 24,
-    paddingTop: 32,
+    paddingTop: 28,
     paddingBottom: 40,
     gap: 14,
   },
 
-  // Primary 버튼 — #4F46E5 (인디고)
+  // Primary 버튼
   btnPrimary: {
     width: '100%',
     paddingVertical: 16,

@@ -19,6 +19,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getDocs, query, where, updateDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
@@ -27,6 +28,7 @@ import { Class } from '../../../types';
 
 export default function ClassSelectScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { fromOnboarding } = useLocalSearchParams<{ fromOnboarding?: string }>();
   const isOnboarding = fromOnboarding === 'true';
 
@@ -108,7 +110,7 @@ export default function ClassSelectScreen() {
   return (
     <View style={styles.container}>
       {/* ── 헤더 ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
         {!isOnboarding && (
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={20} color="#0F172A" />
@@ -206,7 +208,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 16,
     flexDirection: 'row',
     alignItems: 'flex-start',

@@ -105,7 +105,7 @@ export default function ChildrenSwitchScreen() {
 
       {/* ── 헤더 ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.navigate('/(app)/(parent)/homework')} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.parent.switchChild}</Text>

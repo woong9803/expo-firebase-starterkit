@@ -1,7 +1,7 @@
 /**
- * constants/theme.ts — EduOnePass 디자인 토큰
+ * constants/theme.ts — 웅깅(Woongking) 디자인 토큰
  *
- * EduOnePass_All_Screens.html에서 추출한 색상, 폰트, 간격 값을
+ * 웅깅(Woongking)_All_Screens.html에서 추출한 색상, 폰트, 간격 값을
  * React Native StyleSheet에서 바로 쓸 수 있는 형태로 정리.
  *
  * 사용 예시:

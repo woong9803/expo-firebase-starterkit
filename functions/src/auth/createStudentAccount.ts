@@ -38,9 +38,9 @@ export const createStudentAccount = onCall(async (request) => {
     throw new HttpsError('invalid-argument', '이름, 반 ID, 학원 ID는 필수입니다');
   }
 
-  // 가상 이메일 생성: s_{6자리랜덤코드}@dev-app-first.app
+  // 가상 이메일 생성: s_{6자리랜덤코드}@woongking.app
   const randomCode = generateRandomCode(6);
-  const email = `s_${randomCode}@dev-app-first.app`;
+  const email = `s_${randomCode}@woongking.app`;
 
   // 임시 비밀번호 생성 (영숫자+특수문자 8자리)
   const tempPassword = generateTempPassword(8);

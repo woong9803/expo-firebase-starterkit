@@ -16,6 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
@@ -28,6 +29,7 @@ interface TeacherWithClass extends User {
 
 export default function AdminTeachersScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
 
   const [teachers, setTeachers] = useState<TeacherWithClass[]>([]);
@@ -107,8 +109,8 @@ export default function AdminTeachersScreen() {
   return (
     <View style={styles.container}>
       {/* ── 헤더 ── */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
+        <TouchableOpacity onPress={() => router.navigate('/(app)/(admin)/settings')} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color="#0F172A" />
         </TouchableOpacity>
         <View>
@@ -188,7 +190,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',

@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   onSnapshot,
   query,
@@ -45,6 +46,7 @@ function calcDDay(dueDate: { toDate: () => Date }): number {
 
 export default function TeacherHomeworkScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
   const { homeworks, setHomeworks, isLoading, setLoading } = useHomeworkStore();
   const { isPro, isLoaded, upgradeSheetVisible, showUpgradeSheet, hideUpgradeSheet } = useProCheck();
@@ -147,7 +149,7 @@ export default function TeacherHomeworkScreen() {
   return (
     <View style={styles.container}>
       {/* ── 헤더 ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
         <Text style={styles.headerTitle}>숙제</Text>
         <TouchableOpacity
           style={styles.createBtn}
@@ -288,7 +290,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',

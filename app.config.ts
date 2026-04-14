@@ -2,30 +2,39 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'dev-app-first',
-  slug: 'dev-app-first',
+  name: '웅깅',
+  slug: 'woongking',
   version: '1.0.0',
   orientation: 'portrait',
-  icon: './assets/icon.png',
+  icon: './assets/app_icon.png',
   userInterfaceStyle: 'light',
-  scheme: 'edu-one-pass', // 딥링크·푸시 알림 이동을 위한 앱 스킴
+  scheme: 'woongking', // 딥링크·푸시 알림 이동을 위한 앱 스킴
   splash: {
-    image: './assets/splash-icon.png',
+    image: './assets/app_icon.png',
     resizeMode: 'contain',
     backgroundColor: '#ffffff',
   },
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'com.lyh3254.devappfirst',
+    bundleIdentifier: 'com.woongking.app',
+    googleServicesFile: './GoogleService-Info.plist',
+    infoPlist: {
+      // iOS 푸시 알림 권한 요청 시 표시되는 설명 문구
+      NSUserNotificationsUsageDescription:
+        '숙제 마감, 피드백, 공지 알림을 받으려면 알림 권한이 필요합니다.',
+    },
   },
   android: {
-    package: 'com.dev-app-first.app',
+    package: 'com.woongking.app',
     adaptiveIcon: {
-      foregroundImage: './assets/adaptive-icon.png',
+      foregroundImage: './assets/app_icon.png',
       backgroundColor: '#ffffff',
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
+    // FCM 수신을 위한 Android 추가 권한
+    permissions: ['android.permission.RECEIVE_BOOT_COMPLETED'],
+    googleServicesFile: './google-services.json',
   },
   web: {
     favicon: './assets/favicon.png',
@@ -38,6 +47,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-camera',
       {
         cameraPermission: '숙제 사진을 찍으려면 카메라 접근 권한이 필요합니다.',
+      },
+    ],
+    [
+      'expo-notifications',
+      {
+        // 알림 아이콘 (없으면 기본 앱 아이콘 사용)
+        // icon: './assets/notification-icon.png',
+        color: '#5B50E8',           // 알림 아이콘 배경색 (Android)
+        iosDisplayInForeground: true, // 앱 포그라운드 상태에서도 알림 표시
+        sounds: [],
       },
     ],
   ],

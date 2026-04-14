@@ -74,6 +74,7 @@ export default function TeacherTabLayout() {
         }}
       />
       {/* 탭바에 표시하지 않는 화면 */}
+      <Tabs.Screen name="students"          options={{ href: null }} />
       <Tabs.Screen name="create-student"    options={{ href: null }} />
       <Tabs.Screen name="homework-create"   options={{ href: null }} />
       <Tabs.Screen name="homework-review"   options={{ href: null }} />

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, getDocs, updateDoc, Timestamp } from 'firebase/firestore';
+import { query, where, getDocs, updateDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { User, Class, AttendanceRecord } from '../../../types';
@@ -66,6 +66,7 @@ export default function AdminStudentsScreen() {
   // ── UI 상태 ──
   const [searchText, setSearchText]         = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null); // null = 전체
+  const [isClassPickerVisible, setIsClassPickerVisible] = useState(false); // 반 선택 바텀시트
 
   // ── 반이동 모달 ──
   const [moveTargetStudent, setMoveTargetStudent] = useState<User | null>(null);
@@ -74,6 +75,11 @@ export default function AdminStudentsScreen() {
 
   // ── 초대코드 모달 (+ 추가) ──
   const [isInviteModalVisible, setIsInviteModalVisible] = useState(false);
+
+  // ── 피드백 모달 ──
+  const [feedbackTarget, setFeedbackTarget]     = useState<User | null>(null);
+  const [feedbackText, setFeedbackText]         = useState('');
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
 
   // ── 학생 정보 수정 모달 ──
   const [editTarget, setEditTarget]               = useState<User | null>(null);
@@ -253,6 +259,47 @@ export default function AdminStudentsScreen() {
     );
   }, []);
 
+  // ── 피드백 모달 열기 ──
+  const openFeedbackModal = useCallback((student: User) => {
+    setFeedbackTarget(student);
+    setFeedbackText(student.teacher_feedback?.text ?? '');
+  }, []);
+
+  // ── 피드백 저장 ──
+  const handleSaveFeedback = useCallback(async () => {
+    if (!feedbackTarget || !user) return;
+    setIsSavingFeedback(true);
+    try {
+      await updateDoc(Collections.user(feedbackTarget.uid), {
+        teacher_feedback: feedbackText.trim()
+          ? {
+              text: feedbackText.trim(),
+              author_name: user.name,
+              created_at: serverTimestamp(),
+            }
+          : null,
+      });
+      setStudents(prev =>
+        prev.map(s =>
+          s.uid === feedbackTarget.uid
+            ? {
+                ...s,
+                teacher_feedback: feedbackText.trim()
+                  ? { text: feedbackText.trim(), author_name: user.name, created_at: null as any }
+                  : undefined,
+              }
+            : s
+        )
+      );
+      setFeedbackTarget(null);
+    } catch (e) {
+      console.error('[AdminStudents] 피드백 저장 실패:', e);
+      Alert.alert('오류', '저장에 실패했어요. 다시 시도해주세요.');
+    } finally {
+      setIsSavingFeedback(false);
+    }
+  }, [feedbackTarget, feedbackText, user]);
+
   // ── 정보 수정 모달 열기 ──
   const openEditModal = useCallback((student: User) => {
     setEditTarget(student);
@@ -364,33 +411,30 @@ export default function AdminStudentsScreen() {
         </View>
       </View>
 
-      {/* ── 반 필터 탭 ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tabBar}
-        contentContainerStyle={styles.tabContent}
-      >
+      {/* ── 반 필터 드롭다운 ── */}
+      <View style={styles.classPickerWrapper}>
         <TouchableOpacity
-          style={[styles.tab, !selectedClassId && styles.tabActive]}
-          onPress={() => setSelectedClassId(null)}
+          style={styles.classPickerBtn}
+          onPress={() => setIsClassPickerVisible(true)}
           activeOpacity={0.8}
         >
-          <Text style={[styles.tabText, !selectedClassId && styles.tabTextActive]}>전체</Text>
+          <Ionicons name="people-outline" size={15} color={selectedClassId ? '#5B50E8' : '#64748B'} />
+          <Text style={[styles.classPickerBtnText, selectedClassId && styles.classPickerBtnTextActive]}>
+            {selectedClassId ? (classMap[selectedClassId]?.name ?? '반 선택') : '전체 반'}
+          </Text>
+          <Ionicons name="chevron-down" size={15} color={selectedClassId ? '#5B50E8' : '#64748B'} />
         </TouchableOpacity>
-        {classes.map(c => (
+        {/* 선택 중일 때 초기화 버튼 */}
+        {selectedClassId && (
           <TouchableOpacity
-            key={c.id}
-            style={[styles.tab, selectedClassId === c.id && styles.tabActive]}
-            onPress={() => setSelectedClassId(c.id)}
+            style={styles.classPickerClearBtn}
+            onPress={() => setSelectedClassId(null)}
             activeOpacity={0.8}
           >
-            <Text style={[styles.tabText, selectedClassId === c.id && styles.tabTextActive]}>
-              {c.name}
-            </Text>
+            <Ionicons name="close-circle" size={16} color="#94A3B8" />
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        )}
+      </View>
 
       {/* ── 학생 목록 ── */}
       {filteredStudents.length === 0 ? (
@@ -444,6 +488,15 @@ export default function AdminStudentsScreen() {
                 {isActive && (
                   <View style={styles.actions}>
                     <TouchableOpacity
+                      style={[styles.feedbackBtn, !!item.teacher_feedback?.text && styles.feedbackBtnFilled]}
+                      onPress={() => openFeedbackModal(item)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.feedbackBtnText, !!item.teacher_feedback?.text && styles.feedbackBtnTextFilled]}>
+                        {item.teacher_feedback?.text ? '피드백✓' : '피드백'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={styles.editBtn}
                       onPress={() => openEditModal(item)}
                       activeOpacity={0.8}
@@ -472,6 +525,68 @@ export default function AdminStudentsScreen() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
+
+      {/* ── 피드백 모달 ── */}
+      <Modal
+        visible={!!feedbackTarget}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFeedbackTarget(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setFeedbackTarget(null)}
+        />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>학생 피드백</Text>
+          <Text style={styles.modalSub}>
+            {feedbackTarget?.name} 학생에게 전달할 메모를 입력하세요
+          </Text>
+
+          <TextInput
+            style={styles.feedbackInput}
+            value={feedbackText}
+            onChangeText={setFeedbackText}
+            placeholder="예: 수학 개념 이해도 좋아지고 있어요. 문제풀이 속도를 높여봅시다."
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={300}
+            textAlignVertical="top"
+          />
+          <Text style={styles.charCount}>{feedbackText.length}/300</Text>
+
+          <TouchableOpacity
+            style={styles.feedbackSaveBtn}
+            onPress={handleSaveFeedback}
+            disabled={isSavingFeedback}
+            activeOpacity={0.85}
+          >
+            {isSavingFeedback
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.editSaveBtnText}>저장</Text>
+            }
+          </TouchableOpacity>
+
+          {!!feedbackTarget?.teacher_feedback?.text && (
+            <TouchableOpacity
+              style={styles.feedbackDeleteBtn}
+              onPress={() => setFeedbackText('')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.feedbackDeleteBtnText}>피드백 삭제</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.modalCancelBtn}
+            onPress={() => setFeedbackTarget(null)}
+          >
+            <Text style={styles.modalCancelText}>취소</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       {/* ── 반이동 모달 ── */}
       <Modal
@@ -595,6 +710,72 @@ export default function AdminStudentsScreen() {
         </View>
       </Modal>
 
+      {/* ── 반 선택 바텀시트 ── */}
+      <Modal
+        visible={isClassPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsClassPickerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsClassPickerVisible(false)}
+        />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>반 선택</Text>
+          <Text style={styles.modalSub}>학생을 필터링할 반을 선택하세요</Text>
+
+          <ScrollView showsVerticalScrollIndicator={false} style={styles.classPickerList}>
+            {/* 전체 항목 */}
+            <TouchableOpacity
+              style={[styles.classOption, !selectedClassId && styles.classOptionCurrent]}
+              onPress={() => { setSelectedClassId(null); setIsClassPickerVisible(false); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.classOptionText, !selectedClassId && styles.classOptionTextCurrent]}>
+                전체 반
+              </Text>
+              {!selectedClassId && (
+                <Ionicons name="checkmark" size={18} color="#5B50E8" />
+              )}
+            </TouchableOpacity>
+
+            {/* 반 목록 */}
+            {classes.map(c => {
+              const isSelected = selectedClassId === c.id;
+              const studentCount = students.filter(s => s.class_id === c.id && s.is_active).length;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.classOption, isSelected && styles.classOptionCurrent]}
+                  onPress={() => { setSelectedClassId(c.id); setIsClassPickerVisible(false); }}
+                  activeOpacity={0.7}
+                >
+                  <View>
+                    <Text style={[styles.classOptionText, isSelected && styles.classOptionTextCurrent]}>
+                      {c.name}
+                    </Text>
+                    <Text style={styles.classOptionSub}>{studentCount}명</Text>
+                  </View>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={18} color="#5B50E8" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={styles.modalCancelBtn}
+            onPress={() => setIsClassPickerVisible(false)}
+          >
+            <Text style={styles.modalCancelText}>닫기</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       {/* ── 학생 초대 코드 모달 (+ 추가) ── */}
       <Modal
         visible={isInviteModalVisible}
@@ -684,25 +865,30 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
-  // ── 반 필터 탭 ──
-  tabBar:    { maxHeight: 44, marginBottom: 4 },
-  tabContent: {
-    paddingHorizontal: 16,
+  // ── 반 필터 드롭다운 ──
+  classPickerWrapper: {
     flexDirection: 'row',
-    gap: 8,
     alignItems: 'center',
-  },
-  tab: {
-    paddingVertical: 6,
     paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  classPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 20,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
     backgroundColor: '#fff',
   },
-  tabActive:     { backgroundColor: '#5B50E8', borderColor: '#5B50E8' },
-  tabText:       { fontSize: 14, fontWeight: '600', color: '#64748B' },
-  tabTextActive: { color: '#fff' },
+  classPickerBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  classPickerBtnTextActive: { color: '#5B50E8' },
+  classPickerClearBtn: { padding: 4 },
+  classPickerList: { maxHeight: 320 },
+  classOptionSub: { fontSize: 12, color: '#94A3B8', marginTop: 2 },
 
   // ── 학생 목록 ──
   listContent: { paddingHorizontal: 20, paddingBottom: 24 },
@@ -744,7 +930,14 @@ const styles = StyleSheet.create({
   retiredTagText: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
 
   // 액션 버튼
-  actions: { flexDirection: 'row', gap: 6 },
+  actions: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  feedbackBtn: {
+    paddingVertical: 5, paddingHorizontal: 10,
+    borderRadius: 8, borderWidth: 1.5, borderColor: '#E2E8F0',
+  },
+  feedbackBtnFilled: { backgroundColor: '#EEEDF9', borderColor: '#5B50E8' },
+  feedbackBtnText:       { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  feedbackBtnTextFilled: { color: '#5B50E8' },
   editBtn: {
     paddingVertical: 5,
     paddingHorizontal: 10,
@@ -836,6 +1029,23 @@ const styles = StyleSheet.create({
     fontSize: 20, fontWeight: '800',
     color: '#5B50E8', letterSpacing: 3,
   },
+
+  // 피드백 모달 내 필드
+  feedbackInput: {
+    backgroundColor: '#F1F0FB',
+    borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 14,
+    padding: 14, fontSize: 15, color: '#0F172A', minHeight: 120,
+  },
+  charCount: { fontSize: 12, color: '#94A3B8', textAlign: 'right', marginTop: 6, marginBottom: 4 },
+  feedbackSaveBtn: {
+    marginTop: 8, height: 50, borderRadius: 14,
+    backgroundColor: '#5B50E8', alignItems: 'center', justifyContent: 'center',
+  },
+  feedbackDeleteBtn: {
+    marginTop: 8, paddingVertical: 14,
+    backgroundColor: '#FEF2F2', borderRadius: 14, alignItems: 'center',
+  },
+  feedbackDeleteBtnText: { fontSize: 15, fontWeight: '700', color: '#EF4444' },
 
   // 정보 수정 모달 내 필드
   editFieldLabel: {

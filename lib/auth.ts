@@ -1,5 +1,5 @@
 /**
- * lib/auth.ts — dev-app-first 인증 헬퍼 함수
+ * lib/auth.ts — 웅깅(Woongking) 인증 헬퍼 함수
  *
  * Firebase Auth 래퍼 + Firestore users 문서 관리 + 코드 검증 로직을 한 곳에서 관리.
  * 인증 화면(login, register, code-input 등)에서 직접 Firebase를 호출하지 말고

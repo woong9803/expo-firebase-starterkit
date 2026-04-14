@@ -5,6 +5,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDocs, query, where, documentId } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ interface CreateStudentResult {
 
 export default function CreateStudentScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
 
   // ─── 입력 상태 ──────────────────────────────────────────────────────
@@ -101,7 +103,7 @@ export default function CreateStudentScreen() {
   if (result) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: top + 12 }]}>
           <TouchableOpacity
             onPress={handleReset}
             style={styles.backBtn}
@@ -165,7 +167,7 @@ export default function CreateStudentScreen() {
 
           <TouchableOpacity
             style={styles.doneBtn}
-            onPress={() => router.back()}
+            onPress={() => router.navigate('/(app)/(teacher)/')}
             activeOpacity={0.85}
           >
             <Text style={styles.doneBtnText}>완료</Text>
@@ -183,7 +185,7 @@ export default function CreateStudentScreen() {
     >
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.navigate('/(app)/(teacher)/')}
           style={styles.backBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
@@ -289,7 +291,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',

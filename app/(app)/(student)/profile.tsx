@@ -26,7 +26,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { auth, db } from '../../../lib/firebase';
 import { Collections } from '../../../lib/firestore';
+import { initFCM } from '../../../lib/fcm';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { updateDoc } from 'firebase/firestore';
 import { Class, Homework, AttendanceRecord } from '../../../types';
 
 // AsyncStorage 키 — 알림 ON/OFF 설정 저장
@@ -59,7 +61,20 @@ export default function StudentProfileScreen() {
   const handlePushToggle = useCallback(async (value: boolean) => {
     setPushEnabled(value);
     await AsyncStorage.setItem(NOTIF_PREF_KEY, String(value));
-  }, []);
+
+    if (!user?.uid) return;
+    if (value === false) {
+      // 토글 OFF: FCM 토큰 null 처리 → Cloud Functions가 발송 건너뜀
+      await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
+        console.warn('[StudentProfile] fcm_token 제거 실패:', e)
+      );
+    } else {
+      // 토글 ON: 토큰 재발급 + Firestore 저장
+      await initFCM(user.uid).catch((e) =>
+        console.warn('[StudentProfile] FCM 재초기화 실패:', e)
+      );
+    }
+  }, [user?.uid]);
 
   // ── 반 이름 + 통계 데이터 로드 ─────────────────
   useEffect(() => {
@@ -156,7 +171,7 @@ export default function StudentProfileScreen() {
     }
     try {
       await Share.share({
-        message: `EduOnePass 학부모 연동코드: ${code}\n앱에서 이 코드를 입력하면 자녀와 연결됩니다.`,
+        message: `웅깅 학부모 연동코드: ${code}\n앱에서 이 코드를 입력하면 자녀와 연결됩니다.`,
       });
     } catch {
       Alert.alert('공유 실패', '코드를 공유할 수 없어요.');
@@ -189,12 +204,12 @@ export default function StudentProfileScreen() {
   const handleInquiry = () => {
     Alert.alert(
       '문의하기',
-      '이메일로 문의해 주세요.\nsupport@eduonepass.kr',
+      '이메일로 문의해 주세요.\nsupport@woongking.kr',
       [
         { text: '취소', style: 'cancel' },
         {
           text: '이메일 보내기',
-          onPress: () => Linking.openURL('mailto:support@eduonepass.kr'),
+          onPress: () => Linking.openURL('mailto:support@woongking.kr'),
         },
       ]
     );

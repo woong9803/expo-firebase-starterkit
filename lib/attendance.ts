@@ -136,8 +136,9 @@ export async function updateAttendanceReason(
 }
 
 /**
- * 학부모가 자녀의 결석 사유를 전송(업데이트)한다.
- * 이미 선생님이 상태를 입력한 날에 사유만 추가할 때 사용.
+ * 학부모가 자녀의 결석 사유를 전송한다.
+ * - 선생님이 이미 출결을 입력한 경우: reason 필드만 업데이트 (status 유지)
+ * - 아직 출결이 입력되지 않은 경우: status: 'absent' + reason 으로 신규 생성 (학부모 사전 등록)
  *
  * @param classId    반 ID
  * @param date       날짜 문자열 (YYYY-MM-DD)
@@ -151,7 +152,15 @@ export async function sendAbsenceReason(
   reason: string
 ): Promise<void> {
   const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
-  await updateDoc(recordRef, { reason });
+  const snap = await getDoc(recordRef);
+
+  if (snap.exists()) {
+    // 기존 문서가 있으면 reason만 업데이트 — 선생님이 입력한 status는 건드리지 않음
+    await updateDoc(recordRef, { reason });
+  } else {
+    // 기존 문서 없으면 결석 상태로 신규 생성 — 학부모 사전 등록
+    await setDoc(recordRef, { status: 'absent', reason });
+  }
 }
 
 /**

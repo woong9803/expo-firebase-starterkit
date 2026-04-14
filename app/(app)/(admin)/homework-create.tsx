@@ -20,6 +20,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,6 +53,7 @@ function calcDDay(date: Date): number {
 
 export default function AdminHomeworkCreateScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
 
   // ─── 입력 상태 ──────────────────────────────────────────────────────
@@ -176,7 +178,7 @@ export default function AdminHomeworkCreateScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* ── 헤더 ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: top + 12 }]}>
         <TouchableOpacity
           onPress={() => router.navigate('/(app)/(admin)/homework')}
           style={styles.backBtn}
@@ -350,7 +352,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     paddingHorizontal: 16,
-    paddingTop: 52,
     paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
