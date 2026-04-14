@@ -6,11 +6,14 @@ interface AuthState {
   isLoading: boolean;
   academyId: string | null;   // 현재 로그인 사용자의 학원 ID
   academy: Academy | null;    // 현재 학원 상세 정보
+  // 학부모 전용 — 현재 선택된 자녀 uid (탭 전환 시 모든 화면이 공유)
+  selectedChildUid: string | null;
   setUser: (user: User | null) => void;
   setLoading: (isLoading: boolean) => void;
   setAcademyId: (id: string | null) => void;
   setAcademy: (academy: Academy | null) => void;
   setAssignedClassIds: (ids: string[]) => void; // 선생님 담당반 목록 업데이트
+  setSelectedChildUid: (uid: string | null) => void; // 학부모 자녀 선택
   clearUser: () => void;      // 로그아웃 시 모든 상태 초기화
 }
 
@@ -19,6 +22,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
   academyId: null,
   academy: null,
+  selectedChildUid: null,
   setUser: (user) => set({ user }),
   setLoading: (isLoading) => set({ isLoading }),
   setAcademyId: (id) => set({ academyId: id }),
@@ -28,6 +32,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set((state) => ({
       user: state.user ? { ...state.user, assigned_class_ids: ids } : null,
     })),
+  // 학부모 자녀 선택 — 전체 화면에 즉시 반영
+  setSelectedChildUid: (uid) => set({ selectedChildUid: uid }),
   // 로그아웃 시 사용자·학원 정보 모두 초기화
-  clearUser: () => set({ user: null, academyId: null, academy: null }),
+  clearUser: () => set({ user: null, academyId: null, academy: null, selectedChildUid: null }),
 }));

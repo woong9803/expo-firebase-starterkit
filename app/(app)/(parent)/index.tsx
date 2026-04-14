@@ -34,7 +34,7 @@ function getTodayStr(): string {
 }
 
 export default function ParentHomeScreen() {
-  const { user } = useAuthStore();
+  const { user, selectedChildUid, setSelectedChildUid } = useAuthStore();
   const parentName = user?.name ?? '부모님';
   const unreadCount = useNotificationStore((s) => s.unreadCount);
 
@@ -78,6 +78,19 @@ export default function ParentHomeScreen() {
           .filter((snap) => snap.exists())
           .map((snap) => ({ uid: snap.id, ...snap.data() } as User));
         setChildren(loaded);
+
+        // store에 선택된 자녀가 없으면 첫 번째 자녀로 초기화
+        if (loaded.length > 0) {
+          const storedIdx = selectedChildUid
+            ? loaded.findIndex((c) => c.uid === selectedChildUid)
+            : -1;
+          if (storedIdx >= 0) {
+            setSelectedIdx(storedIdx);
+          } else {
+            setSelectedIdx(0);
+            setSelectedChildUid(loaded[0].uid);
+          }
+        }
       } catch {
         // 로드 실패 시 빈 목록 유지
       } finally {
@@ -235,6 +248,7 @@ export default function ParentHomeScreen() {
                   style={idx === selectedIdx ? styles.childTabActive : styles.childTabInactive}
                   onPress={() => {
                     setSelectedIdx(idx);
+                    setSelectedChildUid(child.uid); // 전체 화면에 자녀 선택 공유
                     setSelectedReason(null);
                   }}
                   activeOpacity={0.8}

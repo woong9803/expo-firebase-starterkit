@@ -79,7 +79,7 @@ const summaryStyles = StyleSheet.create({
 
 export default function ParentAttendanceScreen() {
   const { top } = useSafeAreaInsets();
-  const user = useAuthStore((s) => s.user);
+  const { user, selectedChildUid, setSelectedChildUid } = useAuthStore();
 
   // ── 자녀 목록 ──────────────────────────────────────────────
   const [children, setChildren] = useState<User[]>([]);
@@ -111,9 +111,23 @@ export default function ParentAttendanceScreen() {
         const snaps = await Promise.all(
           user.children.map((uid) => getDoc(Collections.user(uid)))
         );
-        setChildren(
-          snaps.filter((s) => s.exists()).map((s) => ({ uid: s.id, ...s.data() } as User))
-        );
+        const loaded = snaps
+          .filter((s) => s.exists())
+          .map((s) => ({ uid: s.id, ...s.data() } as User));
+        setChildren(loaded);
+
+        // store에 저장된 선택 자녀로 초기 인덱스 복원
+        if (loaded.length > 0) {
+          const storedIdx = selectedChildUid
+            ? loaded.findIndex((c) => c.uid === selectedChildUid)
+            : -1;
+          if (storedIdx >= 0) {
+            setSelectedIdx(storedIdx);
+          } else {
+            setSelectedIdx(0);
+            setSelectedChildUid(loaded[0].uid);
+          }
+        }
       } catch {
         // 로드 실패 시 빈 목록 유지
       } finally {
@@ -261,7 +275,7 @@ export default function ParentAttendanceScreen() {
               <TouchableOpacity
                 key={child.uid}
                 style={[styles.childTab, idx === selectedIdx && styles.childTabActive]}
-                onPress={() => { setSelectedIdx(idx); closeModal(); }}
+                onPress={() => { setSelectedIdx(idx); setSelectedChildUid(child.uid); closeModal(); }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.childTabText, idx === selectedIdx && styles.childTabTextActive]}>

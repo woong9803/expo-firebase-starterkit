@@ -119,11 +119,18 @@ function HwCard({ hw, onPress }: HwCardProps) {
 
 export default function ParentHomeworkScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useAuthStore();
+  const { user, selectedChildUid, setSelectedChildUid } = useAuthStore();
 
-  // params.childUid가 있으면 사용, 없으면 첫 번째 자녀
+  // params.childUid > store selectedChildUid > 첫 번째 자녀 순으로 우선순위 결정
   const { childUid: paramChildUid } = useLocalSearchParams<{ childUid?: string }>();
-  const activeChildUid = paramChildUid ?? user?.children?.[0] ?? null;
+  const activeChildUid = paramChildUid ?? selectedChildUid ?? user?.children?.[0] ?? null;
+
+  // children-switch에서 params로 넘어왔을 때 store 동기화
+  useEffect(() => {
+    if (paramChildUid && paramChildUid !== selectedChildUid) {
+      setSelectedChildUid(paramChildUid);
+    }
+  }, [paramChildUid]);
 
   const [childUser, setChildUser] = useState<User | null>(null);
   const [homeworks, setHomeworks] = useState<HomeworkWithStatus[]>([]);
