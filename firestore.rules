@@ -85,12 +85,15 @@ service cloud.firestore {
     // users/{uid} — 사용자
     // ─────────────────────────────────────────────
     match /users/{uid} {
-      // 본인, 같은 학원 소속, 또는 온보딩 중인 사용자는 읽기 가능
-      // 온보딩 중 학부모가 link_code로 자녀 계정 조회 시 필요
+      // 본인, 같은 학원 소속, 온보딩 중, 또는 학부모가 학생 문서 조회 시 읽기 가능
+      // 온보딩 중 학부모: link_code로 자녀 계정 조회 필요
+      // 이미 온보딩된 학부모: 추가 자녀 연동 시 link_code 조회 필요 — role=='student' 문서만 허용
       allow read: if isAuthenticated()
                   && (request.auth.uid == uid
                       || isAcademyMember(resource.data.academy_id)
-                      || isOnboarding());
+                      || isOnboarding()
+                      || (getUserRole() == 'parent'
+                          && resource.data.get('role', '') == 'student'));
       // 본인 문서만 수정 가능
       // - role: 미설정 상태에서만 한 번 허용 (온보딩), 이후 변경 불가
       // - is_active: 클라이언트 직접 변경 불가 (Cloud Functions 전용)
@@ -111,6 +114,14 @@ service cloud.firestore {
                     && request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly(['class_id', 'is_active'])
                     && isMyAcademyPendingOrActive();
+      // 학부모: 자녀 연동 시 guardian_phone 자동 기록 (법정 출석부용)
+      // 자신의 children 배열에 포함된 학생의 guardian_phone 필드만 업데이트 허용
+      allow update: if isAuthenticated()
+                    && getUserRole() == 'parent'
+                    && uid in getUserData().children
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['guardian_phone'])
+                    && isAcademyPendingOrActive(resource.data.academy_id);
       // 신규 가입 시 본인 문서 생성 가능
       allow create: if isAuthenticated() && request.auth.uid == uid;
       // 삭제 불가 (소프트 삭제 사용: deleted_at 필드)
