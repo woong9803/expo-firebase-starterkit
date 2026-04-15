@@ -464,34 +464,86 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 
 ---
 
-### Phase 9: 부가 기능 및 Pro 플랜 및 파일럿 준비
+### Phase 9: 반 관리 & 선생님 지정
 
-**목표**: 유튜브 영상 등록, 스트릭, 반 관리, 강제 업데이트 체크, 결제 통합, Crashlytics 연동이 완료되어 실제 학원에 파일럿 투입할 수 있는 상태
+**목표**: 반 생성/수정/삭제, 학생 반 이동, 초대코드 재발급, admin의 담당 선생님 지정이 모두 동작하는 상태
+
+**구현 내용**:
+- ✅ 반 생성/수정/삭제 (`admin/settings.tsx`)
+- ✅ 학생 반 이동 (`admin/students.tsx`)
+- ✅ 학생 퇴원 처리 (`is_active: false`, `admin/students.tsx`)
+- ✅ 반별 초대코드 표시 (`admin/settings.tsx`)
+- ✅ 선생님 담당반 자가 선택 (`teacher/class-select.tsx`)
+- 🔲 반별 초대코드 재발급 (기존 `invite_code` 즉시 무효화)
+- 🔲 admin의 담당 선생님 지정 UI (반 설정 모달에서 선생님 선택)
+
+**완료 기준**:
+- 초대코드 재발급 시 기존 코드로 가입 불가 확인
+- admin이 반 설정에서 담당 선생님을 지정/변경할 수 있음
+
+**주요 파일**:
+- `app/(app)/(admin)/settings.tsx` (초대코드 재발급 + 담당 선생님 지정 UI 추가)
+
+---
+
+### Phase 10: 수업 영상 & 스트릭
+
+**목표**: 선생님이 유튜브 영상을 등록하고 학생이 시청할 수 있으며, 연속 제출 스트릭이 정확히 동작하는 상태
 
 **구현 내용**:
 - 수업 영상 등록 (선생님, Pro 전용)
   - 유튜브 일부 공개 링크 입력 → YouTube oEmbed API로 썸네일 자동 추출
   - 썸네일 카드 UI 변환
   - 비공개 링크 입력 시 경고 처리
-- 학생: 수업 영상 시청 화면 (썸네일 카드 → 유튜브 재생)
+- 학생: 수업 영상 시청 화면 (`videos.tsx` 골격 존재 → 실데이터 연결)
 - 연속 제출 스트릭 (학생)
   - 숙제 있는 날 마감 전 제출 시 스트릭 유지
   - 미제출/지각 제출 시 스트릭 초기화
   - 최근 30일 막대 그래프 시각화
   - '마감 전 제출한 날 기준, 지각 제출 시 초기화' 안내 문구 표시
-- 반 관리 기능
-  - 반 생성/수정/삭제 (admin/선생님)
-  - 학생 반 이동 (admin/선생님만 가능)
-  - 반별 초대코드 표시 + 재발급 기능 (기존 invite_code 즉시 무효화)
-  - 학생 비활성화 (퇴원 처리: `is_active: false`)
-  - 반 변경 시 학생/학부모 앱 실시간 자동 갱신
-- 담당 선생님 지정 (admin: 전체 반, 선생님: 본인 반만, 중복 담당 허용)
-- Pro 전환 UX 및 결제 통합
-  - RevenueCat SDK 통합 (iOS/Android 인앱결제 통합 관리)
-  - Pro 업그레이드 바텀시트 컴포넌트 (`components/ProUpgradeSheet.tsx`) 완성
-  - 무료 기능에서 Pro 전용 기능 진입 시 바텀시트 표시
+
+**완료 기준**:
+- 유튜브 링크 등록 시 썸네일 카드가 정상 표시되고 재생 가능
+- 스트릭이 규칙에 맞게 유지/초기화되고 그래프가 정확히 표시됨
+
+**주요 파일**:
+- `app/(app)/(teacher)/video-register.tsx`
+- `app/(app)/(student)/videos.tsx` (실데이터 연결)
+- `app/(app)/(student)/streak.tsx`
+- `components/StreakChart.tsx`
+- `components/VideoCard.tsx`
+- `lib/youtube.ts` (oEmbed API 유틸)
+- `lib/streak.ts` (스트릭 계산 유틸)
+
+---
+
+### Phase 11: Pro 플랜 & 결제 통합
+
+**목표**: RevenueCat 인앱결제가 iOS/Android 모두 동작하고, Pro 전용 기능 진입 시 업그레이드 바텀시트가 올바르게 표시되는 상태
+
+**구현 내용**:
+- RevenueCat SDK 통합 (iOS/Android 인앱결제 통합 관리)
+- Pro 업그레이드 바텀시트 컴포넌트 (`components/ProUpgradeSheet.tsx`) 완성
   - 기능 목록 + 가격 안내 (학생 수 기반 슬라이더) + '14일 무료 체험 시작' 버튼
-  - Firestore `academies.plan` 체크 + Security Rules 적용
+- 무료 기능에서 Pro 전용 기능 진입 시 바텀시트 표시
+- Firestore `academies.plan` 체크 + Security Rules 적용
+
+**완료 기준**:
+- RevenueCat 인앱결제가 iOS/Android 모두 정상 동작
+- Pro 전환 바텀시트가 올바른 시점에 표시됨
+- Pro 전용 기능에 free 플랜으로 접근 시 차단됨
+
+**주요 파일**:
+- `components/ProUpgradeSheet.tsx`
+- `lib/revenueCat.ts` (RevenueCat SDK 초기화 및 헬퍼)
+
+---
+
+### Phase 12: 앱 안정성 & 출시 준비
+
+**목표**: 강제 업데이트, Crashlytics, 탈퇴 처리, APNs 설정이 완료되어 실제 학원에 파일럿 투입할 수 있는 상태
+
+**구현 내용**:
 - 강제 업데이트 체크
   - 앱 실행 시 `app_config/version` 문서 조회
   - 현재 버전 < `min_version` → 강제 업데이트 다이얼로그 (닫기 불가)
@@ -508,11 +560,6 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 - 개인정보처리방침 페이지 작성
 
 **완료 기준**:
-- 유튜브 링크 등록 시 썸네일 카드가 정상 표시되고 재생 가능
-- 스트릭이 규칙에 맞게 유지/초기화되고 그래프가 정확히 표시됨
-- 반 생성/이동/삭제/코드 재발급이 모두 정상 동작
-- RevenueCat 인앱결제가 iOS/Android 모두 정상 동작
-- Pro 전환 바텀시트가 올바른 시점에 표시됨
 - 강제 업데이트 다이얼로그가 조건에 맞게 표시됨
 - Crashlytics에서 크래시 리포트가 정상 수집됨
 - 학원 30일 미승인 자동 비활성화/삭제가 정상 동작
@@ -521,27 +568,15 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 - PRD 섹션 14의 파일럿 투입 전 테스트 체크리스트 전체 통과
 
 **주요 파일**:
-- `app/(app)/(teacher)/video-register.tsx`
-- `app/(app)/(student)/video-list.tsx`
-- `app/(app)/(student)/streak.tsx`
-- `app/(app)/(teacher)/class-manage.tsx`, `app/(app)/(admin)/class-manage.tsx`
-- `app/(app)/(admin)/teacher-assign.tsx`
-- `components/ProUpgradeSheet.tsx`
 - `components/ForceUpdateDialog.tsx`
-- `components/StreakChart.tsx`
-- `components/VideoCard.tsx`
-- `lib/youtube.ts` (oEmbed API 유틸)
-- `lib/streak.ts` (스트릭 계산 유틸)
 - `lib/versionCheck.ts`
-- `lib/revenueCat.ts` (RevenueCat SDK 초기화 및 헬퍼)
 - `functions/cleanup/deleteExpiredUsers.ts`
 - `functions/cleanup/deleteExpiredAcademies.ts`
 - `functions/cleanup/anonymizeUserData.ts`
-- `store/useClassStore.ts`
 
 ---
 
-### Phase 10: 웹 대시보드 (admin 전용)
+### Phase 13: 웹 대시보드 (admin 전용)
 
 **목표**: 원장님이 PC 브라우저에서 학원 전체를 관리할 수 있는 웹 대시보드가 동작하고, 앱과 동일한 Firebase를 공유하여 데이터가 실시간 동기화되는 상태
 

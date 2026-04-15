@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   Share,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import {
   query, where, getDocs, addDoc, updateDoc, deleteDoc, getCountFromServer,
+  arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { auth } from '../../../lib/firebase';
 import { Collections } from '../../../lib/firestore';
@@ -53,6 +55,7 @@ function planLabel(plan: string): string {
 
 export default function AdminSettingsScreen() {
   const { top } = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const { user, academy, clearUser } = useAuthStore();
 
   // ── 데이터 상태 ──
@@ -76,6 +79,7 @@ export default function AdminSettingsScreen() {
   const [editClassName, setEditClassName]   = useState('');
   const [editClassSubject, setEditClassSubject] = useState(''); // 교습과목
   const [isSavingClass, setIsSavingClass]   = useState(false);
+  const [isReissuingCode, setIsReissuingCode] = useState(false); // 초대코드 재발급 로딩
 
   // ── 1. 반 + 선생님 목록 로드 ──
   useEffect(() => {
@@ -247,6 +251,83 @@ export default function AdminSettingsScreen() {
               setTeachers(prev => prev.filter(t => t.uid !== teacher.uid));
             } catch (e) {
               Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ── 담당 선생님 지정/해제 토글 ──
+  const handleToggleTeacher = async (teacher: User) => {
+    if (!editClass) return;
+    const isAssigned = (teacher.assigned_class_ids ?? []).includes(editClass.id);
+
+    try {
+      if (isAssigned) {
+        // 이미 담당 중 → 제거
+        await updateDoc(Collections.user(teacher.uid), {
+          assigned_class_ids: arrayRemove(editClass.id),
+        });
+      } else {
+        // 미담당 → 추가 (중복 담당 허용)
+        await updateDoc(Collections.user(teacher.uid), {
+          assigned_class_ids: arrayUnion(editClass.id),
+        });
+      }
+
+      // 로컬 teachers 상태 갱신
+      const updatedTeachers = teachers.map(t => {
+        if (t.uid !== teacher.uid) return t;
+        const newIds = isAssigned
+          ? (t.assigned_class_ids ?? []).filter(id => id !== editClass.id)
+          : [...(t.assigned_class_ids ?? []), editClass.id];
+        return { ...t, assigned_class_ids: newIds };
+      });
+      setTeachers(updatedTeachers);
+
+      // classTeacherMap 재계산 (classId → 첫 번째 담당 선생님 이름)
+      // 이름 오름차순 정렬 후 매핑 — 2명 이상 배정 시 표시명이 토글마다 바뀌지 않도록 고정
+      const tMap: Record<string, string> = {};
+      [...updatedTeachers]
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+        .forEach(t => {
+          (t.assigned_class_ids ?? []).forEach(cid => {
+            if (!tMap[cid]) tMap[cid] = t.name;
+          });
+        });
+      setClassTeacherMap(tMap);
+    } catch (e) {
+      Alert.alert('오류', '선생님 지정에 실패했어요. 다시 시도해주세요.');
+    }
+  };
+
+  // ── 반 초대코드 재발급 ──
+  const handleReissueCode = () => {
+    if (!editClass) return;
+    Alert.alert(
+      '코드 재발급',
+      '기존 코드로는 더 이상 가입할 수 없어요. 재발급할까요?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '재발급',
+          onPress: async () => {
+            if (isReissuingCode) return; // 중복 실행 방지
+            setIsReissuingCode(true);
+            try {
+              const newCode = generateCode();
+              await updateDoc(Collections.class(editClass.id), { invite_code: newCode });
+              // 반 목록 상태 갱신
+              setClasses(prev => prev.map(c =>
+                c.id === editClass.id ? { ...c, invite_code: newCode } : c
+              ));
+              // 모달 내 표시 코드도 즉시 갱신
+              setEditClass(prev => prev ? { ...prev, invite_code: newCode } : null);
+            } catch (e) {
+              Alert.alert('오류', '코드 재발급에 실패했어요. 다시 시도해주세요.');
+            } finally {
+              setIsReissuingCode(false);
             }
           },
         },
@@ -518,55 +599,105 @@ export default function AdminSettingsScreen() {
           activeOpacity={1}
           onPress={() => setIsClassSettingVisible(false)}
         />
-        <View style={styles.modalSheet}>
+        <View style={[styles.modalSheet, { maxHeight: windowHeight * 0.85 }]}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{editClass?.name} 설정</Text>
 
-          {/* 반 이름 */}
-          <TextInput
-            style={styles.modalInput}
-            placeholder="반 이름"
-            placeholderTextColor="#94A3B8"
-            value={editClassName}
-            onChangeText={setEditClassName}
-          />
+          {/* 내용이 많으므로 ScrollView로 감쌈 */}
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-          {/* 교습과목 — 법정 출석부 필수 기재항목 */}
-          <TextInput
-            style={styles.modalInput}
-            placeholder="교습과목 (예: 수학, 영어) — 선택"
-            placeholderTextColor="#94A3B8"
-            value={editClassSubject}
-            onChangeText={setEditClassSubject}
-          />
+            {/* 반 이름 */}
+            <TextInput
+              style={styles.modalInput}
+              placeholder="반 이름"
+              placeholderTextColor="#94A3B8"
+              value={editClassName}
+              onChangeText={setEditClassName}
+            />
 
-          <TouchableOpacity
-            style={[styles.modalPrimaryBtn, isSavingClass && { opacity: 0.6 }]}
-            onPress={handleSaveClassName}
-            disabled={isSavingClass}
-            activeOpacity={0.8}
-          >
-            {isSavingClass ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.modalPrimaryBtnText}>저장</Text>
-            )}
-          </TouchableOpacity>
+            {/* 교습과목 — 법정 출석부 필수 기재항목 */}
+            <TextInput
+              style={styles.modalInput}
+              placeholder="교습과목 (예: 수학, 영어) — 선택"
+              placeholderTextColor="#94A3B8"
+              value={editClassSubject}
+              onChangeText={setEditClassSubject}
+            />
 
-          <TouchableOpacity
-            style={styles.modalDangerBtn}
-            onPress={handleDeleteClass}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.modalDangerText}>반 삭제</Text>
-          </TouchableOpacity>
+            {/* 현재 초대코드 표시 + 재발급 */}
+            <View style={styles.codeDisplayRow}>
+              <Text style={styles.currentInviteCode}>
+                {editClass?.invite_code ?? '------'}
+              </Text>
+              <TouchableOpacity
+                style={[styles.reissueBtn, isReissuingCode && { opacity: 0.6 }]}
+                onPress={handleReissueCode}
+                disabled={isReissuingCode}
+                activeOpacity={0.8}
+              >
+                {isReissuingCode ? (
+                  <ActivityIndicator color="#334155" size="small" />
+                ) : (
+                  <Text style={styles.reissueBtnText}>코드 재발급</Text>
+                )}
+              </TouchableOpacity>
+            </View>
 
-          <TouchableOpacity
-            style={styles.modalCancelBtn}
-            onPress={() => { setIsClassSettingVisible(false); setEditClass(null); }}
-          >
-            <Text style={styles.modalCancelText}>취소</Text>
-          </TouchableOpacity>
+            {/* 담당 선생님 선택 섹션 */}
+            <View style={styles.teacherSection}>
+              <Text style={styles.teacherSectionLabel}>담당 선생님</Text>
+              {teachers.length === 0 ? (
+                <Text style={styles.emptyText}>등록된 선생님이 없어요</Text>
+              ) : (
+                <View style={styles.teacherChipRow}>
+                  {teachers.map(t => {
+                    const isAssigned = (t.assigned_class_ids ?? []).includes(editClass?.id ?? '');
+                    return (
+                      <TouchableOpacity
+                        key={t.uid}
+                        style={[styles.teacherChip, isAssigned && styles.teacherChipSelected]}
+                        onPress={() => handleToggleTeacher(t)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.teacherChipText, isAssigned && styles.teacherChipTextSelected]}>
+                          {t.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, isSavingClass && { opacity: 0.6 }]}
+              onPress={handleSaveClassName}
+              disabled={isSavingClass}
+              activeOpacity={0.8}
+            >
+              {isSavingClass ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.modalPrimaryBtnText}>저장</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalDangerBtn}
+              onPress={handleDeleteClass}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalDangerText}>반 삭제</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancelBtn}
+              onPress={() => { setIsClassSettingVisible(false); setEditClass(null); }}
+            >
+              <Text style={styles.modalCancelText}>취소</Text>
+            </TouchableOpacity>
+
+          </ScrollView>
         </View>
       </Modal>
 
@@ -754,4 +885,56 @@ const styles = StyleSheet.create({
     paddingVertical: 14, alignItems: 'center',
   },
   modalCancelText: { fontSize: 16, fontWeight: '700', color: '#334155' },
+
+  // 담당 선생님 선택 섹션
+  teacherSection: {
+    marginBottom: 14,
+  },
+  teacherSectionLabel: {
+    fontSize: 13, fontWeight: '600', color: '#64748B',
+    marginBottom: 10,
+  },
+  teacherChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  teacherChip: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1, borderColor: '#E2E8F0',
+    backgroundColor: '#F1F5F9',
+  },
+  teacherChipSelected: {
+    borderWidth: 1.5, borderColor: '#5B50E8',
+    backgroundColor: '#EEEDF9',
+  },
+  teacherChipText: {
+    fontSize: 14, fontWeight: '600', color: '#334155',
+  },
+  teacherChipTextSelected: {
+    color: '#3730A3',
+  },
+
+  // 초대코드 표시 + 재발급 행
+  codeDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F1F0FB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  currentInviteCode: {
+    fontSize: 20, fontWeight: '800',
+    color: '#5B50E8', letterSpacing: 4,
+  },
+  reissueBtn: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0',
+    backgroundColor: '#F1F5F9',
+  },
+  reissueBtnText: { fontSize: 13, fontWeight: '600', color: '#334155' },
 });
