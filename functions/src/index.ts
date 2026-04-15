@@ -8,7 +8,8 @@ export { kakaoLogin } from './auth/kakaoLogin';
 export { createStudentAccount } from './auth/createStudentAccount';
 
 // 알림 관련 함수 export
-export { sendHomeworkDueReminder } from './notifications/homeworkDueReminder';
 export { onHomeworkFeedback } from './notifications/homeworkFeedback';
 export { sendUnsubmittedAlert } from './notifications/unsubmittedAlert';
 export { onNoticeCreated } from './notifications/noticeAlert';
+export { sendHomeworkReminderPush } from './notifications/homeworkReminderPush';
+export { sendAttendanceAlertPush } from './notifications/attendanceAlertPush';

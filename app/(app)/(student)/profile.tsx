@@ -32,7 +32,9 @@ import { updateDoc } from 'firebase/firestore';
 import { Class, Homework, AttendanceRecord } from '../../../types';
 
 // AsyncStorage 키 — 알림 ON/OFF 설정 저장
-const NOTIF_PREF_KEY = 'student_push_enabled';
+const NOTIF_HOMEWORK_KEY = 'student_notif_homework';
+const NOTIF_FEEDBACK_KEY = 'student_notif_feedback';
+const NOTIF_NOTICE_KEY   = 'student_notif_notice';
 
 // 통계 데이터 타입
 interface Stats {
@@ -49,32 +51,66 @@ export default function StudentProfileScreen() {
   const [className, setClassName] = useState<string>('');
   const [stats, setStats] = useState<Stats>({ submitCount: 0, streak: user?.streak ?? 0, attendanceRate: 0 });
   const [isStatsLoading, setIsStatsLoading] = useState(true);
-  const [pushEnabled, setPushEnabled] = useState(true);
+  const [homeworkNotif, setHomeworkNotif] = useState(true);
+  const [feedbackNotif, setFeedbackNotif] = useState(true);
+  const [noticeNotif, setNoticeNotif]     = useState(true);
 
   // ── 알림 설정 불러오기 ─────────────────────────
   useEffect(() => {
-    AsyncStorage.getItem(NOTIF_PREF_KEY).then((val) => {
-      if (val !== null) setPushEnabled(val === 'true');
-    });
+    const load = async () => {
+      const hw = await AsyncStorage.getItem(NOTIF_HOMEWORK_KEY);
+      const fb = await AsyncStorage.getItem(NOTIF_FEEDBACK_KEY);
+      const nt = await AsyncStorage.getItem(NOTIF_NOTICE_KEY);
+      if (hw !== null) setHomeworkNotif(hw === 'true');
+      if (fb !== null) setFeedbackNotif(fb === 'true');
+      if (nt !== null) setNoticeNotif(nt === 'true');
+    };
+    load();
   }, []);
 
-  const handlePushToggle = useCallback(async (value: boolean) => {
-    setPushEnabled(value);
-    await AsyncStorage.setItem(NOTIF_PREF_KEY, String(value));
+  // 알림 토글 공통 처리
+  const handleNotifToggle = useCallback(async (
+    key: 'homework' | 'feedback' | 'notice',
+    value: boolean,
+    storageKey: string,
+  ) => {
+    if (key === 'homework') setHomeworkNotif(value);
+    else if (key === 'feedback') setFeedbackNotif(value);
+    else setNoticeNotif(value);
 
+    await AsyncStorage.setItem(storageKey, String(value));
     if (!user?.uid) return;
-    if (value === false) {
-      // 토글 OFF: FCM 토큰 null 처리 → Cloud Functions가 발송 건너뜀
+
+    // Firestore notif_prefs 업데이트
+    await updateDoc(Collections.user(user.uid), {
+      [`notif_prefs.${key}`]: value,
+    }).catch((e) => console.warn('[StudentProfile] notif_prefs 업데이트 실패:', e));
+
+    // 현재 다른 토글의 값 계산
+    // 토글 적용 후 상태로 전체 ON/OFF 판단
+    const hw = key === 'homework' ? value : homeworkNotif;
+    const fb = key === 'feedback' ? value : feedbackNotif;
+    const nt = key === 'notice'   ? value : noticeNotif;
+    const allOff = !hw && !fb && !nt;
+
+    // 토글 적용 전 상태 (이전에 모두 OFF였는지 확인용)
+    const prevHw = key === 'homework' ? !value : homeworkNotif;
+    const prevFb = key === 'feedback' ? !value : feedbackNotif;
+    const prevNt = key === 'notice'   ? !value : noticeNotif;
+    const wasAllOff = !prevHw && !prevFb && !prevNt;
+
+    if (allOff) {
+      // 모든 알림 OFF → FCM 토큰 제거
       await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
         console.warn('[StudentProfile] fcm_token 제거 실패:', e)
       );
-    } else {
-      // 토글 ON: 토큰 재발급 + Firestore 저장
+    } else if (value && wasAllOff) {
+      // 모두 OFF 상태에서 하나가 ON으로 전환 → FCM 토큰 재발급
       await initFCM(user.uid).catch((e) =>
         console.warn('[StudentProfile] FCM 재초기화 실패:', e)
       );
     }
-  }, [user?.uid]);
+  }, [user?.uid, homeworkNotif, feedbackNotif, noticeNotif]);
 
   // ── 반 이름 + 통계 데이터 로드 ─────────────────
   useEffect(() => {
@@ -318,15 +354,56 @@ export default function StudentProfileScreen() {
 
       {/* ── 설정 메뉴 카드 ── */}
       <View style={styles.menuCard}>
-        {/* 알림 설정 토글 */}
+        {/* 숙제 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>🔔</Text>
-            <Text style={styles.menuLabel}>알림 설정</Text>
+            <Text style={styles.menuIcon}>📚</Text>
+            <View>
+              <Text style={styles.menuLabel}>숙제 알림</Text>
+              <Text style={styles.menuSub}>마감·미제출 알림</Text>
+            </View>
           </View>
           <Switch
-            value={pushEnabled}
-            onValueChange={handlePushToggle}
+            value={homeworkNotif}
+            onValueChange={(v) => handleNotifToggle('homework', v, NOTIF_HOMEWORK_KEY)}
+            trackColor={{ false: '#E2E8F0', true: '#10B981' }}
+            thumbColor="#fff"
+          />
+        </View>
+
+        <View style={styles.menuDivider} />
+
+        {/* 피드백 알림 토글 */}
+        <View style={styles.menuItem}>
+          <View style={styles.menuLeft}>
+            <Text style={styles.menuIcon}>✅</Text>
+            <View>
+              <Text style={styles.menuLabel}>피드백 알림</Text>
+              <Text style={styles.menuSub}>선생님 검사 결과 알림</Text>
+            </View>
+          </View>
+          <Switch
+            value={feedbackNotif}
+            onValueChange={(v) => handleNotifToggle('feedback', v, NOTIF_FEEDBACK_KEY)}
+            trackColor={{ false: '#E2E8F0', true: '#10B981' }}
+            thumbColor="#fff"
+          />
+        </View>
+
+        <View style={styles.menuDivider} />
+
+        {/* 공지 알림 토글 */}
+        <View style={styles.menuItem}>
+          <View style={styles.menuLeft}>
+            <Text style={styles.menuIcon}>📢</Text>
+            <View>
+              <Text style={styles.menuLabel}>공지 알림</Text>
+              <Text style={styles.menuSub}>새 공지사항 알림</Text>
+            </View>
+          </View>
+          <Switch
+            value={noticeNotif}
+            onValueChange={(v) => handleNotifToggle('notice', v, NOTIF_NOTICE_KEY)}
             trackColor={{ false: '#E2E8F0', true: '#10B981' }}
             thumbColor="#fff"
           />
@@ -552,6 +629,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#0F172A',
+  },
+  menuSub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 1,
   },
   menuDivider: {
     height: 1,

@@ -66,6 +66,16 @@ export default function TeacherProfileScreen() {
     await AsyncStorage.setItem(NOTIF_PREF_KEY, String(value));
 
     if (!user?.uid) return;
+
+    // Firestore notif_prefs 업데이트 — Cloud Functions 서버 측 필터링에 사용됨
+    // 선생님은 단일 토글로 모든 알림 유형을 일괄 제어
+    await updateDoc(Collections.user(user.uid), {
+      'notif_prefs.homework': value,
+      'notif_prefs.feedback': value,
+      'notif_prefs.notice':   value,
+      'notif_prefs.attendance': value,
+    }).catch((e) => console.warn('[TeacherProfile] notif_prefs 업데이트 실패:', e));
+
     if (value === false) {
       // 토글 OFF: FCM 토큰 null 처리 → Cloud Functions가 발송 건너뜀
       await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>

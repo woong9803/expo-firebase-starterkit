@@ -22,6 +22,12 @@ export interface User {
   phone_number: string;
   phone_verified: boolean;
   fcm_token?: string;               // 푸시 알림용 FCM 토큰 (없으면 알림 발송 안 함)
+  notif_prefs?: {                   // 알림 종류별 수신 설정 (없으면 전체 ON)
+    homework?: boolean;             // 숙제 마감·미제출 알림 (학생·학부모)
+    feedback?: boolean;             // 피드백 알림 (학생·학부모)
+    attendance?: boolean;           // 출결 알림 (학부모)
+    notice?: boolean;               // 공지 알림 (전체)
+  };
   streak?: number;                 // 학생 전용 — 연속 제출 일수 (없으면 0)
   teacher_feedback?: {             // 선생님/원장님이 학생에게 직접 남기는 메모
     text: string;

@@ -32,8 +32,10 @@ import {
   onSnapshot,
   updateDoc,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
+import { app } from '../../../lib/firebase';
 import { useAuthStore } from '../../../store/useAuthStore';
 import FeedbackButton from '../../../components/FeedbackButton';
 import { Homework, Submission, User } from '../../../types';
@@ -66,6 +68,9 @@ export default function HomeworkReviewScreen() {
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewVisible, setPreviewVisible] = useState(false);
+
+  // 알림 발송 중인 학생 uid 집합 (버튼 로딩 상태 관리)
+  const [sendingUids, setSendingUids] = useState<Set<string>>(new Set());
 
   // ── 숙제 + 학생 목록 1회 로드 ────────────────────────────────────────────
   useEffect(() => {
@@ -136,6 +141,25 @@ export default function HomeworkReviewScreen() {
     return () => unsub();
   }, [hwId, students]);
 
+
+  // ── 미제출 학생에게 숙제 알림 발송 ──────────────────────────────────────────
+  const sendReminder = useCallback(async (studentUid: string) => {
+    if (!hwId) return;
+    setSendingUids((prev) => new Set(prev).add(studentUid));
+    try {
+      const functions = getFunctions(app, 'us-central1');
+      const fn = httpsCallable(functions, 'sendHomeworkReminderPush');
+      await fn({ hwId, studentUid });
+    } catch (e) {
+      console.error('[HomeworkReview] 알림 발송 실패:', e);
+    } finally {
+      setSendingUids((prev) => {
+        const next = new Set(prev);
+        next.delete(studentUid);
+        return next;
+      });
+    }
+  }, [hwId]);
 
   // ── 피드백 저장 ───────────────────────────────────────────────────────────
   const saveFeedback = useCallback(async (
@@ -266,17 +290,35 @@ export default function HomeworkReviewScreen() {
               <Text style={styles.sectionTitle}>미제출 ({nonSubmitters.length}명)</Text>
               <View style={styles.nonSubmitCard}>
                 {nonSubmitters.map((s, idx) => (
-                  <View key={s.uid} style={styles.nonSubmitRow}>
-                    <View style={styles.nonSubmitAvatar}>
-                      <Text style={styles.nonSubmitAvatarText}>{s.name.charAt(0)}</Text>
-                    </View>
-                    <Text style={styles.nonSubmitName}>{s.name}</Text>
-                    <View style={styles.nonSubmitChip}>
-                      <Text style={styles.nonSubmitChipText}>미제출</Text>
+                  <View key={s.uid}>
+                    <View style={styles.nonSubmitRow}>
+                      <View style={styles.nonSubmitAvatar}>
+                        <Text style={styles.nonSubmitAvatarText}>{s.name.charAt(0)}</Text>
+                      </View>
+                      <Text style={styles.nonSubmitName}>{s.name}</Text>
+                      {/* 알림 보내기 버튼 */}
+                      <TouchableOpacity
+                        style={[
+                          styles.reminderBtn,
+                          sendingUids.has(s.uid) && styles.reminderBtnSending,
+                        ]}
+                        onPress={() => sendReminder(s.uid)}
+                        disabled={sendingUids.has(s.uid)}
+                        activeOpacity={0.7}
+                      >
+                        {sendingUids.has(s.uid) ? (
+                          <ActivityIndicator size="small" color="#5B50E8" />
+                        ) : (
+                          <>
+                            <Ionicons name="notifications-outline" size={13} color="#5B50E8" />
+                            <Text style={styles.reminderBtnText}>알림</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
                     </View>
                     {/* 마지막 아이템이 아니면 구분선 */}
                     {idx < nonSubmitters.length - 1 && (
-                      <View style={styles.divider} />
+                      <View style={styles.dividerLine} />
                     )}
                   </View>
                 ))}
@@ -672,15 +714,34 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    opacity: 0.45,
   },
-  divider: {
-    position: 'absolute',
-    bottom: 0,
-    left: 14,
-    right: 14,
+  dividerLine: {
     height: 1,
     backgroundColor: '#E2E8F0',
+    marginHorizontal: 14,
+  },
+  // 알림 보내기 버튼
+  reminderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    backgroundColor: '#EEEDF9',
+    minWidth: 60,
+    justifyContent: 'center',
+  },
+  reminderBtnSending: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  reminderBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#5B50E8',
   },
   nonSubmitAvatar: {
     width: 32, height: 32, borderRadius: 16,

@@ -36,8 +36,9 @@ import { validateLinkCode } from '../../../lib/auth';
 import type { User, Class } from '../../../types';
 
 // AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
-const NOTIF_HOMEWORK_KEY = 'parent_notif_homework';
-const NOTIF_NOTICE_KEY = 'parent_notif_notice';
+const NOTIF_HOMEWORK_KEY   = 'parent_notif_homework';
+const NOTIF_ATTENDANCE_KEY = 'parent_notif_attendance';
+const NOTIF_NOTICE_KEY     = 'parent_notif_notice';
 
 // 자녀 표시용 데이터 타입
 interface ChildInfo {
@@ -61,17 +62,19 @@ export default function ParentProfileScreen() {
   const [linkError, setLinkError] = useState<string | null>(null);
 
   // ── 알림 설정 ──────────────────────────────────────────
-  const [homeworkNotif, setHomeworkNotif] = useState(true);
-  const [noticeNotif, setNoticeNotif] = useState(true);
+  const [homeworkNotif, setHomeworkNotif]     = useState(true);
+  const [attendanceNotif, setAttendanceNotif] = useState(true);
+  const [noticeNotif, setNoticeNotif]         = useState(true);
 
   // ── 알림 설정 불러오기 ─────────────────────────────────
   useEffect(() => {
     const loadNotifSettings = async () => {
       try {
         const hw = await AsyncStorage.getItem(NOTIF_HOMEWORK_KEY);
+        const at = await AsyncStorage.getItem(NOTIF_ATTENDANCE_KEY);
         const nt = await AsyncStorage.getItem(NOTIF_NOTICE_KEY);
-        // 저장된 값이 없으면 기본 ON
         if (hw !== null) setHomeworkNotif(hw === 'true');
+        if (at !== null) setAttendanceNotif(at === 'true');
         if (nt !== null) setNoticeNotif(nt === 'true');
       } catch (err) {
         console.error('[ParentProfile] 알림 설정 불러오기 실패:', err);
@@ -80,44 +83,49 @@ export default function ParentProfileScreen() {
     loadNotifSettings();
   }, []);
 
-  // 알림 토글 처리
-  const handleHomeworkNotifToggle = useCallback(async (value: boolean) => {
-    setHomeworkNotif(value);
-    await AsyncStorage.setItem(NOTIF_HOMEWORK_KEY, String(value));
+  // 알림 토글 공통 처리
+  const handleNotifToggle = useCallback(async (
+    key: 'homework' | 'attendance' | 'notice',
+    value: boolean,
+    storageKey: string,
+  ) => {
+    // 로컬 상태 업데이트
+    if (key === 'homework')    setHomeworkNotif(value);
+    if (key === 'attendance')  setAttendanceNotif(value);
+    if (key === 'notice')      setNoticeNotif(value);
 
+    await AsyncStorage.setItem(storageKey, String(value));
     if (!user?.uid) return;
-    const bothOff = value === false && !noticeNotif;
-    if (bothOff) {
-      // 두 토글 모두 OFF: FCM 토큰 null → Cloud Functions가 발송 건너뜀
+
+    // Firestore notif_prefs 업데이트
+    await updateDoc(Collections.user(user.uid), {
+      [`notif_prefs.${key}`]: value,
+    }).catch((e) => console.warn('[ParentProfile] notif_prefs 업데이트 실패:', e));
+
+    // 현재 다른 토글의 값 (state는 아직 이전 값이므로 직접 계산)
+    const hw  = key === 'homework'   ? value : homeworkNotif;
+    const at  = key === 'attendance' ? value : attendanceNotif;
+    const nt  = key === 'notice'     ? value : noticeNotif;
+    const allOff = !hw && !at && !nt;
+
+    // 토글 적용 전 상태 — "이전에 모두 OFF였는지" 확인용 (새 value 반영 전 역산)
+    const prevHw = key === 'homework'   ? !value : homeworkNotif;
+    const prevAt = key === 'attendance' ? !value : attendanceNotif;
+    const prevNt = key === 'notice'     ? !value : noticeNotif;
+    const wasAllOff = !prevHw && !prevAt && !prevNt;
+
+    if (allOff) {
+      // 모든 알림 OFF → FCM 토큰 제거
       await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
         console.warn('[ParentProfile] fcm_token 제거 실패:', e)
       );
-    } else if (value === true && !homeworkNotif) {
-      // OFF에서 ON으로 전환: 토큰 재발급 + Firestore 저장
+    } else if (value && wasAllOff) {
+      // 이전에 모두 OFF였다가 하나 ON 전환 → FCM 토큰 재발급
       await initFCM(user.uid).catch((e) =>
         console.warn('[ParentProfile] FCM 재초기화 실패:', e)
       );
     }
-  }, [user?.uid, noticeNotif, homeworkNotif]);
-
-  const handleNoticeNotifToggle = useCallback(async (value: boolean) => {
-    setNoticeNotif(value);
-    await AsyncStorage.setItem(NOTIF_NOTICE_KEY, String(value));
-
-    if (!user?.uid) return;
-    const bothOff = value === false && !homeworkNotif;
-    if (bothOff) {
-      // 두 토글 모두 OFF: FCM 토큰 null
-      await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
-        console.warn('[ParentProfile] fcm_token 제거 실패:', e)
-      );
-    } else if (value === true && !noticeNotif) {
-      // OFF에서 ON으로 전환: 토큰 재발급
-      await initFCM(user.uid).catch((e) =>
-        console.warn('[ParentProfile] FCM 재초기화 실패:', e)
-      );
-    }
-  }, [user?.uid, homeworkNotif, noticeNotif]);
+  }, [user?.uid, homeworkNotif, attendanceNotif, noticeNotif]);
 
   // ── 자녀 데이터 조회 ────────────────────────────────────
   useEffect(() => {
@@ -453,12 +461,34 @@ export default function ParentProfileScreen() {
         {/* 숙제 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>🔔</Text>
-            <Text style={styles.menuLabel}>{strings.profile.homeworkNotif}</Text>
+            <Text style={styles.menuIcon}>📚</Text>
+            <View>
+              <Text style={styles.menuLabel}>{strings.profile.homeworkNotif}</Text>
+              <Text style={styles.menuSub}>마감·미제출·피드백 알림</Text>
+            </View>
           </View>
           <Switch
             value={homeworkNotif}
-            onValueChange={handleHomeworkNotifToggle}
+            onValueChange={(v) => handleNotifToggle('homework', v, NOTIF_HOMEWORK_KEY)}
+            trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
+            thumbColor="#fff"
+          />
+        </View>
+
+        <View style={styles.menuDivider} />
+
+        {/* 출결 알림 토글 */}
+        <View style={styles.menuItem}>
+          <View style={styles.menuLeft}>
+            <Text style={styles.menuIcon}>📋</Text>
+            <View>
+              <Text style={styles.menuLabel}>출결 알림</Text>
+              <Text style={styles.menuSub}>결석·지각 처리 시 알림</Text>
+            </View>
+          </View>
+          <Switch
+            value={attendanceNotif}
+            onValueChange={(v) => handleNotifToggle('attendance', v, NOTIF_ATTENDANCE_KEY)}
             trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
             thumbColor="#fff"
           />
@@ -470,11 +500,14 @@ export default function ParentProfileScreen() {
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
             <Text style={styles.menuIcon}>📢</Text>
-            <Text style={styles.menuLabel}>{strings.profile.noticeNotif}</Text>
+            <View>
+              <Text style={styles.menuLabel}>{strings.profile.noticeNotif}</Text>
+              <Text style={styles.menuSub}>새 공지사항 알림</Text>
+            </View>
           </View>
           <Switch
             value={noticeNotif}
-            onValueChange={handleNoticeNotifToggle}
+            onValueChange={(v) => handleNotifToggle('notice', v, NOTIF_NOTICE_KEY)}
             trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
             thumbColor="#fff"
           />
@@ -688,6 +721,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#0F172A',
+  },
+  menuSub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 1,
   },
   menuDivider: {
     height: 1,

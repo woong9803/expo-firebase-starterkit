@@ -36,15 +36,19 @@ export const onHomeworkFeedback = onDocumentUpdated(
     const studentDoc = await db.collection('users').doc(studentUid).get();
     if (studentDoc.exists) {
       const student = studentDoc.data()!;
-      await sendFcmNotification({
-        academyId,
-        targetUid: studentUid,
-        fcmToken: student.fcm_token ?? '',
-        title: NOTIFICATION_MESSAGES.feedbackStudent.title(hw.title),
-        body: NOTIFICATION_MESSAGES.feedbackStudent.body(after.feedback),
-        type: 'homework_feedback',
-        deepLink,
-      });
+      // 피드백 알림 OFF이면 학생에게만 건너뜀 — return이 아닌 조건부로 처리
+      // (return하면 아래 학부모 알림까지 모두 차단됨)
+      if (student.notif_prefs?.feedback !== false) {
+        await sendFcmNotification({
+          academyId,
+          targetUid: studentUid,
+          fcmToken: student.fcm_token ?? '',
+          title: NOTIFICATION_MESSAGES.feedbackStudent.title(hw.title),
+          body: NOTIFICATION_MESSAGES.feedbackStudent.body(after.feedback),
+          type: 'homework_feedback',
+          deepLink,
+        });
+      }
     }
 
     // 학생의 학부모에게도 알림 발송 (children 배열에 studentUid가 있는 학부모 조회)
@@ -56,6 +60,8 @@ export const onHomeworkFeedback = onDocumentUpdated(
 
     for (const parentDoc of parentsSnap.docs) {
       const parent = parentDoc.data();
+      // 피드백 알림 OFF 설정 시 건너뜀
+      if (parent.notif_prefs?.feedback === false) continue;
       await sendFcmNotification({
         academyId,
         targetUid: parentDoc.id,
@@ -63,7 +69,7 @@ export const onHomeworkFeedback = onDocumentUpdated(
         title: NOTIFICATION_MESSAGES.feedbackParent.title(hw.title),
         body: NOTIFICATION_MESSAGES.feedbackParent.body(after.feedback),
         type: 'homework_feedback',
-        deepLink: `/(app)/(parent)/index`, // 학부모는 홈으로 이동
+        deepLink: `/(app)/(parent)/index`,
       });
     }
 

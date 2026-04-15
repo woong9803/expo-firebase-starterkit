@@ -55,6 +55,9 @@ export const onNoticeCreated = onDocumentCreated(
         if (!isInTargetClass) continue;
       }
 
+      // 공지 알림 OFF 설정 시 건너뜀
+      if (user.notif_prefs?.notice === false) continue;
+
       batch.push({
         academyId,
         targetUid: userDoc.id,

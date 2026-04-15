@@ -92,21 +92,23 @@ export async function sendFcmBatch(items: SendFcmParams[]): Promise<void> {
     }
   }
 
-  // sendEachForMulticast는 최대 500건 처리 — 500개씩 chunk로 나눠 발송
+  // sendEach는 최대 500건 처리 — 500개씩 chunk로 나눠 발송
+  // sendEachForMulticast와 달리 수신자마다 개별 title/body를 보낼 수 있음
   const CHUNK_SIZE = 500;
   for (let i = 0; i < fcmTargets.length; i += CHUNK_SIZE) {
     const chunk = fcmTargets.slice(i, i + CHUNK_SIZE);
     try {
-      await admin.messaging().sendEachForMulticast({
-        tokens: chunk.map((t) => t.token),
-        notification: {
-          // 배치는 첫 번째 항목의 title/body 사용 (동일 알림 유형 전제)
-          title: chunk[0].title,
-          body: chunk[0].body,
-        },
-      });
+      await admin.messaging().sendEach(
+        chunk.map((t) => ({
+          token: t.token,
+          notification: { title: t.title, body: t.body },
+          // 딥링크를 data 페이로드로 전달 (클라이언트에서 라우팅 처리)
+          // deepLink 없으면 data 생략 — undefined로 처리해야 타입 오류 없음
+          data: t.deepLink ? { deep_link: t.deepLink } : undefined,
+        }))
+      );
     } catch (err) {
-      console.error(`[sendFcmBatch] multicast 발송 실패 (chunk ${i}~${i + chunk.length})`, err);
+      console.error(`[sendFcmBatch] sendEach 발송 실패 (chunk ${i}~${i + chunk.length})`, err);
     }
   }
 

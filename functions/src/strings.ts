@@ -33,4 +33,23 @@ export const NOTIFICATION_MESSAGES = {
     title: (noticeTitle: string) => `📢 새 공지: ${noticeTitle}`,
     body: '공지사항을 확인해보세요.',
   },
+
+  // 선생님 수동 숙제 알림 (학생용)
+  homeworkReminderManual: {
+    title: (homeworkTitle: string) => `📚 숙제 알림: ${homeworkTitle}`,
+    body: '선생님이 숙제 제출을 요청했어요. 서둘러 제출하세요!',
+  },
+
+  // 선생님 수동 숙제 알림 (학부모용)
+  homeworkReminderParent: {
+    title: (homeworkTitle: string) => `📚 자녀 숙제 알림: ${homeworkTitle}`,
+    body: (studentName: string) => `${studentName} 학생이 아직 숙제를 제출하지 않았어요.`,
+  },
+
+  // 출결 알림 (학부모용)
+  attendanceAlert: {
+    title: (studentName: string) => `📋 출결 알림: ${studentName}`,
+    bodyAbsent: '자녀가 오늘 결석으로 처리되었어요.',
+    bodyLate: '자녀가 오늘 지각으로 처리되었어요.',
+  },
 };

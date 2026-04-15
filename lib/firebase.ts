@@ -17,7 +17,7 @@ const firebaseConfig = {
 };
 
 // 앱 중복 초기화 방지
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // ⚠️ getReactNativePersistence는 firebase@12.x + Expo 조합에서 onAuthStateChanged를 막아
 // 무한 로딩을 유발함 — 해결 전까지 메모리 persistence 유지

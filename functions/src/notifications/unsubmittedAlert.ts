@@ -4,27 +4,28 @@ import { sendFcmBatch, SendFcmParams } from './sendFcm';
 import { NOTIFICATION_MESSAGES } from '../strings';
 
 /**
- * 당일 미제출 학부모 알림 스케줄러 (매일 18:00 KST)
- * 오늘 마감인 숙제의 미제출 학생 학부모에게 알림 발송
+ * 미제출 학부모 알림 스케줄러 (매시간 정각 실행)
+ * 마감시간이 지난 숙제 중 아직 알림을 보내지 않은 숙제의 미제출 학생 학부모에게 알림 발송
  *
  * 멱등성 보장: homework 문서의 unsubmitted_alert_sent_date 필드로 중복 발송 방지
  */
 export const sendUnsubmittedAlert = onSchedule(
-  { schedule: 'every day 09:00', timeZone: 'Asia/Seoul' },
+  { schedule: '0 * * * *', timeZone: 'Asia/Seoul' },  // 매시간 정각 실행
   async () => {
     const db = admin.firestore();
 
-    // 오늘 날짜 범위 계산 (KST 기준)
+    // 현재 시각 기준으로 마감시간이 지난 숙제 범위 계산
     const now = new Date();
+
+    // 조회 범위: 오늘 00:00 ~ 현재 시각 (마감시간이 지난 숙제만)
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
 
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    const todayEnd = new Date(now); // 현재 시각까지만 → 마감 지난 숙제만 조회
 
     const todayStr = now.toISOString().split('T')[0]; // 멱등성 체크용 날짜 키
 
-    // 오늘 마감인 숙제 조회
+    // 마감시간이 현재 이전인 숙제 조회 (오늘 내에서 이미 마감된 것만)
     const hwSnap = await db
       .collection('homeworks')
       .where('due_date', '>=', admin.firestore.Timestamp.fromDate(todayStart))
@@ -34,6 +35,8 @@ export const sendUnsubmittedAlert = onSchedule(
     if (hwSnap.empty) return;
 
     const batch: SendFcmParams[] = [];
+    // 발송 완료 후 멱등성 필드를 업데이트할 숙제 문서 목록
+    const docsToMark: admin.firestore.DocumentReference[] = [];
 
     for (const hwDoc of hwSnap.docs) {
       const hw = hwDoc.data();
@@ -76,6 +79,8 @@ export const sendUnsubmittedAlert = onSchedule(
         // fcm_token 없어도 인박스 저장은 항상 진행
         for (const parentDoc of parentsSnap.docs) {
           const parent = parentDoc.data();
+          // 숙제 알림 OFF 설정 시 건너뜀
+          if (parent.notif_prefs?.homework === false) continue;
 
           batch.push({
             academyId,
@@ -89,12 +94,17 @@ export const sendUnsubmittedAlert = onSchedule(
         }
       }
 
-      // 멱등성 필드 업데이트
-      await hwDoc.ref.update({ unsubmitted_alert_sent_date: todayStr });
+      // 발송 대상에 포함된 숙제 → 나중에 멱등성 필드 업데이트
+      docsToMark.push(hwDoc.ref);
     }
 
     if (batch.length > 0) {
       await sendFcmBatch(batch);
+    }
+
+    // sendFcmBatch 성공 후 멱등성 필드 업데이트 — 실패 시 재시도 가능
+    for (const ref of docsToMark) {
+      await ref.update({ unsubmitted_alert_sent_date: todayStr });
     }
 
     console.log(`[unsubmittedAlert] ${batch.length}건 알림 처리 완료`);

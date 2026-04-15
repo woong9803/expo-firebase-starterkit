@@ -12,7 +12,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { query, where, getDocs, documentId } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { router } from 'expo-router';
+import { app } from '../../../lib/firebase';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useAttendanceStore } from '../../../store/useAttendanceStore';
 import { Collections } from '../../../lib/firestore';
@@ -223,6 +225,23 @@ export default function TeacherAttendanceScreen() {
       );
       // 저장 완료 후 임시 변경 상태 초기화 → 버튼 자동 비활성화
       setPendingStatuses({});
+
+      // 결석/지각 학생의 학부모에게 알림 발송 (백그라운드 — 실패해도 저장은 유지)
+      const alertTargets = toSave
+        .filter((s) => s.status === 'absent' || s.status === 'late')
+        .map((s) => ({
+          uid: s.uid,
+          status: s.status,
+          name: students.find((st) => st.uid === s.uid)?.name ?? '',
+        }));
+
+      if (alertTargets.length > 0) {
+        const functions = getFunctions(app, 'us-central1');
+        const fn = httpsCallable(functions, 'sendAttendanceAlertPush');
+        fn({ academyId: user.academy_id, records: alertTargets }).catch((e) =>
+          console.error('[TeacherAttendance] 출결 알림 발송 실패:', e)
+        );
+      }
     } catch (e) {
       console.error('[TeacherAttendance] 일괄 저장 실패:', e);
     } finally {
