@@ -402,40 +402,65 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 
 ---
 
-### Phase 8: FCM 푸시 알림
+### Phase 8: FCM 푸시 알림 ✅
 
 **목표**: 숙제 마감 임박, 피드백 등록, 미제출 자동 알림 등이 FCM을 통해 실제 디바이스에 푸시 알림으로 전달되는 상태
 
 **구현 내용**:
-- FCM 토큰 등록 및 관리
-  - 앱 최초 실행 시 FCM 토큰 발급 → Firestore `users/{uid}` 저장
-  - 토큰 갱신 시 자동 업데이트
-- 알림 권한 요청 타이밍
-  - 첫 로그인 완료 직후 요청
-  - 거부 시 3일 후 1회 재요청, 이후 강제 없음
-- Cloud Functions 알림 트리거 구현
-  - `functions/notifications/homeworkDueReminder.ts` — 마감 임박 알림 (마감일 전날)
-  - `functions/notifications/homeworkFeedback.ts` — 선생님 피드백 등록 시 학생에게 알림
-  - `functions/notifications/unsubmittedAlert.ts` — 마감 당일 오후 6시 미제출 학생 학부모에게 자동 발송
-  - `functions/notifications/noticeAlert.ts` — 새 공지사항 등록 시 알림
-- Firestore `notifications` 컬렉션에 알림 히스토리 동시 저장 (앱 내 인박스 연동)
-- Pro 플랜 전용 기능 — 무료 플랜은 FCM 알림 미발송
-- OS 알림 거부 시에도 앱 내 인박스에서 확인 가능
+- ✅ FCM 토큰 등록 및 관리
+  - ✅ 앱 최초 실행 시 FCM 토큰 발급 → Firestore `users/{uid}` 저장
+  - ✅ 토큰 갱신 시 자동 업데이트
+  - ✅ 모든 알림 OFF 시 `fcm_token: null` 저장 → 서버 발송 자동 차단
+  - ✅ 알림 재활성화 시 FCM 토큰 재발급
+- ✅ 알림 권한 요청 타이밍
+  - ✅ 첫 로그인 완료 직후 요청
+  - ✅ 거부 시 3일 후 1회 재요청, 이후 강제 없음
+- ✅ Cloud Functions 알림 트리거 구현
+  - ✅ `functions/notifications/homeworkReminderPush.ts` — 선생님이 미제출 학생 수동 알림 버튼 클릭 시 학생·학부모에게 발송 (callable)
+  - ✅ `functions/notifications/homeworkFeedback.ts` — 피드백 등록 시 학생·학부모 알림 (onDocumentUpdated)
+  - ✅ `functions/notifications/unsubmittedAlert.ts` — 마감시간 경과 후 매시간 정각 미제출 학부모에게 자동 발송 (스케줄러, 멱등성 보장)
+  - ✅ `functions/notifications/noticeAlert.ts` — 새 공지 등록 시 대상 역할·반 필터링 후 알림 (onDocumentCreated)
+  - ✅ `functions/notifications/attendanceAlertPush.ts` — 출결 저장 시 결석·지각 학생 학부모에게 즉시 알림 (callable)
+- ✅ 선생님 숙제 리뷰 화면에 미제출 학생별 알림 전송 버튼 추가
+- ✅ 출결 저장(선생님) 시 결석·지각 학부모에게 자동 알림 연동
+- ✅ 역할별 알림 설정 (내 정보 화면)
+  - ✅ 학생: 숙제 알림 / 피드백 알림 / 공지 알림 개별 토글
+  - ✅ 학부모: 숙제 알림 / 출결 알림 / 공지 알림 개별 토글
+  - ✅ 선생님: 푸시 알림 통합 ON/OFF 토글
+  - ✅ Firestore `notif_prefs` 필드 저장 → Cloud Functions 서버 측 필터링에 활용
+- ✅ Firestore `notifications` 컬렉션에 알림 히스토리 동시 저장 (앱 내 인박스 연동)
+- ✅ Pro 플랜 전용 기능 — 무료 플랜은 FCM 알림 미발송 (인박스 저장은 플랜 무관)
+- ✅ OS 알림 거부 시에도 앱 내 인박스에서 확인 가능
+- ✅ 온보딩 첫 화면 UI 개선
+  - ✅ 앱 아이콘 이미지 적용 (`app_icon_2.png`)
+  - ✅ 앱 이름 "웅깅" + "Woongking" 서브타이틀
+  - ✅ 슬로건: "웅차게 배우고, 왕처럼 성장하다"
+  - ✅ 기능 설명 이모지 → Ionicons 아이콘으로 교체
+  - ✅ 기능 텍스트: 숙제 제출·실시간 피드백 / 원터치 출결·학부모 즉시 알림 / 출석부 엑셀 파일 자동 생성
 
 **완료 기준**:
-- iOS/Android 실제 디바이스에서 푸시 알림이 정상 수신됨
-- 숙제 마감 임박, 피드백 등록, 미제출 자동 알림이 올바른 시점에 발송됨
-- 알림 클릭 시 해당 화면으로 정상 이동 (딥링크)
-- 알림 히스토리가 앱 내 인박스에 동시 저장됨
-- Playwright MCP로 알림 트리거 → 수신 → 인박스 반영 테스트 통과
+- ✅ iOS/Android 실제 디바이스에서 푸시 알림이 정상 수신됨
+- ✅ 피드백 등록, 미제출 자동 알림, 출결 알림이 올바른 시점에 발송됨
+- ✅ 선생님 수동 알림 버튼으로 특정 학생에게 알림 전송 가능
+- ✅ 알림 클릭 시 해당 화면으로 정상 이동 (딥링크)
+- ✅ 알림 히스토리가 앱 내 인박스에 동시 저장됨
+- ✅ 역할별 알림 토글이 Firestore에 저장되고 Cloud Functions 필터링에 반영됨
+- ✅ Cloud Functions 호출자 역할·학원 소속 검증으로 권한 외 발송 차단
 
 **주요 파일**:
 - `lib/fcm.ts` (FCM 토큰 관리 유틸)
-- `functions/notifications/homeworkDueReminder.ts`
-- `functions/notifications/homeworkFeedback.ts`
-- `functions/notifications/unsubmittedAlert.ts`
-- `functions/notifications/noticeAlert.ts`
-- `app/(app)/common/notification-inbox.tsx` (Phase 7에서 생성, 딥링크 연동 추가)
+- `functions/src/notifications/homeworkReminderPush.ts`
+- `functions/src/notifications/homeworkFeedback.ts`
+- `functions/src/notifications/unsubmittedAlert.ts`
+- `functions/src/notifications/noticeAlert.ts`
+- `functions/src/notifications/attendanceAlertPush.ts`
+- `functions/src/notifications/sendFcm.ts`
+- `app/(app)/(teacher)/homework-review.tsx` (알림 버튼 추가)
+- `app/(app)/(teacher)/attendance.tsx` (출결 저장 시 알림 연동)
+- `app/(app)/(student)/profile.tsx` (알림 유형별 토글)
+- `app/(app)/(parent)/profile.tsx` (알림 유형별 토글)
+- `app/(app)/(teacher)/profile.tsx` (푸시 알림 통합 토글)
+- `app/(auth)/index.tsx` (온보딩 첫 화면 UI 개선)
 
 ---
 
