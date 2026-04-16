@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 import { Slot, useRouter } from 'expo-router';
+import { onSnapshot } from 'firebase/firestore';
+import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { Academy } from '../../types';
 
 /**
  * 역할별 화면 분기 — 앱 전체에서 이 파일 단 한 곳에서만 처리
@@ -8,7 +11,24 @@ import { useAuthStore } from '../../store/useAuthStore';
  */
 export default function AppLayout() {
   const router = useRouter();
-  const { user, academy, pendingExploreGranted } = useAuthStore();
+  const { user, academy, pendingExploreGranted, setAcademy } = useAuthStore();
+
+  // admin 전용 — 학원 상태 실시간 구독
+  // 로그인 중에 Firebase 콘솔에서 status가 바뀌어도 즉시 감지
+  useEffect(() => {
+    if (user?.role !== 'admin' || !user?.academy_id) return;
+
+    const unsub = onSnapshot(
+      Collections.academy(user.academy_id),
+      (snap) => {
+        if (snap.exists()) {
+          setAcademy({ id: snap.id, ...snap.data() } as Academy);
+        }
+      },
+      (e) => console.warn('[AppLayout] academy 구독 오류:', e),
+    );
+    return () => unsub();
+  }, [user?.academy_id, user?.role]);
 
   useEffect(() => {
     if (!user) return;
