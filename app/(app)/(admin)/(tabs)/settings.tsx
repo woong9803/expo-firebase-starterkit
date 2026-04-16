@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import {
-  query, where, getDocs, addDoc, updateDoc, deleteDoc, getCountFromServer,
+  query, where, getDocs, onSnapshot, addDoc, updateDoc, deleteDoc, getCountFromServer,
   arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { auth } from '../../../../lib/firebase';
@@ -81,43 +81,20 @@ export default function AdminSettingsScreen() {
   const [isSavingClass, setIsSavingClass]   = useState(false);
   const [isReissuingCode, setIsReissuingCode] = useState(false); // 초대코드 재발급 로딩
 
-  // ── 1. 반 + 선생님 목록 로드 ──
+  // ── 1. 반 목록 실시간 구독 ──
   useEffect(() => {
     if (!user?.academy_id) return;
 
-    (async () => {
-      try {
-        const [classSnap, teacherSnap] = await Promise.all([
-          getDocs(query(Collections.classes(), where('academy_id', '==', user.academy_id))),
-          getDocs(
-            query(
-              Collections.users(),
-              where('academy_id', '==', user.academy_id),
-              where('role', '==', 'teacher'),
-              where('is_active', '==', true),
-            )
-          ),
-        ]);
-
-        const classList = classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
-        const teacherList = teacherSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
-
+    const unsub = onSnapshot(
+      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
+      async (snap) => {
+        const classList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         setClasses(classList);
-        setTeachers(teacherList);
 
-        // 선생님 역매핑: classId → 첫 번째 담당 선생님 이름
-        const tMap: Record<string, string> = {};
-        teacherList.forEach(t => {
-          (t.assigned_class_ids ?? []).forEach(cid => {
-            if (!tMap[cid]) tMap[cid] = t.name;
-          });
-        });
-        setClassTeacherMap(tMap);
-
-        // 반별 학생 수 병렬 집계
+        // 반별 학생 수 집계
         const countResults = await Promise.all(
           classList.map(async cls => {
-            const snap = await getCountFromServer(
+            const s = await getCountFromServer(
               query(
                 Collections.users(),
                 where('academy_id', '==', user.academy_id),
@@ -126,19 +103,50 @@ export default function AdminSettingsScreen() {
                 where('is_active', '==', true),
               )
             );
-            return { classId: cls.id, count: snap.data().count };
+            return { classId: cls.id, count: s.data().count };
           })
         );
-
         const cMap: Record<string, number> = {};
         countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
         setStudentCounts(cMap);
-      } catch (e) {
-        console.error('[AdminSettings] 데이터 로드 실패:', e);
-      } finally {
         setIsLoading(false);
-      }
-    })();
+      },
+      (e) => { console.error('[AdminSettings] 반 구독 실패:', e); setIsLoading(false); }
+    );
+
+    return () => unsub();
+  }, [user?.academy_id]);
+
+  // ── 2. 선생님 목록 실시간 구독 — 신규 가입 즉시 반영 ──
+  useEffect(() => {
+    if (!user?.academy_id) return;
+
+    const unsub = onSnapshot(
+      query(
+        Collections.users(),
+        where('academy_id', '==', user.academy_id),
+        where('role', '==', 'teacher'),
+        where('is_active', '==', true),
+      ),
+      (snap) => {
+        const teacherList = snap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+        setTeachers(teacherList);
+
+        // classId → 첫 번째 담당 선생님 이름 역매핑
+        const tMap: Record<string, string> = {};
+        [...teacherList]
+          .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+          .forEach(t => {
+            (t.assigned_class_ids ?? []).forEach(cid => {
+              if (!tMap[cid]) tMap[cid] = t.name;
+            });
+          });
+        setClassTeacherMap(tMap);
+      },
+      (e) => console.error('[AdminSettings] 선생님 구독 실패:', e)
+    );
+
+    return () => unsub();
   }, [user?.academy_id]);
 
   // ── 새 반 만들기 ──
