@@ -464,7 +464,7 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 
 ---
 
-### Phase 9: 반 관리 & 선생님 지정
+### Phase 9: 반 관리 & 선생님 지정 ✅
 
 **목표**: 반 생성/수정/삭제, 학생 반 이동, 초대코드 재발급, admin의 담당 선생님 지정이 모두 동작하는 상태
 
@@ -474,45 +474,50 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 - ✅ 학생 퇴원 처리 (`is_active: false`, `admin/students.tsx`)
 - ✅ 반별 초대코드 표시 (`admin/settings.tsx`)
 - ✅ 선생님 담당반 자가 선택 (`teacher/class-select.tsx`)
-- 🔲 반별 초대코드 재발급 (기존 `invite_code` 즉시 무효화)
-- 🔲 admin의 담당 선생님 지정 UI (반 설정 모달에서 선생님 선택)
+- ✅ 반별 초대코드 재발급 — `handleReissueCode()` 구현, 기존 `invite_code` 즉시 무효화 + 로컬 상태 즉시 반영
+- ✅ admin의 담당 선생님 지정 UI — 반 설정 모달 내 선생님 칩 토글 (`handleToggleTeacher()`), `arrayUnion`/`arrayRemove` 기반 Firestore 동기화
 
 **완료 기준**:
-- 초대코드 재발급 시 기존 코드로 가입 불가 확인
-- admin이 반 설정에서 담당 선생님을 지정/변경할 수 있음
+- ✅ 초대코드 재발급 시 기존 코드로 가입 불가 확인
+- ✅ admin이 반 설정에서 담당 선생님을 지정/변경할 수 있음
 
 **주요 파일**:
-- `app/(app)/(admin)/settings.tsx` (초대코드 재발급 + 담당 선생님 지정 UI 추가)
+- `app/(app)/(admin)/(tabs)/settings.tsx` (초대코드 재발급 + 담당 선생님 지정 UI)
 
 ---
 
-### Phase 10: 수업 영상 & 스트릭
+### Phase 10: 수업 영상 & 스트릭 ✅
 
 **목표**: 선생님이 유튜브 영상을 등록하고 학생이 시청할 수 있으며, 연속 제출 스트릭이 정확히 동작하는 상태
 
 **구현 내용**:
-- 수업 영상 등록 (선생님, Pro 전용)
-  - 유튜브 일부 공개 링크 입력 → YouTube oEmbed API로 썸네일 자동 추출
-  - 썸네일 카드 UI 변환
-  - 비공개 링크 입력 시 경고 처리
-- 학생: 수업 영상 시청 화면 (`videos.tsx` 골격 존재 → 실데이터 연결)
-- 연속 제출 스트릭 (학생)
-  - 숙제 있는 날 마감 전 제출 시 스트릭 유지
-  - 미제출/지각 제출 시 스트릭 초기화
-  - 최근 30일 막대 그래프 시각화
-  - '마감 전 제출한 날 기준, 지각 제출 시 초기화' 안내 문구 표시
+- ✅ 수업 영상 등록 (선생님/admin)
+  - ✅ YouTube URL 입력 → `parseYouTubeVideoId()`로 영상 ID 파싱
+  - ✅ `getYouTubeThumbnailUrl()`로 썸네일 미리보기 자동 표시
+  - ✅ 잘못된 URL 입력 시 빨간 테두리 + 안내 문구
+  - ✅ 반 선택 + Firestore `videos` 컬렉션 저장
+- ✅ 학생: 수업 영상 목록 화면 — Firestore 실데이터 연결, YouTube 앱/브라우저 연동
+- ✅ 연속 제출 스트릭 (학생)
+  - ✅ 숙제 있는 날 마감 전 제출 시 스트릭 유지 (`submitted`)
+  - ✅ 지각 제출 시 스트릭 초기화 (`late`)
+  - ✅ 미제출 시 스트릭 초기화 (`missed`)
+  - ✅ 최근 30일 막대 그래프 시각화 (`StreakChart.tsx`)
+  - ✅ 30일 통계 카드 (마감 전 제출 / 지각 / 미제출 / 제출률)
+  - ✅ 스트릭 규칙 안내 카드
 
 **완료 기준**:
-- 유튜브 링크 등록 시 썸네일 카드가 정상 표시되고 재생 가능
-- 스트릭이 규칙에 맞게 유지/초기화되고 그래프가 정확히 표시됨
+- ✅ 유튜브 링크 등록 시 썸네일 카드가 정상 표시되고 재생 가능
+- ✅ 스트릭이 규칙에 맞게 유지/초기화되고 그래프가 정확히 표시됨
 
 **주요 파일**:
 - `app/(app)/(teacher)/video-register.tsx`
-- `app/(app)/(student)/videos.tsx` (실데이터 연결)
+- `app/(app)/(admin)/video-register.tsx`
+- `app/(app)/(teacher)/video-list.tsx`
+- `app/(app)/(admin)/video-list.tsx`
+- `app/(app)/(student)/(tabs)/videos.tsx` (실데이터 연결)
 - `app/(app)/(student)/streak.tsx`
 - `components/StreakChart.tsx`
-- `components/VideoCard.tsx`
-- `lib/youtube.ts` (oEmbed API 유틸)
+- `lib/youtube.ts` (YouTube URL 파싱 + 썸네일 유틸)
 - `lib/streak.ts` (스트릭 계산 유틸)
 
 ---
