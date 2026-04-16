@@ -9,7 +9,6 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onSnapshot } from 'firebase/firestore';
@@ -58,7 +57,6 @@ export default function PendingScreen() {
         setStoreAcademy(data);
 
         if (data.status === 'active') {
-          AsyncStorage.setItem(`approved_shown_${snap.id}`, '1');
           Alert.alert(
             '🎉 학원 승인 완료!',
             `${data.name} 학원이 승인되었어요.\n이제 모든 기능을 사용할 수 있어요!`,

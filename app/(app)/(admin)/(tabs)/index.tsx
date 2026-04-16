@@ -5,7 +5,7 @@
  * 오늘 확인 필요(결석·미입력) 섹션과 반별 출석률 카드를 포함한다.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,6 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,24 +41,23 @@ export default function AdminHomeScreen() {
 
   const { top } = useSafeAreaInsets();
 
-  // Case 2: 앱 재시작 후 이미 승인된 상태로 첫 진입 시 승인 알림
-  // pending.tsx에서 아직 알림을 못 본 경우에만 표시 (AsyncStorage 키로 판단)
+  // pending → active 전환 시 승인 알림
+  // useRef로 이전 상태를 추적해 전환 시점에만 팝업 표시
+  // AsyncStorage 방식은 이미 설정된 키 때문에 반복 테스트 시 알림이 안 뜨는 문제가 있어 제거
+  const prevStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!academy?.id || academy.status !== 'active') return;
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = academy?.status;
 
-    const storageKey = `approved_shown_${academy.id}`;
-    AsyncStorage.getItem(storageKey).then((shown) => {
-      if (!shown) {
-        // 아직 승인 알림을 본 적 없음 → 표시 후 플래그 저장
-        AsyncStorage.setItem(storageKey, '1');
-        Alert.alert(
-          '🎉 학원 승인 완료!',
-          `${academy.name} 학원이 승인되었어요.\n이제 모든 기능을 사용할 수 있어요!`,
-          [{ text: '확인' }],
-        );
-      }
-    });
-  }, [academy?.id, academy?.status]);
+    // pending 상태에서 active로 바뀐 시점에만 알림 표시
+    if (prevStatus === 'pending' && academy?.status === 'active') {
+      Alert.alert(
+        '🎉 학원 승인 완료!',
+        `${academy.name} 학원이 승인되었어요.\n이제 모든 기능을 사용할 수 있어요!`,
+        [{ text: '확인' }],
+      );
+    }
+  }, [academy?.status]);
 
   // ── 통계 상태 ──────────────────────────────────────────────────────
   const [studentCount, setStudentCount] = useState<number | null>(null);
