@@ -204,7 +204,7 @@ export default function AdminHomeScreen() {
         {/* 상단 Row: 학원명 + 알림 아이콘 */}
         <View style={styles.headerTop}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerGreeting}>운영 현황</Text>
+            <Text style={styles.headerGreeting}>원장님, 안녕하세요</Text>
             <Text style={styles.headerAcademy}>{academy?.name ?? '학원'}</Text>
           </View>
           <TouchableOpacity
