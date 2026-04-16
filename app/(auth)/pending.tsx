@@ -34,7 +34,7 @@ function formatDate(ts: { toDate: () => Date } | null | undefined): string {
 export default function PendingScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
-  const { user, academy: storeAcademy } = useAuthStore();
+  const { user, academy: storeAcademy, setPendingExploreGranted } = useAuthStore();
 
   const [academy, setAcademy] = useState<Academy | null>(storeAcademy);
   const [isLoading, setIsLoading] = useState(!storeAcademy);
@@ -149,7 +149,11 @@ export default function PendingScreen() {
 
         <TouchableOpacity
           style={styles.btnPrimary}
-          onPress={() => router.replace('/(app)/(admin)')}
+          onPress={() => {
+            // AppLayout의 pending 체크를 이 세션 동안 우회하도록 허용
+            setPendingExploreGranted(true);
+            router.replace('/(app)/(admin)');
+          }}
           activeOpacity={0.85}
         >
           <Text style={styles.btnPrimaryText}>미리 탐색해보기</Text>

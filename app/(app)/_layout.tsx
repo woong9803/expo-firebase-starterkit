@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/useAuthStore';
  */
 export default function AppLayout() {
   const router = useRouter();
-  const { user, academy } = useAuthStore();
+  const { user, academy, pendingExploreGranted } = useAuthStore();
 
   useEffect(() => {
     if (!user) return;
@@ -29,11 +29,12 @@ export default function AppLayout() {
     switch (user.role) {
       case 'admin':
         // academy가 null이면 아직 Firestore에서 로딩 중 → 다음 effect 실행까지 대기
-        // (academy 등록 직후엔 setAcademy로 미리 채워지므로 null이 아님)
         if (academy === null) break;
-        if (academy.status === 'pending') {
+        if (academy.status === 'pending' && !pendingExploreGranted) {
+          // 승인 대기 중이고 "미리 탐색해보기"를 누르지 않은 경우 → pending 화면
           router.replace('/(auth)/pending');
         } else {
+          // 승인 완료 또는 탐색 허용된 경우 → admin 홈
           router.replace('/(app)/(admin)');
         }
         break;
@@ -47,7 +48,7 @@ export default function AppLayout() {
         router.replace('/(app)/(parent)');
         break;
     }
-  }, [user, academy]);
+  }, [user, academy, pendingExploreGranted]);
 
   return <Slot />;
 }
