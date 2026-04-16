@@ -220,12 +220,7 @@ export default function AdminHomeScreen() {
         {/* 2칸 그리드: 전체 학생 / 오늘 출석률 */}
         <View style={styles.statGrid2}>
           <View style={styles.statBox2}>
-            <View style={styles.statIconRow}>
-              <View style={styles.statIconBadge}>
-                <Ionicons name="people-outline" size={14} color="rgba(255,255,255,0.9)" />
-              </View>
-              <Text style={styles.statLbl2}>전체 학생</Text>
-            </View>
+            <Text style={styles.statLbl2}>전체 학생</Text>
             {isLoading ? (
               <ActivityIndicator color="#fff" size="small" style={{ marginTop: 8 }} />
             ) : (
@@ -233,12 +228,7 @@ export default function AdminHomeScreen() {
             )}
           </View>
           <View style={styles.statBox2}>
-            <View style={styles.statIconRow}>
-              <View style={styles.statIconBadge}>
-                <Ionicons name="stats-chart-outline" size={14} color="rgba(255,255,255,0.9)" />
-              </View>
-              <Text style={styles.statLbl2}>오늘 출석률</Text>
-            </View>
+            <Text style={styles.statLbl2}>오늘 출석률</Text>
             {isLoadingAttendance ? (
               <ActivityIndicator color="#fff" size="small" style={{ marginTop: 8 }} />
             ) : (
@@ -253,7 +243,6 @@ export default function AdminHomeScreen() {
         {/* 3칸 그리드: 반 수 / 선생님 수 / 플랜 */}
         <View style={styles.statGrid3}>
           <View style={styles.statBox3}>
-            <Ionicons name="library-outline" size={16} color="rgba(255,255,255,0.8)" style={{ marginBottom: 4 }} />
             {isLoading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
@@ -263,7 +252,6 @@ export default function AdminHomeScreen() {
           </View>
           <View style={styles.statDividerV} />
           <View style={styles.statBox3}>
-            <Ionicons name="school-outline" size={16} color="rgba(255,255,255,0.8)" style={{ marginBottom: 4 }} />
             {isLoading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
@@ -273,7 +261,6 @@ export default function AdminHomeScreen() {
           </View>
           <View style={styles.statDividerV} />
           <View style={styles.statBox3}>
-            <Ionicons name="star-outline" size={16} color="rgba(255,255,255,0.8)" style={{ marginBottom: 4 }} />
             <View style={[
               styles.planBadge,
               academy?.plan === 'pro' ? styles.planBadgePro :
@@ -464,13 +451,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.2)',
     borderRadius: 14, padding: 14,
   },
-  statIconRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  statIconBadge: {
-    width: 22, height: 22, borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  statNum2: { fontSize: 32, fontWeight: '800', color: '#fff', lineHeight: 36 },
+  statNum2: { fontSize: 32, fontWeight: '800', color: '#fff', lineHeight: 36, marginTop: 6 },
   statUnit: { fontSize: 16, fontWeight: '600' },
   statLbl2: { fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: '500' },
 
