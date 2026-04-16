@@ -22,7 +22,7 @@ import { getDocs, query, where } from 'firebase/firestore';
 
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useProCheck } from '../../../hooks/useProCheck';
-import { getNoticeReadUsers } from '../../../lib/notice';
+import { subscribeNoticeReadUsers } from '../../../lib/notice';
 import { Collections } from '../../../lib/firestore';
 import ClassPickerSheet from '../../../components/ClassPickerSheet';
 import ProUpgradeSheet from '../../../components/ProUpgradeSheet';
@@ -105,23 +105,30 @@ export default function AdminNoticeReadStatusScreen() {
     }).catch((e) => console.warn('[NoticeReadStatus] 반 로드 오류:', e));
   }, [user?.academy_id]);
 
-  // ── 읽음 현황 조회 ───────────────────────────────────────────
+  // ── 읽음 현황 실시간 구독 ───────────────────────────────────
+  // 학생/학부모가 공지를 읽으면 read_by가 갱신되고 즉시 반영된다
   useEffect(() => {
     if (!isPro || !noticeId || !user?.academy_id) return;
 
     setIsLoading(true);
     setError(null);
 
-    getNoticeReadUsers(noticeId, user.academy_id)
-      .then(({ readUsers: ru, unreadUsers: uu }) => {
+    const unsub = subscribeNoticeReadUsers(
+      noticeId,
+      user.academy_id,
+      ({ readUsers: ru, unreadUsers: uu }) => {
         setReadUsers(ru);
         setUnreadUsers(uu);
-      })
-      .catch((e) => {
+        setIsLoading(false);
+      },
+      (e) => {
         console.warn('[NoticeReadStatus] 조회 오류:', e);
         setError(strings.common.error);
-      })
-      .finally(() => setIsLoading(false));
+        setIsLoading(false);
+      },
+    );
+
+    return () => unsub();
   }, [isPro, noticeId, user?.academy_id]);
 
   // ── 반 필터링 ──
@@ -158,10 +165,7 @@ export default function AdminNoticeReadStatusScreen() {
       {/* ── 헤더 ── */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.navigate({
-            pathname: '/common/notice-detail' as const,
-            params: { noticeId: noticeId ?? '' },
-          })}
+          onPress={() => router.back()}
           style={styles.backButton}
         >
           <Ionicons name="arrow-back" size={22} color="#0F172A" />
@@ -246,7 +250,7 @@ export default function AdminNoticeReadStatusScreen() {
         onClose={() => {
           hideUpgradeSheet();
           // Tabs 구조에서 router.back()이 홈으로 가는 버그 → 명시적으로 공지 탭으로 이동
-          router.navigate('/(app)/(admin)/notices');
+          router.back();
         }}
         featureName={strings.notice.proFeatureName}
       />

@@ -8,6 +8,7 @@
 import {
   addDoc,
   updateDoc,
+  deleteDoc,
   getDoc,
   getDocs,
   query,
@@ -65,6 +66,35 @@ export async function createNotice(params: CreateNoticeParams): Promise<string> 
   });
 
   return docRef.id;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 공지 수정
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 기존 공지의 제목 / 내용 / 중요 여부를 수정한다.
+ */
+export async function updateNotice(
+  noticeId: string,
+  params: { title: string; content: string; isImportant: boolean }
+): Promise<void> {
+  await updateDoc(Collections.notice(noticeId), {
+    title: params.title,
+    content: params.content,
+    is_important: params.isImportant,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 공지 삭제
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 공지 문서를 Firestore에서 삭제한다.
+ */
+export async function deleteNotice(noticeId: string): Promise<void> {
+  await deleteDoc(Collections.notice(noticeId));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -139,6 +169,94 @@ export function subscribeNotices(
 
 // ─────────────────────────────────────────────────────────────
 // 읽음 현황 조회 (Pro 전용 기능에서 사용)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 특정 공지의 읽음/미읽음 사용자 목록을 실시간으로 구독한다.
+ * 학생/학부모가 공지를 읽으면 read_by가 업데이트되고 callback이 즉시 호출된다.
+ *
+ * 흐름:
+ * 1) 학원 소속 학생+학부모 목록을 일회성으로 조회 (사용자 목록은 자주 바뀌지 않음)
+ * 2) 공지 문서(read_by 필드)를 onSnapshot으로 실시간 감시
+ * 3) read_by 변경 시 callback으로 readUsers/unreadUsers 반환
+ *
+ * @returns 구독 해제 함수 (useEffect cleanup에서 반드시 호출)
+ */
+export function subscribeNoticeReadUsers(
+  noticeId: string,
+  academyId: string,
+  callback: (status: NoticeReadStatus) => void,
+  onError?: (e: unknown) => void,
+): () => void {
+  let unsubNotice: (() => void) | null = null;
+  let isCancelled = false;
+
+  // 1) 학원 소속 학생+학부모 일회성 조회
+  getDocs(
+    query(
+      Collections.users(),
+      where('academy_id', '==', academyId),
+      where('role', 'in', ['student', 'parent']),
+      where('is_active', '==', true),
+    )
+  ).then((usersSnap) => {
+    if (isCancelled) return;
+
+    const allUsers = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() } as User));
+
+    // 2) 공지 문서 실시간 구독 — read_by 변경 시마다 호출됨
+    unsubNotice = onSnapshot(Collections.notice(noticeId), (snap) => {
+      if (!snap.exists()) {
+        callback({ readUsers: [], unreadUsers: [] });
+        return;
+      }
+
+      const noticeData = snap.data() as Notice;
+      const readBy: string[]        = noticeData.read_by          ?? [];
+      const targetRoles: string[]   = noticeData.target_roles     ?? [];
+      const targetClassIds: string[] = noticeData.target_class_ids ?? [];
+
+      // target_roles 필터
+      let filtered = [...allUsers];
+      if (targetRoles.length > 0) {
+        filtered = filtered.filter((u) => targetRoles.includes(u.role));
+      }
+
+      // target_class_ids 필터
+      if (targetClassIds.length > 0) {
+        const studentUidsInTarget = new Set(
+          filtered
+            .filter((u) => u.role === 'student' && targetClassIds.includes(u.class_id ?? ''))
+            .map((u) => u.uid)
+        );
+        filtered = filtered.filter((u) => {
+          if (u.role === 'student') return targetClassIds.includes(u.class_id ?? '');
+          if (u.role === 'parent')  return u.children?.some((cid) => studentUidsInTarget.has(cid));
+          return false;
+        });
+      }
+
+      // read_by 기준으로 읽음/미읽음 분리
+      const readSet = new Set(readBy);
+      callback({
+        readUsers:   filtered.filter((u) => readSet.has(u.uid)),
+        unreadUsers: filtered.filter((u) => !readSet.has(u.uid)),
+      });
+    });
+  }).catch((e) => {
+    console.warn('[subscribeNoticeReadUsers] 사용자 조회 실패:', e);
+    onError?.(e);
+  });
+
+  // 구독 해제 함수 반환
+  return () => {
+    isCancelled = true;
+    unsubNotice?.();
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 읽음 현황 일회성 조회 (레거시 — 실시간이 필요없는 경우만 사용)
 // ─────────────────────────────────────────────────────────────
 
 /**
