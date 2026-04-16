@@ -20,7 +20,7 @@ import { addDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { generateLinkCode } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
-import { AcademyType, User } from '../../types';
+import { AcademyType, User, Academy } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { strings } from '../../constants/strings';
 
@@ -30,7 +30,7 @@ const ACADEMY_TYPES: AcademyType[] = ['학원', '교습소', '개인과외'];
 export default function AcademyRegisterScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
-  const { setUser } = useAuthStore();
+  const { setUser, setAcademy } = useAuthStore();
   const currentUser = auth.currentUser;
 
   const [academyType, setAcademyType] = useState<AcademyType | null>(null);
@@ -100,11 +100,27 @@ export default function AcademyRegisterScreen() {
       }, { merge: true });
 
       // Firestore 업데이트 후 store 즉시 반영
-      // store가 stale하면 pending → /(app) 진입 시 AppLayout이 role-select로 돌려보냄
       const freshSnap = await getDoc(Collections.user(currentUser.uid));
       if (freshSnap.exists()) {
         setUser(freshSnap.data() as User);
       }
+
+      // academy 스토어도 즉시 반영 — status: 'pending' 이어야
+      // AppLayout이 admin을 /(app)/(admin) 대신 /(auth)/pending으로 올바르게 라우팅함
+      setAcademy({
+        id: academyRef.id,
+        name: academyName.trim(),
+        academy_code: academyCode,
+        academy_type: academyType!,
+        owner_name: ownerName.trim(),
+        owner_phone: ownerPhone.trim(),
+        address: address.trim(),
+        status: 'pending',
+        plan: 'free',
+        trial_ends_at: null,
+        approved_at: null,
+        reject_reason: null,
+      } as Academy);
 
       // 승인 대기 화면으로 이동 (뒤로 가기 불필요 → replace)
       router.replace('/(auth)/pending');

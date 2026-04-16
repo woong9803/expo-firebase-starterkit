@@ -26,10 +26,16 @@ export default function AppLayout() {
     }
 
     // 역할에 따라 전용 홈 화면으로 이동
-    // pending 상태여도 앱 진입 허용 — 기능 제한은 각 화면에서 academy.status로 처리
     switch (user.role) {
       case 'admin':
-        router.replace('/(app)/(admin)');
+        // academy가 null이면 아직 Firestore에서 로딩 중 → 다음 effect 실행까지 대기
+        // (academy 등록 직후엔 setAcademy로 미리 채워지므로 null이 아님)
+        if (academy === null) break;
+        if (academy.status === 'pending') {
+          router.replace('/(auth)/pending');
+        } else {
+          router.replace('/(app)/(admin)');
+        }
         break;
       case 'teacher':
         router.replace('/(app)/(teacher)');
