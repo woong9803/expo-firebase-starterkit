@@ -95,7 +95,12 @@ export default function CodeInputScreen() {
             const snap = await getDoc(Collections.academy(academyId));
             if (!cancelled && snap.exists()) {
               const d = snap.data();
-              setPreview({ name: d.name as string, info: '학원' });
+              // 승인 대기 중인 학원은 미리보기에서 가입 불가 안내
+              if (d.status === 'pending') {
+                setPreview({ name: d.name as string, info: '승인 대기 중인 학원 (가입 불가)' });
+              } else {
+                setPreview({ name: d.name as string, info: '학원' });
+              }
             }
           } else {
             setPreview(null);
@@ -159,10 +164,18 @@ export default function CodeInputScreen() {
       if (role === 'teacher') {
         const academyId = await validateAcademyCode(code.trim());
         if (!academyId) { handleFailure(strings.errors.invalidCode); return; }
+
+        // 승인 대기 중인 학원에는 선생님 가입 불가
+        const academySnap = await getDoc(Collections.academy(academyId));
+        if (academySnap.exists() && academySnap.data().status === 'pending') {
+          handleFailure('아직 승인되지 않은 학원이에요.\n학원 승인 후 다시 시도해주세요.');
+          return;
+        }
+
         await updateDoc(Collections.user(user.uid), {
           role: 'teacher' as UserRole,
           academy_id: academyId,
-          is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
+          is_active: true,
         });
 
       } else if (role === 'student') {
