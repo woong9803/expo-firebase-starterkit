@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { generateLinkCode } from '../../lib/auth';
@@ -24,6 +25,7 @@ const ACADEMY_TYPES: AcademyType[] = ['학원', '교습소', '개인과외'];
 
 export default function AcademyRegisterScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { setUser } = useAuthStore();
   const currentUser = auth.currentUser;
 
@@ -117,7 +119,7 @@ export default function AcademyRegisterScreen() {
     >
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingTop: top + 24 }]}
         keyboardShouldPersistTaps="handled"
       >
         {/* ── 타이틀 ── */}
@@ -259,7 +261,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingTop: 40,
     paddingBottom: 40,
   },
 

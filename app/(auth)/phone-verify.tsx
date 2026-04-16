@@ -13,6 +13,7 @@ import {
   TextInputKeyPressEventData,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmationResult } from 'firebase/auth';
 import { sendPhoneOtp, verifyPhoneOtp, updateUserDoc } from '../../lib/auth';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -23,6 +24,7 @@ const TIMER_TOTAL = 179;
 
 export default function PhoneVerifyScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { phone } = useLocalSearchParams<{ phone?: string }>();
   const { user } = useAuthStore();
 
@@ -143,7 +145,7 @@ export default function PhoneVerifyScreen() {
     >
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: top + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -260,7 +262,6 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 24,
     paddingBottom: 40,
   },
 

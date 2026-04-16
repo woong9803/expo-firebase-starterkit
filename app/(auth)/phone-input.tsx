@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendPhoneOtp, updateUserDoc } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -21,6 +22,7 @@ import { User } from '../../types';
 
 export default function PhoneInputScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { setUser } = useAuthStore();
 
   const [phone, setPhone] = useState('');
@@ -75,7 +77,7 @@ export default function PhoneInputScreen() {
     >
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: top + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -158,7 +160,6 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 24,
     paddingBottom: 40,
   },
 

@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { arrayUnion, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import {
   validateAcademyCode,
@@ -29,6 +30,7 @@ const LOCK_SECONDS = 30;
 
 export default function CodeInputScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { role } = useLocalSearchParams<{ role: string }>();
   const { user, setUser } = useAuthStore();
 
@@ -156,6 +158,7 @@ export default function CodeInputScreen() {
         await updateDoc(Collections.user(user.uid), {
           role: 'teacher' as UserRole,
           academy_id: academyId,
+          is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
         });
 
       } else if (role === 'student') {
@@ -168,6 +171,7 @@ export default function CodeInputScreen() {
           class_id: result.classId,
           academy_id: result.academyId,
           link_code: linkCode,
+          is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
           enrollment_date: serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
           ...(birthDate.trim() ? { birth_date: birthDate.trim() } : {}),
         });
@@ -190,6 +194,7 @@ export default function CodeInputScreen() {
           role: 'parent' as UserRole,
           children: arrayUnion(studentUid),
           academy_id: studentAcademyId,
+          is_active: true, // 최초 역할 설정 시 활성화
         });
 
         // 학부모의 phone_number를 학생의 guardian_phone에 자동 기록
@@ -238,7 +243,7 @@ export default function CodeInputScreen() {
     >
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: top + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -389,7 +394,6 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 24,
     paddingBottom: 40,
   },
 

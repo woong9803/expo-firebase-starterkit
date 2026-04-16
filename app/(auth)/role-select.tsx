@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UserRole } from '../../types';
 
 // 역할 카드 순서: 선생님 → 학생 → 학부모 → 원장님
@@ -44,6 +45,7 @@ const ROLE_CARDS = [
 
 export default function RoleSelectScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -66,7 +68,7 @@ export default function RoleSelectScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: top + 24 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── 스텝 인디케이터: 4개 dot, 3번째 활성 ── */}
@@ -145,7 +147,6 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 24,
     paddingBottom: 40,
   },
 

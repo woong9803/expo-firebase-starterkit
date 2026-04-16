@@ -11,12 +11,14 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signUpWithEmail, createUserDoc } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
 import { strings } from '../../constants/strings';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -77,7 +79,7 @@ export default function RegisterScreen() {
     >
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: top + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -234,7 +236,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingTop: 24,
     paddingBottom: 40,
   },
 

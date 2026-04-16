@@ -10,6 +10,7 @@ import {
   Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -31,6 +32,7 @@ function formatDate(ts: { toDate: () => Date } | null | undefined): string {
 
 export default function PendingScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { user, academy: storeAcademy } = useAuthStore();
 
   const [academy, setAcademy] = useState<Academy | null>(storeAcademy);
@@ -74,7 +76,7 @@ export default function PendingScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: top + 24 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── 아이콘 + 제목 ── */}
@@ -175,7 +177,6 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 48,
     paddingBottom: 40,
   },
 
