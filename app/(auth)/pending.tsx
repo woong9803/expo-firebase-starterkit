@@ -9,6 +9,7 @@ import {
   Alert,
   Linking,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onSnapshot } from 'firebase/firestore';
@@ -49,9 +50,16 @@ export default function PendingScreen() {
         if (!snap.exists()) return;
         const data = { id: snap.id, ...snap.data() } as Academy;
         setAcademy(data);
-        // 승인 완료 시 앱 홈으로 자동 이동
+        // 승인 완료 시 축하 알림 → 앱 홈으로 이동
         if (data.status === 'active') {
-          router.replace('/(app)');
+          // 승인 알림을 이미 표시했는지 확인 (앱 재시작 후 중복 방지)
+          AsyncStorage.setItem(`approved_shown_${snap.id}`, '1');
+          Alert.alert(
+            '🎉 학원 승인 완료!',
+            `${data.name} 학원이 승인되었어요.\n이제 모든 기능을 사용할 수 있어요!`,
+            [{ text: '시작하기', onPress: () => router.replace('/(app)/(admin)') }],
+            { cancelable: false },
+          );
         }
       },
       (e) => {
