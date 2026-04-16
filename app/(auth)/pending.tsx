@@ -34,9 +34,10 @@ function formatDate(ts: { toDate: () => Date } | null | undefined): string {
 export default function PendingScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
-  const { user, academy: storeAcademy, setPendingExploreGranted } = useAuthStore();
+  const { user, academy: storeAcademy, setAcademy: setStoreAcademy, setPendingExploreGranted } = useAuthStore();
 
-  const [academy, setAcademy] = useState<Academy | null>(storeAcademy);
+  // 화면 표시용 로컬 상태 — 변수명 충돌 방지
+  const [localAcademy, setLocalAcademy] = useState<Academy | null>(storeAcademy);
   const [isLoading, setIsLoading] = useState(!storeAcademy);
 
   // 학원 상태 실시간 구독 — approved(active)되면 앱 홈으로 자동 이동
@@ -49,10 +50,14 @@ export default function PendingScreen() {
         setIsLoading(false);
         if (!snap.exists()) return;
         const data = { id: snap.id, ...snap.data() } as Academy;
-        setAcademy(data);
-        // 승인 완료 시 축하 알림 → 앱 홈으로 이동
+
+        // 로컬 상태 + Zustand 스토어 모두 업데이트
+        // Zustand 업데이트가 없으면 "시작하기" 후 AppLayout이 여전히 pending으로
+        // 판단해 다시 이 화면으로 돌아오는 버그 발생
+        setLocalAcademy(data);
+        setStoreAcademy(data);
+
         if (data.status === 'active') {
-          // 승인 알림을 이미 표시했는지 확인 (앱 재시작 후 중복 방지)
           AsyncStorage.setItem(`approved_shown_${snap.id}`, '1');
           Alert.alert(
             '🎉 학원 승인 완료!',
@@ -107,12 +112,12 @@ export default function PendingScreen() {
           <ActivityIndicator color="#F59E0B" style={{ marginTop: 8 }} />
         ) : (
           <>
-            <InfoRow label="학원 유형" value={academy?.academy_type ?? '-'} />
-            <InfoRow label="학원명" value={academy?.name ?? '-'} />
-            <InfoRow label="대표자" value={academy?.owner_name ?? '-'} />
+            <InfoRow label="학원 유형" value={localAcademy?.academy_type ?? '-'} />
+            <InfoRow label="학원명" value={localAcademy?.name ?? '-'} />
+            <InfoRow label="대표자" value={localAcademy?.owner_name ?? '-'} />
             <InfoRow
               label="신청일"
-              value={formatDate(academy?.submitted_at as any)}
+              value={formatDate(localAcademy?.submitted_at as any)}
               isLast
             />
           </>
