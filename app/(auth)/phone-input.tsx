@@ -9,7 +9,11 @@ import {
   Platform,
   ActivityIndicator,
   KeyboardAvoidingView,
+  InputAccessoryView,
 } from 'react-native';
+
+// iOS phone-pad 키보드 Done 버튼 제거용 ID
+const ACCESSORY_ID = 'phoneInput';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendPhoneOtp, updateUserDoc } from '../../lib/auth';
@@ -71,6 +75,7 @@ export default function PhoneInputScreen() {
   };
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.keyboardAvoid}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -118,6 +123,7 @@ export default function PhoneInputScreen() {
             value={phone}
             onChangeText={(v) => { setPhone(v); setError(null); }}
             keyboardType="phone-pad"
+            inputAccessoryViewID={ACCESSORY_ID}
             editable={!isSending}
             returnKeyType="done"
             onSubmitEditing={handleSendOtp}
@@ -146,6 +152,13 @@ export default function PhoneInputScreen() {
 
       </ScrollView>
     </KeyboardAvoidingView>
+    {/* iOS: phone-pad 키보드 상단 Done 툴바를 빈 뷰로 교체해 숨김 */}
+    {Platform.OS === 'ios' && (
+      <InputAccessoryView nativeID={ACCESSORY_ID}>
+        <View />
+      </InputAccessoryView>
+    )}
+    </>
   );
 }
 

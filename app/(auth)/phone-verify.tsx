@@ -9,9 +9,13 @@ import {
   Platform,
   ActivityIndicator,
   KeyboardAvoidingView,
+  InputAccessoryView,
   NativeSyntheticEvent,
   TextInputKeyPressEventData,
 } from 'react-native';
+
+// iOS number-pad 키보드 Done 툴바 제거용 ID
+const ACCESSORY_ID = 'phoneVerify';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmationResult } from 'firebase/auth';
@@ -139,6 +143,7 @@ export default function PhoneVerifyScreen() {
   };
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.keyboardAvoid}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -193,6 +198,7 @@ export default function PhoneVerifyScreen() {
                 onFocus={() => setFocusedIndex(i)}
                 onBlur={() => setFocusedIndex(null)}
                 keyboardType="number-pad"
+                inputAccessoryViewID={ACCESSORY_ID}
                 maxLength={1}
                 textAlign="center"
                 editable={!isVerifying}
@@ -248,6 +254,12 @@ export default function PhoneVerifyScreen() {
 
       </ScrollView>
     </KeyboardAvoidingView>
+    {Platform.OS === 'ios' && (
+      <InputAccessoryView nativeID={ACCESSORY_ID}>
+        <View />
+      </InputAccessoryView>
+    )}
+    </>
   );
 }
 

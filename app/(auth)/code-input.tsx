@@ -9,7 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  InputAccessoryView,
 } from 'react-native';
+
+// iOS 숫자 키보드 Done 툴바 제거용 ID
+const ACCESSORY_ID = 'codeInput';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { arrayUnion, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -237,6 +241,7 @@ export default function CodeInputScreen() {
   const isDisabled = isLoading || isLocked || !code.trim();
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.keyboardAvoid}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -339,6 +344,7 @@ export default function CodeInputScreen() {
               value={birthDate}
               onChangeText={setBirthDate}
               keyboardType="numbers-and-punctuation"
+              inputAccessoryViewID={ACCESSORY_ID}
               editable={!isLoading}
             />
             <Text style={styles.birthDateHint}>
@@ -380,6 +386,12 @@ export default function CodeInputScreen() {
 
       </ScrollView>
     </KeyboardAvoidingView>
+    {Platform.OS === 'ios' && (
+      <InputAccessoryView nativeID={ACCESSORY_ID}>
+        <View />
+      </InputAccessoryView>
+    )}
+    </>
   );
 }
 

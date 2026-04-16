@@ -3,7 +3,11 @@ import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, Platform,
   ActivityIndicator, KeyboardAvoidingView, Alert,
+  InputAccessoryView,
 } from 'react-native';
+
+// iOS 숫자 키보드 Done 툴바 제거용 ID
+const ACCESSORY_ID = 'createStudent';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -167,7 +171,7 @@ export default function CreateStudentScreen() {
 
           <TouchableOpacity
             style={styles.doneBtn}
-            onPress={() => router.navigate('/(app)/(teacher)/')}
+            onPress={() => router.back()}
             activeOpacity={0.85}
           >
             <Text style={styles.doneBtnText}>완료</Text>
@@ -179,13 +183,14 @@ export default function CreateStudentScreen() {
 
   // ─── 입력 화면 ──────────────────────────────────────────────────────
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.navigate('/(app)/(teacher)/')}
+          onPress={() => router.back()}
           style={styles.backBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
@@ -253,6 +258,7 @@ export default function CreateStudentScreen() {
             value={birthDate}
             onChangeText={setBirthDate}
             keyboardType="numbers-and-punctuation"
+            inputAccessoryViewID={ACCESSORY_ID}
           />
         </View>
 
@@ -279,6 +285,12 @@ export default function CreateStudentScreen() {
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+    {Platform.OS === 'ios' && (
+      <InputAccessoryView nativeID={ACCESSORY_ID}>
+        <View />
+      </InputAccessoryView>
+    )}
+    </>
   );
 }
 

@@ -9,7 +9,11 @@ import {
   Platform,
   ActivityIndicator,
   KeyboardAvoidingView,
+  InputAccessoryView,
 } from 'react-native';
+
+// iOS phone-pad 키보드 Done 툴바 제거용 ID
+const ACCESSORY_ID = 'academyRegister';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
@@ -113,6 +117,7 @@ export default function AcademyRegisterScreen() {
   };
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.keyboardAvoid}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -209,6 +214,7 @@ export default function AcademyRegisterScreen() {
               value={ownerPhone}
               onChangeText={(v) => { setOwnerPhone(v); setError(null); }}
               keyboardType="phone-pad"
+              inputAccessoryViewID={ACCESSORY_ID}
               editable={!isLoading}
               returnKeyType="next"
             />
@@ -247,6 +253,12 @@ export default function AcademyRegisterScreen() {
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
+    {Platform.OS === 'ios' && (
+      <InputAccessoryView nativeID={ACCESSORY_ID}>
+        <View />
+      </InputAccessoryView>
+    )}
+    </>
   );
 }
 
