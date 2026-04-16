@@ -14,6 +14,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -24,6 +26,28 @@ import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { useNotificationStore } from '../../../../store/useNotificationStore';
 import { Class, AttendanceRecord } from '../../../../types';
+
+// 결석자 항목 타입
+interface AbsentItem {
+  studentUid: string;
+  studentName: string;
+  className: string;
+  reason: string | null;
+}
+
+// 지각 학생 항목 타입
+interface LateItem {
+  studentUid: string;
+  studentName: string;
+  className: string;
+}
+
+// 미입력 학생 항목 타입
+interface NotEnteredItem {
+  studentUid: string;
+  studentName: string;
+  className: string;
+}
 
 // 오늘 날짜 문자열 (YYYY-MM-DD)
 function getTodayStr(): string {
@@ -68,12 +92,25 @@ export default function AdminHomeScreen() {
   const [classStudentCounts, setClassStudentCounts] = useState<Record<string, number>>({});
 
   // 오늘 출결 관련 통계
-  const [todayRate, setTodayRate]           = useState<number | null>(null);
-  const [absentToday, setAbsentToday]       = useState<number | null>(null);
+  const [todayRate, setTodayRate]             = useState<number | null>(null);
+  const [absentToday, setAbsentToday]         = useState<number | null>(null);
+  const [lateToday, setLateToday]             = useState<number | null>(null);
   const [notEnteredToday, setNotEnteredToday] = useState<number | null>(null);
   // 반별 출석률 { classId: rate(0~100) }
   const [classRates, setClassRates]         = useState<Record<string, number>>({});
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
+
+  // 결석자 목록 모달
+  const [absentModalVisible, setAbsentModalVisible] = useState(false);
+  const [absentItems, setAbsentItems] = useState<AbsentItem[]>([]);
+
+  // 지각 학생 목록 모달
+  const [lateModalVisible, setLateModalVisible] = useState(false);
+  const [lateItems, setLateItems] = useState<LateItem[]>([]);
+
+  // 미입력 학생 목록 모달
+  const [notEnteredModalVisible, setNotEnteredModalVisible] = useState(false);
+  const [notEnteredItems, setNotEnteredItems] = useState<NotEnteredItem[]>([]);
 
   // 학생 수 실시간 구독
   useEffect(() => {
@@ -149,38 +186,81 @@ export default function AdminHomeScreen() {
         ]);
 
         // is_active 필드가 없는 자체 가입 학생도 포함 (false가 아닌 경우 모두 활성)
-        const total = studentSnap.docs.filter(d => d.data().is_active !== false).length;
+        const activeStudents = studentSnap.docs.filter(d => d.data().is_active !== false);
+        const studentNameMap: Record<string, string> = {};
+        activeStudents.forEach(d => { studentNameMap[d.id] = d.data().name ?? '이름 없음'; });
+
+        const total = activeStudents.length;
         let present = 0, absent = 0, late = 0;
+        const absentRecords: AbsentItem[] = [];
+        const lateRecords: LateItem[] = [];
+        const enteredUids = new Set<string>();
 
         recordsSnap.forEach((d) => {
           const r = d.data() as AttendanceRecord;
+          enteredUids.add(d.id);
           if (r.status === 'present') present++;
-          else if (r.status === 'absent') absent++;
-          else if (r.status === 'late') late++;
+          else if (r.status === 'absent') {
+            absent++;
+            absentRecords.push({
+              studentUid: d.id,
+              studentName: studentNameMap[d.id] ?? '알 수 없음',
+              className: cls.name,
+              reason: r.reason ?? null,
+            });
+          }
+          else if (r.status === 'late') {
+            late++;
+            lateRecords.push({
+              studentUid: d.id,
+              studentName: studentNameMap[d.id] ?? '알 수 없음',
+              className: cls.name,
+            });
+          }
         });
+
+        // 오늘 출결 records에 없는 학생 = 미입력
+        const notEnteredRecords: NotEnteredItem[] = activeStudents
+          .filter(d => !enteredUids.has(d.id))
+          .map(d => ({
+            studentUid: d.id,
+            studentName: d.data().name ?? '알 수 없음',
+            className: cls.name,
+          }));
 
         const entered = present + absent + late;
         const rate = total > 0 ? Math.round((present / total) * 100) : 0;
 
-        return { classId: cls.id, total, present, absent, entered, rate };
+        return { classId: cls.id, total, present, absent, late, entered, rate, absentRecords, lateRecords, notEnteredRecords };
       })
     ).then((results) => {
       // 반별 출석률 맵 저장
       const rates: Record<string, number> = {};
-      let totalStudents = 0, totalPresent = 0, totalAbsent = 0, totalEntered = 0;
+      let totalStudents = 0, totalPresent = 0, totalAbsent = 0, totalLate = 0, totalEntered = 0;
+      const allAbsent: AbsentItem[] = [];
+      const allLate: LateItem[] = [];
+      const allNotEntered: NotEnteredItem[] = [];
 
-      results.forEach(({ classId, total, present, absent, entered, rate }) => {
+      results.forEach(({ classId, total, present, absent, late, entered, rate, absentRecords, lateRecords, notEnteredRecords }) => {
         rates[classId] = rate;
         totalStudents += total;
         totalPresent  += present;
         totalAbsent   += absent;
+        totalLate     += late;
         totalEntered  += entered;
+        allAbsent.push(...absentRecords);
+        allLate.push(...lateRecords);
+        allNotEntered.push(...notEnteredRecords);
       });
 
       setClassRates(rates);
       setAbsentToday(totalAbsent);
+      setLateToday(totalLate);
       setNotEnteredToday(Math.max(0, totalStudents - totalEntered));
       setTodayRate(totalStudents > 0 ? Math.round((totalPresent / totalStudents) * 100) : 0);
+      setAbsentItems(allAbsent);
+      setLateItems(allLate);
+      setNotEnteredItems(allNotEntered);
     }).catch((e) => {
       console.error('[AdminHome] 출결 통계 조회 실패:', e);
     }).finally(() => {
@@ -188,9 +268,96 @@ export default function AdminHomeScreen() {
     });
   }, [classes]);
 
+  // ── 오늘 출결 실시간 구독 ─────────────────────────────────────
+  // 선생님이 출결을 입력하면 원장님 홈의 결석·지각·미입력 수치가 즉시 갱신됨
+  // 반별 학생 수(classStudentCounts)는 변경 없으므로 기존 값 활용
+  useEffect(() => {
+    if (classes.length === 0 || !user?.academy_id) return;
+    const todayStr = getTodayStr();
+
+    const unsubs = classes.map((cls) =>
+      onSnapshot(
+        Collections.attendanceRecords(cls.id, todayStr),
+        async (snap) => {
+          // 이 반의 최신 학생 목록 (이름 포함, 모달 목록 갱신용)
+          const studentSnap = await getDocs(query(
+            Collections.users(),
+            where('academy_id', '==', user.academy_id),
+            where('class_id', '==', cls.id),
+            where('role', '==', 'student'),
+          ));
+          const activeStudents = studentSnap.docs.filter(d => d.data().is_active !== false);
+          const nameMap: Record<string, string> = {};
+          activeStudents.forEach(d => { nameMap[d.id] = d.data().name ?? '이름 없음'; });
+
+          let present = 0, absent = 0, late = 0;
+          const newAbsent: AbsentItem[] = [];
+          const newLate: LateItem[] = [];
+          const enteredUids = new Set<string>();
+
+          snap.forEach((d) => {
+            enteredUids.add(d.id);
+            const r = d.data() as AttendanceRecord;
+            if (r.status === 'present') present++;
+            else if (r.status === 'absent') {
+              absent++;
+              newAbsent.push({ studentUid: d.id, studentName: nameMap[d.id] ?? '알 수 없음', className: cls.name, reason: r.reason ?? null });
+            }
+            else if (r.status === 'late') {
+              late++;
+              newLate.push({ studentUid: d.id, studentName: nameMap[d.id] ?? '알 수 없음', className: cls.name });
+            }
+          });
+          const notEntered = activeStudents.filter(d => !enteredUids.has(d.id))
+            .map(d => ({ studentUid: d.id, studentName: d.data().name ?? '알 수 없음', className: cls.name }));
+          const total = activeStudents.length;
+
+          // 이 반의 변경분을 전체 목록에 반영 (다른 반 항목은 유지)
+          const nextAbsent = [...newAbsent];
+          const nextLate   = [...newLate];
+          const nextNotEntered = [...notEntered];
+
+          setAbsentItems(prev => {
+            const merged = [...prev.filter(i => i.className !== cls.name), ...nextAbsent];
+            setAbsentToday(merged.length);  // 타일 숫자도 동시 갱신
+            return merged;
+          });
+          setLateItems(prev => {
+            const merged = [...prev.filter(i => i.className !== cls.name), ...nextLate];
+            setLateToday(merged.length);
+            return merged;
+          });
+          setNotEnteredItems(prev => {
+            const merged = [...prev.filter(i => i.className !== cls.name), ...nextNotEntered];
+            setNotEnteredToday(merged.length);
+            return merged;
+          });
+
+          // 반별 출석률 + 전체 오늘 출석률 갱신
+          const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+          setClassRates(prev => {
+            const updated = { ...prev, [cls.id]: rate };
+            const totalStudents = Object.values(classStudentCounts).reduce((s, c) => s + c, 0);
+            if (totalStudents > 0) {
+              const weightedPresent = Object.entries(updated).reduce((s, [cid, r]) => {
+                return s + (r / 100) * (classStudentCounts[cid] ?? 0);
+              }, 0);
+              setTodayRate(Math.round((weightedPresent / totalStudents) * 100));
+            }
+            return updated;
+          });
+        },
+        (e) => console.warn('[AdminHome] 출결 구독 실패:', e)
+      )
+    );
+
+    return () => unsubs.forEach((u) => u());
+  // classStudentCounts가 세팅된 후 구독을 재시작해야 출석률 계산이 정확함
+  }, [classes.map(c => c.id).join(','), user?.academy_id, JSON.stringify(classStudentCounts)]);
+
   return (
+    <View style={styles.container}>
     <ScrollView
-      style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
@@ -336,26 +503,49 @@ export default function AdminHomeScreen() {
         </View>
       </View>
 
-      {/* ── 오늘 확인 필요 ── */}
+      {/* ── 오늘의 출결 ── */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🚨 오늘 확인 필요</Text>
+        <Text style={styles.sectionTitle}>📋 오늘의 출결</Text>
         <View style={styles.alertGrid}>
-          <View style={[styles.alertTile, styles.alertRed]}>
+          {/* 결석 */}
+          <TouchableOpacity
+            style={[styles.alertTile, { backgroundColor: '#FEF2F2' }]}
+            onPress={() => setAbsentModalVisible(true)}
+            activeOpacity={0.8}
+          >
             {isLoadingAttendance ? (
               <ActivityIndicator color="#EF4444" size="small" style={{ marginBottom: 4 }} />
             ) : (
               <Text style={styles.alertNum_red}>{absentToday ?? 0}</Text>
             )}
-            <Text style={styles.alertLbl_red}>오늘 결석</Text>
-          </View>
-          <View style={[styles.alertTile, styles.alertAmber]}>
+            <Text style={styles.alertLbl_red}>결석</Text>
+          </TouchableOpacity>
+          {/* 지각 */}
+          <TouchableOpacity
+            style={[styles.alertTile, { backgroundColor: '#FFFBEB' }]}
+            onPress={() => setLateModalVisible(true)}
+            activeOpacity={0.8}
+          >
             {isLoadingAttendance ? (
               <ActivityIndicator color="#F59E0B" size="small" style={{ marginBottom: 4 }} />
             ) : (
-              <Text style={styles.alertNum_amber}>{notEnteredToday ?? 0}</Text>
+              <Text style={styles.alertNum_amber}>{lateToday ?? 0}</Text>
             )}
-            <Text style={styles.alertLbl_amber}>미입력</Text>
-          </View>
+            <Text style={styles.alertLbl_amber}>지각</Text>
+          </TouchableOpacity>
+          {/* 미입력 */}
+          <TouchableOpacity
+            style={[styles.alertTile, { backgroundColor: '#F1F5F9' }]}
+            onPress={() => setNotEnteredModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            {isLoadingAttendance ? (
+              <ActivityIndicator color="#64748B" size="small" style={{ marginBottom: 4 }} />
+            ) : (
+              <Text style={styles.alertNum_gray}>{notEnteredToday ?? 0}</Text>
+            )}
+            <Text style={styles.alertLbl_gray}>미입력</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -403,6 +593,169 @@ export default function AdminHomeScreen() {
         )}
       </View>
     </ScrollView>
+
+      {/* ── 결석자 목록 모달 ── */}
+      <Modal
+        visible={absentModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAbsentModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setAbsentModalVisible(false)}
+        >
+          <View style={styles.modalSheet}>
+            {/* 핸들 */}
+            <View style={styles.modalHandle} />
+
+            {/* 헤더 */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                오늘 결석자 {absentItems.length}명
+              </Text>
+              <TouchableOpacity onPress={() => setAbsentModalVisible(false)} activeOpacity={0.7}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {absentItems.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Text style={styles.modalEmptyText}>결석자가 없어요 🎉</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={absentItems}
+                keyExtractor={(item) => `${item.className}_${item.studentUid}`}
+                contentContainerStyle={styles.modalList}
+                renderItem={({ item }) => (
+                  <View style={styles.absentRow}>
+                    {/* 왼쪽: 이름 + 반 */}
+                    <View style={styles.absentLeft}>
+                      <Text style={styles.absentName}>{item.studentName}</Text>
+                      <View style={styles.absentClassChip}>
+                        <Text style={styles.absentClassText}>{item.className}</Text>
+                      </View>
+                    </View>
+                    {/* 오른쪽: 사유 */}
+                    <Text style={styles.absentReason}>
+                      {item.reason ? item.reason : '사유 없음'}
+                    </Text>
+                  </View>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+      {/* ── 미입력 학생 모달 ── */}
+      <Modal
+        visible={notEnteredModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNotEnteredModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNotEnteredModalVisible(false)}
+        >
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                미입력 학생 {notEnteredItems.length}명
+              </Text>
+              <TouchableOpacity onPress={() => setNotEnteredModalVisible(false)} activeOpacity={0.7}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {notEnteredItems.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Text style={styles.modalEmptyText}>미입력 학생이 없어요 ✅</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={notEnteredItems}
+                keyExtractor={(item) => `${item.className}_${item.studentUid}`}
+                contentContainerStyle={styles.modalList}
+                renderItem={({ item }) => (
+                  <View style={styles.absentRow}>
+                    <View style={styles.absentLeft}>
+                      <Text style={styles.absentName}>{item.studentName}</Text>
+                      <View style={styles.absentClassChip}>
+                        <Text style={styles.absentClassText}>{item.className}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.notEnteredChip}>
+                      <Text style={styles.notEnteredChipText}>미입력</Text>
+                    </View>
+                  </View>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── 지각 학생 목록 모달 ── */}
+      <Modal
+        visible={lateModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLateModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setLateModalVisible(false)}
+        >
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                오늘 지각 {lateItems.length}명
+              </Text>
+              <TouchableOpacity onPress={() => setLateModalVisible(false)} activeOpacity={0.7}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {lateItems.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Text style={styles.modalEmptyText}>지각자가 없어요 🎉</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={lateItems}
+                keyExtractor={(item) => `${item.className}_${item.studentUid}`}
+                contentContainerStyle={styles.modalList}
+                renderItem={({ item }) => (
+                  <View style={styles.absentRow}>
+                    <View style={styles.absentLeft}>
+                      <Text style={styles.absentName}>{item.studentName}</Text>
+                      <View style={styles.absentClassChip}>
+                        <Text style={styles.absentClassText}>{item.className}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.lateChip}>
+                      <Text style={styles.lateChipText}>지각</Text>
+                    </View>
+                  </View>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
@@ -505,6 +858,7 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: '#fff',
     borderWidth: 1, borderColor: '#E2E8F0',
     borderRadius: 14, padding: 14, gap: 6,
+    alignItems: 'center', // 아이콘·텍스트 가운데 정렬
   },
   quickIcon: {
     width: 40, height: 40, borderRadius: 10,
@@ -514,15 +868,66 @@ const styles = StyleSheet.create({
   quickLabel: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
   quickCount: { fontSize: 12, color: '#64748B' },
 
-  // 오늘 확인 필요 타일
-  alertGrid: { flexDirection: 'row', gap: 10 },
-  alertTile: { flex: 1, borderRadius: 14, padding: 14, alignItems: 'center' },
-  alertRed: { backgroundColor: '#FEE2E2' },
-  alertAmber: { backgroundColor: '#FEF3C7' },
-  alertNum_red: { fontSize: 30, fontWeight: '800', color: '#EF4444', marginBottom: 4 },
-  alertLbl_red: { fontSize: 12, fontWeight: '600', color: '#991B1B' },
-  alertNum_amber: { fontSize: 30, fontWeight: '800', color: '#F59E0B', marginBottom: 4 },
-  alertLbl_amber: { fontSize: 12, fontWeight: '600', color: '#92400E' },
+  // 오늘의 출결 타일
+  alertGrid: { flexDirection: 'row', gap: 8 },
+  alertTile: { flex: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 8, alignItems: 'center' },
+  alertNum_red:   { fontSize: 28, fontWeight: '800', color: '#EF4444', marginBottom: 4 },
+  alertLbl_red:   { fontSize: 12, fontWeight: '600', color: '#991B1B' },
+  alertNum_amber: { fontSize: 28, fontWeight: '800', color: '#F59E0B', marginBottom: 4 },
+  alertLbl_amber: { fontSize: 12, fontWeight: '600', color: '#78350F' },
+  alertNum_gray:  { fontSize: 28, fontWeight: '800', color: '#64748B', marginBottom: 4 },
+  alertLbl_gray:  { fontSize: 12, fontWeight: '600', color: '#334155' },
+
+  // ── 결석자 모달 ──
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: '75%',
+    paddingBottom: 36,
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center', marginTop: 12, marginBottom: 4,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  modalEmpty: { alignItems: 'center', paddingVertical: 48 },
+  modalEmptyText: { fontSize: 16, color: '#94A3B8' },
+  modalList: { paddingHorizontal: 20, paddingTop: 8 },
+  absentRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+  },
+  absentLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  absentName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  absentClassChip: {
+    backgroundColor: '#EEEDF9', borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 2,
+  },
+  absentClassText: { fontSize: 11, fontWeight: '700', color: '#5B50E8' },
+  absentReason: { fontSize: 13, color: '#64748B', maxWidth: '45%', textAlign: 'right' },
+  lateChip: {
+    backgroundColor: '#FFFBEB', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  lateChipText: { fontSize: 12, fontWeight: '700', color: '#78350F' },
+  notEnteredChip: {
+    backgroundColor: '#F1F5F9', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  notEnteredChipText: { fontSize: 12, fontWeight: '700', color: '#334155' },
+  separator: { height: 1, backgroundColor: '#F1F5F9' },
 
   // ── 카드 ──
   card: {

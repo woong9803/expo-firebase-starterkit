@@ -7,6 +7,9 @@ admin.initializeApp();
 export { kakaoLogin } from './auth/kakaoLogin';
 export { createStudentAccount } from './auth/createStudentAccount';
 
+// 숙제 관련 함수 export
+export { onSubmissionCreated } from './homework/verifySubmissionLate';
+
 // 알림 관련 함수 export
 export { onHomeworkFeedback } from './notifications/homeworkFeedback';
 export { sendUnsubmittedAlert } from './notifications/unsubmittedAlert';

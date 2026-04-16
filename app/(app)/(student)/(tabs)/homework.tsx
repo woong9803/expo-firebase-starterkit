@@ -8,7 +8,7 @@
  * - 다시제출: 다시 제출하기 버튼 → 제출 화면
  */
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,14 +23,14 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { onSnapshot, query, where, orderBy, getDoc } from 'firebase/firestore';
+import { onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Collections } from '../../../lib/firestore';
-import { useAuthStore } from '../../../store/useAuthStore';
-import { Homework, Submission } from '../../../types';
+import { Collections } from '../../../../lib/firestore';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { Homework, Submission } from '../../../../types';
 
 // 임시저장 AsyncStorage 키 (homework-submit.tsx와 동일)
 const PENDING_KEY = 'pendingSubmission';
@@ -74,21 +74,6 @@ export default function StudentHomeworkScreen() {
   const [detailItem, setDetailItem] = useState<HomeworkWithSubmission | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
 
-  // ── 제출 현황 일괄 조회 ──────────────────────────────────────────────────────
-  const fetchSubmissions = useCallback(async (hws: Homework[]) => {
-    if (!user?.uid || hws.length === 0) return;
-    const entries = await Promise.all(
-      hws.map(async (hw) => {
-        try {
-          const snap = await getDoc(Collections.submission(hw.id, user.uid));
-          return [hw.id, snap.exists() ? (snap.data() as Submission) : null] as const;
-        } catch {
-          return [hw.id, null] as const;
-        }
-      })
-    );
-    setSubmissionMap(Object.fromEntries(entries));
-  }, [user?.uid]);
 
   // ── 앱 시작 시 임시저장본 감지 ───────────────────────────────────────────────
   // 업로드 실패로 저장된 제출물이 있으면 이어서 제출 다이얼로그 표시
@@ -135,10 +120,9 @@ export default function StudentHomeworkScreen() {
       orderBy('due_date', 'asc'),
     );
 
-    const unsub = onSnapshot(q, async (snap) => {
+    const unsub = onSnapshot(q, (snap) => {
       const hws = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
       setHomeworks(hws);
-      await fetchSubmissions(hws);
       setIsLoading(false);
     }, (e) => {
       console.error('[StudentHomework] 숙제 구독 실패:', e);
@@ -146,14 +130,26 @@ export default function StudentHomeworkScreen() {
     });
 
     return () => unsub();
-  }, [user?.class_id, user?.uid, fetchSubmissions]);
+  }, [user?.class_id, user?.uid]);
 
-  // ── 화면 포커스 시 제출 현황 갱신 (제출 후 돌아올 때 반영) ─────────────────
-  useFocusEffect(
-    useCallback(() => {
-      if (homeworks.length > 0) fetchSubmissions(homeworks);
-    }, [homeworks, fetchSubmissions])
-  );
+  // ── 각 숙제 제출 상태 실시간 구독 ──────────────────────────────────────────
+  // 선생님이 피드백(👍/💧)을 저장하면 submission 문서가 변경되므로 즉시 반영
+  useEffect(() => {
+    if (!user?.uid || homeworks.length === 0) return;
+
+    const unsubs = homeworks.map((hw) =>
+      onSnapshot(
+        Collections.submission(hw.id, user.uid),
+        (snap) => {
+          const sub = snap.exists() ? (snap.data() as Submission) : null;
+          setSubmissionMap(prev => ({ ...prev, [hw.id]: sub }));
+        },
+        (e) => console.warn(`[StudentHomework] 제출 구독 실패(${hw.id}):`, e)
+      )
+    );
+
+    return () => unsubs.forEach(u => u());
+  }, [homeworks.map(h => h.id).join(','), user?.uid]);
 
   // ── 합친 데이터 ─────────────────────────────────────────────────────────────
   // 마감일이 오늘 기준 7일 이전이면 자동 제외 (마감 당일 포함 7일간 표시)

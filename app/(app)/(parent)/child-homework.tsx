@@ -20,7 +20,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getDoc } from 'firebase/firestore';
+import { onSnapshot } from 'firebase/firestore';
 
 import { Collections } from '../../../lib/firestore';
 import { strings } from '../../../constants/strings';
@@ -77,33 +77,47 @@ export default function ChildHomeworkScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
-  // ── 숙제 + 제출물 조회 ──────────────────────────────────────
+  // ── 숙제 실시간 구독 ────────────────────────────────────────
   useEffect(() => {
-    if (!homeworkId || !childUid) {
-      setIsLoading(false);
-      return;
-    }
+    if (!homeworkId) { setIsLoading(false); return; }
 
     setIsLoading(true);
     setError(null);
 
-    Promise.all([
-      getDoc(Collections.homework(homeworkId)),
-      getDoc(Collections.submission(homeworkId, childUid)),
-    ])
-      .then(([hwSnap, subSnap]) => {
-        if (hwSnap.exists()) {
-          setHomework({ id: hwSnap.id, ...hwSnap.data() } as Homework);
+    const unsub = onSnapshot(
+      Collections.homework(homeworkId),
+      (snap) => {
+        if (snap.exists()) {
+          setHomework({ id: snap.id, ...snap.data() } as Homework);
         } else {
           setError(strings.common.error);
         }
-        setSubmission(subSnap.exists() ? (subSnap.data() as Submission) : null);
-      })
-      .catch((e) => {
-        console.warn('[ChildHomework] 조회 오류:', e);
+        setIsLoading(false);
+      },
+      (e) => {
+        console.warn('[ChildHomework] 숙제 구독 오류:', e);
         setError(strings.common.error);
-      })
-      .finally(() => setIsLoading(false));
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [homeworkId]);
+
+  // ── 제출 상태 실시간 구독 ────────────────────────────────────
+  // 선생님 피드백이 바뀔 때 즉시 반영
+  useEffect(() => {
+    if (!homeworkId || !childUid) return;
+
+    const unsub = onSnapshot(
+      Collections.submission(homeworkId, childUid),
+      (snap) => {
+        setSubmission(snap.exists() ? (snap.data() as Submission) : null);
+      },
+      (e) => console.warn('[ChildHomework] 제출 구독 오류:', e)
+    );
+
+    return () => unsub();
   }, [homeworkId, childUid]);
 
   return (
@@ -111,7 +125,7 @@ export default function ChildHomeworkScreen() {
 
       {/* ── 헤더 ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.navigate('/(app)/(parent)/homework')} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.parent.childDetail}</Text>

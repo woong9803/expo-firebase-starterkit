@@ -48,6 +48,10 @@ export const Collections = {
   notifications: () => collection(db, 'notifications'),
   notification: (notifId: string) => doc(db, 'notifications', notifId),
 
+  // ── 영상 ──────────────────────────────────
+  videos: () => collection(db, 'videos'),
+  video: (videoId: string) => doc(db, 'videos', videoId),
+
   // ── 앱 설정 (단일 문서 v1) ─────────────────
   appConfig: () => doc(db, 'appConfig', 'v1'),
 };

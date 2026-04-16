@@ -1,61 +1,326 @@
 {
   "tasks": [
     {
-      "id": "cf1b73d9-b477-4973-8a4c-5afe7f42fb6f",
-      "name": "초대코드 재발급 기능 추가",
-      "description": "반 설정 모달에 초대코드 재발급 버튼을 추가하고, 버튼 클릭 시 새 6자리 코드를 생성하여 Firestore를 업데이트한다. 기존 코드는 덮어쓰기로 즉시 무효화된다.",
-      "status": "completed",
+      "id": "f08d74fd-e44f-4593-b6f7-006296b3a357",
+      "name": "Video 타입 정의 및 Firestore 컬렉션 추가",
+      "description": "types/index.ts에 Video 인터페이스를 추가하고, lib/firestore.ts에 videos 컬렉션 헬퍼를 추가한다.",
+      "status": "pending",
       "dependencies": [],
-      "createdAt": "2026-04-15T00:44:29.149Z",
-      "updatedAt": "2026-04-15T00:45:40.352Z",
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
       "relatedFiles": [
         {
-          "path": "app/(app)/(admin)/settings.tsx",
+          "path": "types/index.ts",
           "type": "TO_MODIFY",
-          "description": "반 설정 모달에 초대코드 표시 + 재발급 버튼 추가",
-          "lineStart": 1,
-          "lineEnd": 757
+          "description": "Video 인터페이스 추가"
+        },
+        {
+          "path": "lib/firestore.ts",
+          "type": "TO_MODIFY",
+          "description": "videos 컬렉션 헬퍼 추가"
         }
       ],
-      "implementationGuide": "1. import에 arrayUnion, arrayRemove 추가 (선생님 지정 태스크에서도 사용)\n2. isReissuingCode: boolean state 추가\n3. handleReissueCode() 함수 추가:\n   - Alert.alert('코드 재발급', '기존 코드로는 더 이상 가입할 수 없어요. 재발급할까요?', [취소, 재발급])\n   - 확인 시: setIsReissuingCode(true)\n   - newCode = generateCode()\n   - await updateDoc(Collections.class(editClass.id), { invite_code: newCode })\n   - setClasses(prev => prev.map(c => c.id === editClass.id ? {...c, invite_code: newCode} : c))\n   - setEditClass(prev => prev ? {...prev, invite_code: newCode} : null)\n   - setIsReissuingCode(false)\n4. 반 설정 모달 UI에 현재 초대코드 표시 행 추가:\n   - 코드 텍스트(fontSize 20, fontWeight 800, color #5B50E8, letterSpacing 4) + 재발급 버튼\n   - 재발급 버튼: bg #F1F5F9, border #E2E8F0, Secondary 스타일\n   - isReissuingCode 시 ActivityIndicator 표시\n5. 스타일 추가: codeDisplayRow, currentInviteCode, reissueBtn, reissueBtnText",
-      "verificationCriteria": "- 재발급 버튼 클릭 시 Alert 확인 다이얼로그 표시\n- 확인 후 모달 내 코드가 새 코드로 즉시 변경됨\n- 반 목록 카드(classSub)의 초대코드도 새 코드로 갱신됨\n- 기존 코드로 가입 시도 시 실패 (Firestore 덮어쓰기로 자동 처리)\n- npx tsc --noEmit 타입 에러 0개",
-      "analysisResult": "Phase 9 목표: app/(app)/(admin)/settings.tsx 단일 파일에 초대코드 재발급 기능과 admin 담당 선생님 지정 UI를 추가한다. 기존 반 설정 모달(isClassSettingVisible)을 확장하며, 이미 로드된 teachers state와 generateCode() 유틸을 재사용한다.",
-      "summary": "초대코드 재발급 기능 구현 완료. arrayUnion/arrayRemove import 추가, isReissuingCode state 추가, handleReissueCode() 함수(Alert 확인 → generateCode → updateDoc → setClasses + setEditClass 갱신), 모달 내 코드 표시 행(codeDisplayRow) + 재발급 버튼 UI 추가, 관련 스타일 추가. 타입 에러 없음(기존 무관 에러 제외).",
-      "completedAt": "2026-04-15T00:45:40.351Z"
+      "implementationGuide": "1. types/index.ts 하단에 Video 인터페이스 추가:\n   interface Video { id: string; class_id: string; academy_id: string; title: string; youtube_url: string; youtube_id: string; thumbnail_url: string; created_by: string; created_at: Timestamp; }\n2. lib/firestore.ts Collections 객체에 추가:\n   videos: () => collection(db, 'videos')\n   video: (videoId: string) => doc(db, 'videos', videoId)",
+      "verificationCriteria": "npx tsc --noEmit 에러 없음. Video 타입이 다른 파일에서 import 가능.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
     },
     {
-      "id": "514c11ae-c4da-40cf-bddc-652bb4196acd",
-      "name": "admin 담당 선생님 지정 UI 추가",
-      "description": "반 설정 모달 하단에 학원 소속 선생님 목록을 칩 형태로 표시하고, 토글 방식으로 담당 선생님을 지정/해제한다. 선택 시 해당 선생님의 assigned_class_ids 배열을 Firestore에서 즉시 업데이트한다.",
-      "status": "completed",
+      "id": "8599e6fa-8a05-4980-a157-b7691bd5823f",
+      "name": "lib/youtube.ts 유틸 구현",
+      "description": "YouTube URL에서 videoId를 파싱하고 썸네일 URL을 반환하는 유틸 함수를 구현한다.",
+      "status": "pending",
       "dependencies": [
         {
-          "taskId": "cf1b73d9-b477-4973-8a4c-5afe7f42fb6f"
+          "taskId": "f08d74fd-e44f-4593-b6f7-006296b3a357"
         }
       ],
-      "createdAt": "2026-04-15T00:44:29.149Z",
-      "updatedAt": "2026-04-15T00:46:48.027Z",
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
       "relatedFiles": [
         {
-          "path": "app/(app)/(admin)/settings.tsx",
-          "type": "TO_MODIFY",
-          "description": "반 설정 모달에 담당 선생님 선택 칩 UI 추가",
-          "lineStart": 509,
-          "lineEnd": 757
+          "path": "lib/youtube.ts",
+          "type": "CREATE",
+          "description": "YouTube URL 파싱 + 썸네일 + 열기 유틸"
+        }
+      ],
+      "implementationGuide": "lib/youtube.ts 신규 생성:\n1. parseYoutubeId(url: string): string | null\n   - youtube.com/watch?v=ID 패턴\n   - youtu.be/ID 패턴\n   - youtube.com/shorts/ID 패턴\n   - URL 객체로 파싱, 실패 시 null 반환\n2. getThumbnailUrl(videoId: string): string\n   - return 'https://img.youtube.com/vi/' + videoId + '/mqdefault.jpg'\n3. openYoutubeVideo(url: string): Promise<void>\n   - Linking.openURL(url) from expo-linking",
+      "verificationCriteria": "parseYoutubeId가 youtube.com/watch?v=, youtu.be/, shorts/ 패턴을 모두 올바르게 파싱함. 잘못된 URL은 null 반환.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
+    },
+    {
+      "id": "9a0fe5f1-2b7d-4cc6-96f7-b13ae4e493c8",
+      "name": "lib/streak.ts 스트릭 계산 유틸 구현",
+      "description": "학생의 최근 30일 스트릭 데이터를 Firestore에서 조회하고 날짜별 상태를 반환하는 유틸을 구현한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "f08d74fd-e44f-4593-b6f7-006296b3a357"
+        }
+      ],
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
+      "relatedFiles": [
+        {
+          "path": "lib/streak.ts",
+          "type": "CREATE",
+          "description": "스트릭 계산 유틸"
+        },
+        {
+          "path": "lib/firestore.ts",
+          "type": "REFERENCE",
+          "description": "Collections 헬퍼 참조"
         },
         {
           "path": "types/index.ts",
           "type": "REFERENCE",
-          "description": "User.assigned_class_ids: string[] 타입 확인",
-          "lineStart": 8,
-          "lineEnd": 25
+          "description": "Homework, Submission 타입 참조"
         }
       ],
-      "implementationGuide": "1. handleToggleTeacher(teacher: User) 함수 추가:\n   - const isAssigned = (teacher.assigned_class_ids ?? []).includes(editClass.id)\n   - isAssigned이면: await updateDoc(Collections.user(teacher.uid), { assigned_class_ids: arrayRemove(editClass.id) })\n   - 아니면: await updateDoc(Collections.user(teacher.uid), { assigned_class_ids: arrayUnion(editClass.id) })\n   - setTeachers(prev => prev.map(t => t.uid === teacher.uid ? {...t, assigned_class_ids: isAssigned ? t.assigned_class_ids.filter(id => id !== editClass.id) : [...(t.assigned_class_ids ?? []), editClass.id]} : t))\n   - classTeacherMap 재계산: tMap 재구성 후 setClassTeacherMap(tMap)\n2. 모달 내부를 ScrollView로 감싸기 (maxHeight: 화면높이 * 0.8 사용, useWindowDimensions로 height 획득)\n3. 반 설정 모달에 선생님 선택 섹션 추가 (저장 버튼 위):\n   - 섹션 라벨: '담당 선생님' (fontSize 13, color #64748B)\n   - teachers.length === 0 이면 '등록된 선생님이 없어요' 텍스트\n   - teachers.map: 칩 형태 TouchableOpacity\n     - 선택: bg #EEEDF9, border 1.5px #5B50E8, text color #3730A3\n     - 미선택: bg #F1F5F9, border 1px #E2E8F0, text color #334155\n   - 칩 레이아웃: flexDirection row, flexWrap wrap, gap 8\n4. 스타일 추가: teacherSection, teacherSectionLabel, teacherChipRow, teacherChip, teacherChipSelected, teacherChipText, teacherChipTextSelected",
-      "verificationCriteria": "- 반 설정 모달 하단에 선생님 칩 목록이 표시됨\n- 칩 선택 시 보라색(#5B50E8) 스타일로 즉시 변경\n- Firestore users/{uid}.assigned_class_ids 배열이 정확히 업데이트됨\n- 반 목록 카드의 '선생님 미배정' 텍스트가 지정 후 선생님 이름으로 변경됨\n- 중복 담당 허용 (여러 선생님 동시 선택 가능)\n- npx tsc --noEmit 타입 에러 0개",
-      "analysisResult": "Phase 9 목표: app/(app)/(admin)/settings.tsx 단일 파일에 초대코드 재발급 기능과 admin 담당 선생님 지정 UI를 추가한다. 기존 반 설정 모달(isClassSettingVisible)을 확장하며, 이미 로드된 teachers state와 generateCode() 유틸을 재사용한다.",
-      "summary": "admin 담당 선생님 지정 UI 구현 완료. handleToggleTeacher() 함수(arrayUnion/arrayRemove로 assigned_class_ids 즉시 업데이트 + classTeacherMap 재계산), 반 설정 모달 ScrollView 래핑(maxHeight 85%), 선생님 칩 토글 UI(선택/미선택 스타일 분기), 관련 스타일 추가. 타입 에러 없음.",
-      "completedAt": "2026-04-15T00:46:48.027Z"
+      "implementationGuide": "lib/streak.ts 신규 생성:\n1. export type StreakStatus = 'submitted' | 'late' | 'missed' | 'none'\n2. export interface StreakDay { date: string; status: StreakStatus }\n3. export async function fetchStreakData(studentUid: string, classId: string): Promise<StreakDay[]>\n   - 오늘부터 30일 전까지 날짜 배열 생성 (YYYY-MM-DD)\n   - getDocs(query(Collections.homeworks(), where('class_id','==',classId))) 로 해당 반 숙제 전체 조회\n   - due_date 기준으로 최근 30일 내 숙제 필터링\n   - 각 숙제별 getDoc(Collections.submission(hw.id, studentUid)) 병렬 조회\n   - 날짜별 매핑: 숙제 없는 날=none, 제출 없는 날=missed, is_late=true=late, is_late=false=submitted\n4. export function calculateCurrentStreak(days: StreakDay[]): number\n   - 최신 날짜부터 역순 순회\n   - status=none은 건너뜀\n   - status=submitted이면 count++\n   - status=missed 또는 late이면 중단",
+      "verificationCriteria": "fetchStreakData가 숙제/제출 데이터를 올바르게 조회하고 30개 StreakDay 배열을 반환함. calculateCurrentStreak이 none 날을 건너뛰고 missed/late에서 중단함.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
+    },
+    {
+      "id": "29351d1a-ce20-4030-a8c0-9ba5d19a4353",
+      "name": "VideoCard 컴포넌트 구현",
+      "description": "YouTube 썸네일 이미지, 재생 아이콘 오버레이, 영상 제목을 표시하는 재사용 카드 컴포넌트를 구현한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "f08d74fd-e44f-4593-b6f7-006296b3a357"
+        }
+      ],
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
+      "relatedFiles": [
+        {
+          "path": "components/VideoCard.tsx",
+          "type": "CREATE",
+          "description": "YouTube 영상 카드 컴포넌트"
+        },
+        {
+          "path": "types/index.ts",
+          "type": "REFERENCE",
+          "description": "Video 타입 참조"
+        }
+      ],
+      "implementationGuide": "components/VideoCard.tsx 신규 생성:\n1. interface Props { video: Video; onPress: () => void }\n2. Image source={{ uri: video.thumbnail_url }} 16:9 비율 (width 100%, aspectRatio 16/9)\n3. 이미지 위 반투명 오버레이(position absolute) + 재생 아이콘(Ionicons play-circle, size 48, color #fff)\n4. 하단: 반 이름(없으면 생략) + 제목(fontSize 15, fontWeight 700) + 날짜\n5. 카드: bg #fff, border #E2E8F0, borderRadius 14, overflow hidden",
+      "verificationCriteria": "VideoCard가 썸네일, 재생 아이콘, 제목을 올바르게 렌더링. onPress 콜백이 정상 호출됨.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
+    },
+    {
+      "id": "a951b686-0bd3-4f90-b820-cf7c79fe6b64",
+      "name": "StreakChart 컴포넌트 구현",
+      "description": "최근 30일 스트릭 상태를 색상 막대 그래프로 시각화하는 컴포넌트를 구현한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "9a0fe5f1-2b7d-4cc6-96f7-b13ae4e493c8"
+        }
+      ],
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
+      "relatedFiles": [
+        {
+          "path": "components/StreakChart.tsx",
+          "type": "CREATE",
+          "description": "30일 스트릭 막대 그래프"
+        },
+        {
+          "path": "lib/streak.ts",
+          "type": "REFERENCE",
+          "description": "StreakDay 타입 참조"
+        }
+      ],
+      "implementationGuide": "components/StreakChart.tsx 신규 생성:\n1. interface Props { days: StreakDay[] }\n2. useWindowDimensions로 화면 너비 계산 → 막대 너비 = (screenWidth - 32 - 29*2) / 30\n3. 막대 높이: submitted=32, late=24, missed=16, none=8 (높이 차등)\n4. 막대 색상: submitted=#10B981, late=#F59E0B, missed=#EF4444, none=#E2E8F0\n5. 하단 날짜 레이블: 7일 간격으로 'M/D' 형식 표시\n6. 전체 래핑: ScrollView 없이 고정 너비로 렌더링",
+      "verificationCriteria": "30개 막대가 상태별 색상으로 렌더링됨. 날짜 레이블이 7일 간격으로 표시됨.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
+    },
+    {
+      "id": "9fef20e8-055a-4b03-be46-0aaf54db4058",
+      "name": "선생님 영상 등록 화면 구현",
+      "description": "선생님이 담당 반과 영상 제목/YouTube URL을 입력하고 등록하는 화면을 구현한다. _layout.tsx에 숨김 탭으로 등록한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "f08d74fd-e44f-4593-b6f7-006296b3a357"
+        },
+        {
+          "taskId": "8599e6fa-8a05-4980-a157-b7691bd5823f"
+        }
+      ],
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(teacher)/video-register.tsx",
+          "type": "CREATE",
+          "description": "영상 등록 화면"
+        },
+        {
+          "path": "app/(app)/(teacher)/_layout.tsx",
+          "type": "TO_MODIFY",
+          "description": "video-register 숨김 탭 추가"
+        },
+        {
+          "path": "app/(app)/(teacher)/homework-create.tsx",
+          "type": "REFERENCE",
+          "description": "화면 구조 패턴 참조"
+        }
+      ],
+      "implementationGuide": "1. app/(app)/(teacher)/video-register.tsx 신규 생성:\n   - useRouter, useAuthStore 사용\n   - 담당 반 목록: assigned_class_ids 기반 getDocs 쿼리\n   - 반 선택 Picker(ClassPickerSheet 또는 간단한 선택 UI)\n   - 제목 TextInput\n   - URL TextInput → onChange 시 parseYoutubeId 실시간 호출 → videoId 추출\n   - videoId 있으면: Image(getThumbnailUrl(videoId)) 미리보기 표시\n   - videoId 없고 URL 입력 있으면: '비공개 또는 잘못된 링크예요' 경고 텍스트 (color #EF4444)\n   - 등록 버튼: addDoc(Collections.videos(), { class_id, academy_id, title, youtube_url, youtube_id, thumbnail_url, created_by: user.uid, created_at: serverTimestamp() })\n   - 성공 시 router.back()\n2. app/(app)/(teacher)/_layout.tsx 수정:\n   - Tabs.Screen name='video-register' options={{ href: null }} 추가",
+      "verificationCriteria": "유효한 YouTube URL 입력 시 썸네일 미리보기 표시. 비공개/잘못된 URL 경고 표시. 등록 시 Firestore videos 컬렉션에 문서 저장.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
+    },
+    {
+      "id": "57c18a58-9c0f-4cfc-8389-add52d3a3fbb",
+      "name": "학생 영상 시청 화면 구현 및 스트릭 화면 구현",
+      "description": "학생 videos.tsx를 실데이터로 교체하고, streak.tsx 상세 화면을 신규 구현한다. _layout.tsx에 streak 숨김 탭을 추가한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "29351d1a-ce20-4030-a8c0-9ba5d19a4353"
+        },
+        {
+          "taskId": "a951b686-0bd3-4f90-b820-cf7c79fe6b64"
+        },
+        {
+          "taskId": "8599e6fa-8a05-4980-a157-b7691bd5823f"
+        }
+      ],
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(student)/videos.tsx",
+          "type": "TO_MODIFY",
+          "description": "플레이스홀더 → 실데이터 연결"
+        },
+        {
+          "path": "app/(app)/(student)/streak.tsx",
+          "type": "CREATE",
+          "description": "스트릭 상세 화면"
+        },
+        {
+          "path": "app/(app)/(student)/_layout.tsx",
+          "type": "TO_MODIFY",
+          "description": "streak 숨김 탭 추가"
+        },
+        {
+          "path": "components/VideoCard.tsx",
+          "type": "DEPENDENCY",
+          "description": "VideoCard 사용"
+        },
+        {
+          "path": "components/StreakChart.tsx",
+          "type": "DEPENDENCY",
+          "description": "StreakChart 사용"
+        }
+      ],
+      "implementationGuide": "1. app/(app)/(student)/videos.tsx 교체:\n   - user.class_id 기준 getDocs(query(Collections.videos(), where('class_id','==',classId), orderBy('created_at','desc')))\n   - FlatList로 VideoCard 렌더링\n   - 카드 onPress: openYoutubeVideo(video.youtube_url)\n   - 빈 상태: '등록된 영상이 없어요' 텍스트\n   - 로딩/에러 처리\n2. app/(app)/(student)/streak.tsx 신규 생성:\n   - fetchStreakData(user.uid, user.class_id) 호출\n   - 상단: 현재 스트릭 수 크게 표시 (🔥 N일, fontSize 48, fontWeight 800, color #10B981)\n   - StreakChart 컴포넌트 삽입\n   - 하단: 규칙 안내 카드 (마감 전 제출 시 유지 / 지각·미제출 시 초기화)\n3. app/(app)/(student)/_layout.tsx 수정:\n   - Tabs.Screen name='streak' options={{ href: null }} 추가",
+      "verificationCriteria": "videos.tsx에서 반 소속 영상 목록이 표시됨. 카드 탭 시 YouTube가 열림. streak.tsx에서 30일 그래프와 현재 스트릭 수가 표시됨.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
+    },
+    {
+      "id": "d127a590-345d-4c90-a4a6-35f88ae083cd",
+      "name": "숙제 제출 시 스트릭 업데이트 구현",
+      "description": "homework-submit.tsx에서 첫 제출 성공 시 is_late 여부에 따라 streak를 증가시키거나 초기화한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "57c18a58-9c0f-4cfc-8389-add52d3a3fbb"
+        }
+      ],
+      "createdAt": "2026-04-15T01:27:36.209Z",
+      "updatedAt": "2026-04-15T01:27:36.209Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(student)/homework-submit.tsx",
+          "type": "TO_MODIFY",
+          "description": "제출 성공 시 streak 업데이트 추가",
+          "lineStart": 1,
+          "lineEnd": 60
+        },
+        {
+          "path": "store/useAuthStore.ts",
+          "type": "REFERENCE",
+          "description": "setUser 패턴 확인"
+        }
+      ],
+      "implementationGuide": "app/(app)/(student)/homework-submit.tsx 수정:\n1. firebase/firestore에서 increment import 추가\n2. 제출 성공(setDoc 완료) 직후, 재제출 여부 확인:\n   - 기존 submission 존재 여부는 제출 전 getDoc으로 확인(이미 있으면 isResubmit=true)\n   - isResubmit=true이면 streak 변경 없음\n3. 첫 제출 + is_late=false: updateDoc(Collections.user(user.uid), { streak: increment(1) })\n4. 첫 제출 + is_late=true: updateDoc(Collections.user(user.uid), { streak: 0 })\n5. useAuthStore의 setUser로 로컬 streak 갱신\n   - setUser({ ...user, streak: isLate ? 0 : (user.streak ?? 0) + 1 })",
+      "verificationCriteria": "마감 전 첫 제출 시 user.streak +1. 지각 제출 시 streak=0. 재제출 시 streak 변화 없음. Firestore users/{uid}.streak 값도 올바르게 업데이트됨.",
+      "analysisResult": "Phase 10 목표: 선생님 유튜브 영상 등록 + 학생 영상 시청 + 연속 제출 스트릭 시각화 구현. expo-linking으로 YouTube 열기, img.youtube.com으로 썸네일 추출, Firestore videos 컬렉션 신설, homework-submit.tsx에 streak 업데이트 추가."
+    },
+    {
+      "id": "5e0e2e15-9f43-47e5-8bc0-cb6b5b487f67",
+      "name": "Firestore Security Rules videos 컬렉션 추가",
+      "description": "firestore.rules에 videos 컬렉션 보안 규칙을 추가한다. 같은 학원 소속만 읽기 가능, teacher/admin만 쓰기 가능.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "f08d74fd-e44f-4593-b6f7-006296b3a357"
+        }
+      ],
+      "createdAt": "2026-04-15T01:32:54.567Z",
+      "updatedAt": "2026-04-15T01:32:54.567Z",
+      "relatedFiles": [
+        {
+          "path": "firestore.rules",
+          "type": "TO_MODIFY",
+          "description": "videos 컬렉션 보안 규칙 추가"
+        }
+      ],
+      "implementationGuide": "firestore.rules 수정 — appConfig 규칙 위에 videos 블록 추가:\nmatch /videos/{videoId} {\n  // 같은 학원 소속 멤버만 읽기 가능\n  allow read: if isAuthenticated()\n              && isAcademyMember(resource.data.academy_id);\n  // teacher, admin만 영상 등록/수정/삭제 가능\n  // rejected 학원은 쓰기 차단\n  allow create: if isAuthenticated()\n                && isStaff()\n                && isMyAcademyPendingOrActive();\n  allow update, delete: if isAuthenticated()\n                        && isAcademyMember(resource.data.academy_id)\n                        && isStaff()\n                        && isMyAcademyPendingOrActive();\n}",
+      "verificationCriteria": "teacher 계정으로 videos 쓰기 가능. student 계정으로 읽기만 가능, 쓰기 불가. 타 학원 계정으로 읽기 불가.",
+      "analysisResult": "Phase 10 누락 태스크 추가: Firestore Security Rules videos 컬렉션, 선생님 영상 등록 진입점, 학생 홈 스트릭 카드 연결"
+    },
+    {
+      "id": "4f51ae6a-cc64-4f18-a983-d33fcf0cd03b",
+      "name": "선생님 홈에서 영상 등록 진입점 추가",
+      "description": "teacher/index.tsx에 영상 등록 버튼 또는 빠른 이동 항목을 추가하여 video-register.tsx로 이동할 수 있게 한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "9fef20e8-055a-4b03-be46-0aaf54db4058"
+        }
+      ],
+      "createdAt": "2026-04-15T01:32:54.567Z",
+      "updatedAt": "2026-04-15T01:32:54.567Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(teacher)/index.tsx",
+          "type": "TO_MODIFY",
+          "description": "영상 등록 진입 버튼 추가"
+        }
+      ],
+      "implementationGuide": "app/(app)/(teacher)/index.tsx 수정:\n1. 기존 홈 화면에서 '빠른 이동' 또는 '수업 영상' 섹션에 영상 등록 버튼 추가\n2. router.push('/(app)/(teacher)/video-register') 연결\n3. 버튼 스타일: 기존 카드/버튼 패턴과 동일 (bg #fff, border #E2E8F0, borderRadius 14)\n4. 아이콘: Ionicons 'play-circle-outline', 텍스트: '수업 영상 등록'",
+      "verificationCriteria": "선생님 홈에서 버튼 탭 시 video-register 화면으로 이동. 버튼이 기존 카드 스타일과 일관성 있게 표시됨.",
+      "analysisResult": "Phase 10 누락 태스크 추가: Firestore Security Rules videos 컬렉션, 선생님 영상 등록 진입점, 학생 홈 스트릭 카드 연결"
+    },
+    {
+      "id": "9b5e2316-7db7-47e3-a6fa-f28307ed0e6e",
+      "name": "학생 홈 스트릭 카드 → streak 화면 연결",
+      "description": "student/index.tsx의 스트릭 카드에 onPress를 추가하여 streak.tsx 화면으로 이동하게 한다.",
+      "status": "pending",
+      "dependencies": [
+        {
+          "taskId": "57c18a58-9c0f-4cfc-8389-add52d3a3fbb"
+        }
+      ],
+      "createdAt": "2026-04-15T01:32:54.567Z",
+      "updatedAt": "2026-04-15T01:32:54.567Z",
+      "relatedFiles": [
+        {
+          "path": "app/(app)/(student)/index.tsx",
+          "type": "TO_MODIFY",
+          "description": "스트릭 카드에 onPress 및 링크 텍스트 추가",
+          "lineStart": 150,
+          "lineEnd": 190
+        }
+      ],
+      "implementationGuide": "app/(app)/(student)/index.tsx 수정:\n1. 스트릭 카드(streakCard 스타일) TouchableOpacity 확인\n2. onPress: () => router.push('/(app)/(student)/streak') 추가\n3. activeOpacity={0.9} 추가\n4. 카드 우측 하단에 '자세히 보기 >' 텍스트 추가 (fontSize 12, color rgba(255,255,255,0.75))",
+      "verificationCriteria": "학생 홈 스트릭 카드 탭 시 streak.tsx 화면으로 이동. '자세히 보기 >' 텍스트가 카드 내에 표시됨.",
+      "analysisResult": "Phase 10 누락 태스크 추가: Firestore Security Rules videos 컬렉션, 선생님 영상 등록 진입점, 학생 홈 스트릭 카드 연결"
     }
   ]
 }

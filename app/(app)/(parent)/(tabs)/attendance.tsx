@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   Modal, TouchableWithoutFeedback, StyleSheet, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getDoc } from 'firebase/firestore';
-import { Collections } from '../../../lib/firestore';
-import { getMonthlyAttendance, registerParentRecord } from '../../../lib/attendance';
-import { useAuthStore } from '../../../store/useAuthStore';
-import MonthlyCalendar from '../../../components/MonthlyCalendar';
-import { strings } from '../../../constants/strings';
-import type { User, AttendanceRecord, AttendanceStatus } from '../../../types/index';
+import { getDoc, doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../../lib/firebase';
+import { Collections } from '../../../../lib/firestore';
+import { getMonthlyAttendance, registerParentRecord } from '../../../../lib/attendance';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import MonthlyCalendar from '../../../../components/MonthlyCalendar';
+import { strings } from '../../../../constants/strings';
+import type { User, AttendanceRecord, AttendanceStatus } from '../../../../types/index';
 
 // ─────────────────────────────────────────────────────────────
 // ParentAttendanceScreen
@@ -94,6 +95,10 @@ export default function ParentAttendanceScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
+  // 날짜별 onSnapshot 구독 관리 (중복 구독 방지 + 정리용)
+  const subscribedDatesRef = useRef<Set<string>>(new Set());
+  const dateUnsubsRef      = useRef<Record<string, () => void>>({});
+
   // ── 사유 등록 모달 ─────────────────────────────────────────
   const [modalDate, setModalDate] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<'absent' | 'late' | null>(null);
@@ -159,6 +164,64 @@ export default function ParentAttendanceScreen() {
   }, [selectedChild?.uid, selectedChild?.class_id, year, month]);
 
   useEffect(() => { loadMonthlyData(); }, [loadMonthlyData]);
+
+  // ── 이번 달 1일 ~ 오늘 전체 실시간 구독 ─────────────────────
+  // 기록이 있는 날짜만 구독하는 방식은 선생님이 미입력 과거 날짜를
+  // 뒤늦게 입력하면 반영이 안 되는 문제 있음
+  // → 이번 달 1일~오늘까지 모든 날짜를 구독해 어느 날이든 즉시 갱신
+  // → 과거 달은 getMonthlyAttendance 1회 로드로 충분
+  useEffect(() => {
+    if (!selectedChild?.uid || !selectedChild?.class_id) return;
+
+    // 이전 구독 해제
+    Object.values(dateUnsubsRef.current).forEach(u => u());
+    dateUnsubsRef.current = {};
+    subscribedDatesRef.current.clear();
+
+    const now = new Date();
+    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+
+    // 이번 달이면 오늘까지만, 과거 달이면 해당 월의 마지막 날까지 구독
+    // → 선생님이 과거 날짜를 뒤늦게 수정해도 달 이동 없이 즉시 반영
+    const lastDay   = isCurrentMonth ? now.getDate() : new Date(year, month, 0).getDate();
+    const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+
+    for (let day = 1; day <= lastDay; day++) {
+      const dateStr   = `${yearMonth}-${String(day).padStart(2, '0')}`;
+      subscribedDatesRef.current.add(dateStr);
+
+      const recordRef = doc(
+        db,
+        'attendances',
+        `${selectedChild.class_id}_${dateStr}`,
+        'records',
+        selectedChild.uid,
+      );
+
+      dateUnsubsRef.current[dateStr] = onSnapshot(recordRef, (snap) => {
+        setRecordMap((prev) => {
+          if (!snap.exists()) {
+            if (!prev[dateStr]) return prev;
+            const next = { ...prev };
+            delete next[dateStr];
+            return next;
+          }
+          const newData = snap.data() as AttendanceRecord;
+          const existing = prev[dateStr];
+          if (existing?.status === newData.status && existing?.reason === newData.reason) {
+            return prev;
+          }
+          return { ...prev, [dateStr]: newData };
+        });
+      });
+    }
+
+    return () => {
+      Object.values(dateUnsubsRef.current).forEach(u => u());
+      dateUnsubsRef.current = {};
+      subscribedDatesRef.current.clear();
+    };
+  }, [selectedChild?.uid, selectedChild?.class_id, year, month]);
 
   const attendanceMap: Record<string, AttendanceStatus> = useMemo(
     () => Object.fromEntries(

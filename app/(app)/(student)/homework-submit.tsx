@@ -26,7 +26,7 @@ import {
 } from 'expo-file-system/legacy';
 import { getIdToken } from 'firebase/auth';
 import { auth } from '../../../lib/firebase';
-import { getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Collections } from '../../../lib/firestore';
@@ -104,7 +104,7 @@ export default function HomeworkSubmitScreen() {
     skipAlert?: string;
     restorePending?: string; // 'true' 이면 AsyncStorage에서 사진 복원
   }>();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -126,13 +126,19 @@ export default function HomeworkSubmitScreen() {
   useEffect(() => {
     if (!hwId || !user?.uid) return;
 
+    // hwId가 바뀔 때마다 이전 숙제의 사진·상태를 초기화
+    // (expo-router가 화면을 캐시하므로 명시적으로 리셋 필요)
+    setPhotos([]);
+    setExistingSubmission(null);
+    setPhase('loading');
+
     (async () => {
       try {
         // 숙제 정보 조회
         const hwSnap = await getDoc(Collections.homework(hwId));
         if (!hwSnap.exists()) {
           Alert.alert('오류', '숙제를 찾을 수 없어요.');
-          router.navigate('/(app)/(student)/homework');
+          router.back();
           return;
         }
         setHomework({ id: hwSnap.id, ...hwSnap.data() } as Homework);
@@ -162,7 +168,7 @@ export default function HomeworkSubmitScreen() {
               '이미 제출했어요',
               '다시 제출하면 이전 제출물이 사라져요. 재제출할까요?',
               [
-                { text: '취소', style: 'cancel', onPress: () => router.navigate('/(app)/(student)/homework') },
+                { text: '취소', style: 'cancel', onPress: () => router.back() },
                 { text: '재제출', style: 'destructive', onPress: () => setShouldStartCamera(true) },
               ]
             );
@@ -173,7 +179,7 @@ export default function HomeworkSubmitScreen() {
       } catch (e) {
         console.error('[HomeworkSubmit] 초기 로드 실패:', e);
         Alert.alert('오류', '데이터를 불러오지 못했어요.');
-        router.navigate('/(app)/(student)/homework');
+        router.back();
       }
     })();
   }, [hwId, user?.uid, skipAlert, restorePending, router]);
@@ -195,7 +201,7 @@ export default function HomeworkSubmitScreen() {
           Alert.alert(
             '카메라 권한 필요',
             '설정에서 카메라 권한을 허용해주세요.',
-            [{ text: '확인', onPress: () => router.navigate('/(app)/(student)/homework') }]
+            [{ text: '확인', onPress: () => router.back() }]
           );
         }
       });
@@ -285,6 +291,17 @@ export default function HomeworkSubmitScreen() {
         submitted_at: serverTimestamp(),
       });
 
+      // ── 스트릭 업데이트 (첫 제출 시에만) ──────────────────────────────
+      // 재제출(existingSubmission이 있는 경우)은 스트릭에 영향 없음
+      if (!existingSubmission) {
+        const currentStreak = user.streak ?? 0;
+        // 마감 전 제출: +1 / 마감 후 제출(지각): 0으로 초기화
+        const newStreak = isLate ? 0 : currentStreak + 1;
+        await updateDoc(Collections.user(user.uid), { streak: newStreak });
+        // 로컬 store에도 즉시 반영 (화면 새로고침 없이 홈 스트릭 카드에 반영)
+        setUser({ ...user, streak: newStreak });
+      }
+
       // 업로드 성공 → 임시저장본 삭제, 실패 카운터 초기화
       await AsyncStorage.removeItem(PENDING_KEY);
       failCountRef.current = 0;
@@ -349,7 +366,7 @@ export default function HomeworkSubmitScreen() {
           </Text>
           <TouchableOpacity
             style={styles.doneBtn}
-            onPress={() => router.navigate('/(app)/(student)/homework')}
+            onPress={() => router.back()}
             activeOpacity={0.85}
           >
             <Text style={styles.doneBtnText}>숙제 목록으로</Text>
@@ -442,7 +459,7 @@ export default function HomeworkSubmitScreen() {
       <CameraView ref={cameraRef} style={styles.camera} facing="back">
         {/* 상단 오버레이 */}
         <SafeAreaView style={styles.cameraTop}>
-          <TouchableOpacity onPress={() => router.navigate('/(app)/(student)/homework')} style={styles.cameraCloseBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.cameraCloseBtn} activeOpacity={0.7}>
             <Ionicons name="close" size={24} color="#fff" />
           </TouchableOpacity>
           <View style={styles.cameraInfo}>
@@ -635,8 +652,8 @@ const styles = StyleSheet.create({
   cameraTitle: { fontSize: 15, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   cameraCount: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
 
-  // 썸네일 바
-  thumbnailBar: { position: 'absolute', bottom: 160, left: 0, right: 0 },
+  // 썸네일 바 — bottom: previewGoBtn(36) + shutterBtn(72) + shutterHint(18) + gap*2(24) + paddingBottom(24) + safeArea 여유 = 220
+  thumbnailBar: { position: 'absolute', bottom: 220, left: 0, right: 0 },
   thumbnailBarContent: { paddingHorizontal: 16, gap: 8 },
   thumbImg: { width: 56, height: 56, borderRadius: 8, borderWidth: 2, borderColor: '#fff' },
   thumbDeleteBtn: { position: 'absolute', top: -6, right: -6 },

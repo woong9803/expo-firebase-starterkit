@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   signInWithEmail,
   signInWithGoogle,
@@ -21,6 +22,7 @@ import { strings } from '../../constants/strings';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { top } = useSafeAreaInsets();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -77,7 +79,7 @@ export default function LoginScreen() {
     >
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: top + 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -227,7 +229,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingTop: 60,
+    // paddingTop은 useSafeAreaInsets().top + 24 로 동적 계산 (기기별 노치/Dynamic Island 대응)
     paddingBottom: 40,
   },
 

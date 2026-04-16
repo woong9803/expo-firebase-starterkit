@@ -164,7 +164,7 @@ export default function HomeworkCreateScreen() {
       setDueDate(null);
       setSelectedClassId(classes.length === 1 ? classes[0].id : null);
       // 숙제 목록 화면으로 복귀
-      router.navigate('/(app)/(teacher)/homework');
+      router.back();
     } catch (e) {
       console.error('[HomeworkCreate] 출제 실패:', e);
       Alert.alert('오류', '숙제 출제에 실패했어요. 다시 시도해주세요.');
@@ -184,7 +184,7 @@ export default function HomeworkCreateScreen() {
       {/* ── 헤더 ── */}
       <View style={[styles.header, { paddingTop: top + 12 }]}>
         <TouchableOpacity
-          onPress={() => router.navigate('/(app)/(teacher)/homework')}
+          onPress={() => router.back()}
           style={styles.backBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >

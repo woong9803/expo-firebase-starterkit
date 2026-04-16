@@ -130,27 +130,16 @@ export default function StudentHomeScreen() {
             </View>
           </View>
         </View>
-        {/* 우측 아이콘 버튼 묶음 */}
-        <View style={styles.headerActions}>
-          {/* 공지 확성기 버튼 */}
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => router.push('/common/notice-list')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="megaphone-outline" size={21} color="#0F172A" />
-          </TouchableOpacity>
-          {/* 알림 벨 버튼 */}
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => router.push('/common/notification-inbox')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="notifications-outline" size={22} color="#0F172A" />
-            {/* 미읽음 dot 배지 — 숫자 없이 점만 표시 (ui-screens.md 규칙) */}
-            {unreadCount > 0 && <View style={styles.unreadDot} />}
-          </TouchableOpacity>
-        </View>
+        {/* 알림 벨 버튼 */}
+        <TouchableOpacity
+          style={styles.headerBtn}
+          onPress={() => router.push('/common/notification-inbox')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="notifications-outline" size={22} color="#0F172A" />
+          {/* 미읽음 dot 배지 — 숫자 없이 점만 표시 (ui-screens.md 규칙) */}
+          {unreadCount > 0 && <View style={styles.unreadDot} />}
+        </TouchableOpacity>
       </View>
 
       {/* ── 스트릭 카드 (초록 그라데이션) — 탭 시 상세 화면으로 이동 ── */}
@@ -194,11 +183,64 @@ export default function StudentHomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ── 빠른 작업 ── */}
+      <View style={styles.sectionPad}>
+        <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>⚡ 빠른 작업</Text>
+        <View style={styles.quickRow}>
+          {/* 숙제 제출 */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => router.push('/(app)/(student)/(tabs)/homework')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#EEEDF9' }]}>
+              <Ionicons name="camera-outline" size={20} color="#5B50E8" />
+            </View>
+            <Text style={styles.quickLabel}>숙제 제출</Text>
+          </TouchableOpacity>
+          {/* 출결 확인 */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => router.push('/(app)/(student)/(tabs)/attendance')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#FEF2F2' }]}>
+              <Ionicons name="calendar-outline" size={20} color="#EF4444" />
+            </View>
+            <Text style={styles.quickLabel}>출결 확인</Text>
+          </TouchableOpacity>
+          {/* 영상 보기 */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => router.push('/(app)/(student)/(tabs)/videos')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#ECFDF5' }]}>
+              <Ionicons name="videocam-outline" size={20} color="#10B981" />
+            </View>
+            <Text style={styles.quickLabel}>영상 보기</Text>
+          </TouchableOpacity>
+          {/* 공지 보기 */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => router.push('/common/notice-list')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#FFFBEB' }]}>
+              <Ionicons name="megaphone-outline" size={20} color="#F59E0B" />
+            </View>
+            <Text style={styles.quickLabel}>공지 보기</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* ── 내 숙제 ── */}
       <View style={styles.sectionPad}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>✏️ 내 숙제</Text>
-          <TouchableOpacity><Text style={styles.sectionLink}>전체</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(app)/(student)/(tabs)/homework')} activeOpacity={0.7}>
+            <Text style={styles.sectionLink}>전체보기</Text>
+          </TouchableOpacity>
         </View>
 
         {!user?.class_id ? (
@@ -285,19 +327,21 @@ export default function StudentHomeScreen() {
         )}
       </View>
 
-      {/* ── 공지 ── */}
-      {notices.length > 0 && (
-        <View style={styles.sectionPad}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>📢 최근 공지</Text>
-            <TouchableOpacity
-              onPress={() => router.push('/common/notice-list')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.sectionLink}>전체보기</Text>
-            </TouchableOpacity>
-          </View>
-          {notices.map((n) => (
+      {/* ── 최근 공지 ── */}
+      <View style={styles.sectionPad}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>📢 최근 공지</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/common/notice-list')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sectionLink}>전체보기</Text>
+          </TouchableOpacity>
+        </View>
+        {notices.length === 0 ? (
+          <Text style={styles.emptyText}>등록된 공지가 없어요</Text>
+        ) : (
+          notices.map((n) => (
             <TouchableOpacity
               key={n.id}
               style={[styles.noticeCard, n.is_important ? styles.noticeCardImportant : styles.noticeCardNormal]}
@@ -320,9 +364,9 @@ export default function StudentHomeScreen() {
                 </View>
               </View>
             </TouchableOpacity>
-          ))}
-        </View>
-      )}
+          ))
+        )}
+      </View>
 
     </ScrollView>
   );
@@ -405,6 +449,24 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14, fontWeight: '700', color: '#475569' },
   sectionLink: { fontSize: 13, fontWeight: '700', color: '#5B50E8' },
   emptyText: { fontSize: 14, color: '#94A3B8', textAlign: 'center', paddingVertical: 16 },
+
+  // ── 빠른 작업 ──
+  quickRow: { flexDirection: 'row', gap: 10 },
+  quickCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickIcon: {
+    width: 40, height: 40, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quickLabel: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
 
   // ── 숙제 목록 ──
   hwList: { gap: 10 },

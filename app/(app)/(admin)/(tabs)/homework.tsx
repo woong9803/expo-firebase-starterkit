@@ -1,23 +1,28 @@
 /**
- * app/(app)/(teacher)/homework.tsx — 선생님 숙제 목록 화면
+ * app/(app)/(admin)/homework.tsx — 원장님 숙제 목록 화면
  *
- * PRD: 선생님은 담당반 여부와 무관하게 학원 내 전체 반 숙제에 접근 가능.
- * 카드 탭 → 검사·피드백 화면, 우상단 버튼 → 숙제 출제 화면
+ * 선생님 숙제 화면과 동일한 기능.
+ * 학원 전체 반 숙제를 조회하고, 출제·검사 화면으로 이동할 수 있다.
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  Alert,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import {
   onSnapshot,
   query,
@@ -25,15 +30,30 @@ import {
   orderBy,
   getDocs,
   getCountFromServer,
+  updateDoc,
+  deleteDoc,
+  Timestamp,
 } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
-import { Collections } from '../../../lib/firestore';
-import { useAuthStore } from '../../../store/useAuthStore';
-import { useHomeworkStore } from '../../../store/useHomeworkStore';
-import { useProCheck } from '../../../hooks/useProCheck';
-import ProUpgradeSheet from '../../../components/ProUpgradeSheet';
-import HomeworkCard from '../../../components/HomeworkCard';
-import { Homework, Class } from '../../../types';
+import { Collections } from '../../../../lib/firestore';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { useHomeworkStore } from '../../../../store/useHomeworkStore';
+import { useProCheck } from '../../../../hooks/useProCheck';
+import ProUpgradeSheet from '../../../../components/ProUpgradeSheet';
+import HomeworkCard from '../../../../components/HomeworkCard';
+import { Homework, Class } from '../../../../types';
+
+// 날짜+시간 포맷
+function formatDateTime(date: Date): string {
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const h = date.getHours();
+  const min = date.getMinutes();
+  const ampm = h < 12 ? '오전' : '오후';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${y}년 ${m}월 ${d}일 ${ampm} ${hour12}:${min.toString().padStart(2, '0')}`;
+}
 
 // D-Day 계산 (오늘 기준 남은 일수)
 function calcDDay(dueDate: { toDate: () => Date }): number {
@@ -44,14 +64,14 @@ function calcDDay(dueDate: { toDate: () => Date }): number {
   return Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-export default function TeacherHomeworkScreen() {
+export default function AdminHomeworkScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
   const { homeworks, setHomeworks, isLoading, setLoading } = useHomeworkStore();
   const { isPro, isLoaded, upgradeSheetVisible, showUpgradeSheet, hideUpgradeSheet } = useProCheck();
 
-  // 학원 내 전체 반 ID 목록 (PRD: 담당반 여부 무관하게 전체 반 접근 가능)
+  // 학원 내 전체 반 ID 목록
   const [allClassIds, setAllClassIds] = useState<string[]>([]);
   const [classMap, setClassMap] = useState<Record<string, string>>({}); // classId → 반 이름
 
@@ -62,13 +82,21 @@ export default function TeacherHomeworkScreen() {
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null); // null = 전체
   const [filterModalVisible, setFilterModalVisible] = useState(false);
 
+  // ── 수정 모달 상태 ──
+  const [editTarget, setEditTarget]   = useState<Homework | null>(null);
+  const [editTitle, setEditTitle]     = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editDueDate, setEditDueDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isSaving, setIsSaving]       = useState(false);
+
   // Pro 체크 — academy 데이터가 로드된 이후에만 판단
   useEffect(() => {
     if (isLoaded && !isPro) showUpgradeSheet();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isPro]);
 
-  // 학원 내 전체 반 목록 1회 로드 (반 이름 맵 + 숙제 구독 기반)
+  // 학원 내 전체 반 목록 1회 로드
   useEffect(() => {
     if (!user?.academy_id) return;
     (async () => {
@@ -82,7 +110,7 @@ export default function TeacherHomeworkScreen() {
         setAllClassIds(ids);
         setClassMap(map);
       } catch (e) {
-        console.error('[TeacherHomework] 반 목록 조회 실패:', e);
+        console.error('[AdminHomework] 반 목록 조회 실패:', e);
       }
     })();
   }, [user?.academy_id]);
@@ -116,7 +144,7 @@ export default function TeacherHomeworkScreen() {
         } catch { /* 실패 시 무시 */ }
       });
     }, (e) => {
-      console.error('[TeacherHomework] 숙제 구독 실패:', e);
+      console.error('[AdminHomework] 숙제 구독 실패:', e);
       setLoading(false);
     });
 
@@ -143,6 +171,54 @@ export default function TeacherHomeworkScreen() {
     return visible.filter(hw => hw.class_id === selectedClassId);
   }, [homeworks, selectedClassId]);
 
+  // ── 수정 모달 열기 ──
+  const openEdit = (hw: Homework) => {
+    setEditTarget(hw);
+    setEditTitle(hw.title);
+    setEditContent(hw.content ?? '');
+    setEditDueDate((hw.due_date as any).toDate());
+  };
+
+  // ── 수정 저장 ──
+  const handleSave = async () => {
+    if (!editTarget || !editTitle.trim()) return;
+    setIsSaving(true);
+    try {
+      await updateDoc(Collections.homework(editTarget.id), {
+        title: editTitle.trim(),
+        content: editContent.trim(),
+        due_date: Timestamp.fromDate(editDueDate),
+      });
+      setEditTarget(null);
+    } catch {
+      Alert.alert('오류', '수정에 실패했어요. 다시 시도해주세요.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ── 삭제 ──
+  const handleDelete = (hw: Homework) => {
+    Alert.alert(
+      '숙제 삭제',
+      `"${hw.title}" 숙제를 삭제할까요?\n제출된 내용도 모두 사라져요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(Collections.homework(hw.id));
+            } catch {
+              Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // 선택된 반 이름 (드롭다운 버튼 텍스트)
   const selectedClassName = selectedClassId ? (classMap[selectedClassId] ?? '알 수 없음') : '전체';
 
@@ -153,7 +229,7 @@ export default function TeacherHomeworkScreen() {
         <Text style={styles.headerTitle}>숙제</Text>
         <TouchableOpacity
           style={styles.createBtn}
-          onPress={() => router.push('/(app)/(teacher)/homework-create')}
+          onPress={() => router.push('/(app)/(admin)/homework-create')}
           activeOpacity={0.8}
         >
           <Ionicons name="add" size={18} color="#fff" />
@@ -235,7 +311,7 @@ export default function TeacherHomeworkScreen() {
           {!selectedClassId && (
             <TouchableOpacity
               style={styles.emptyBtn}
-              onPress={() => router.push('/(app)/(teacher)/homework-create')}
+              onPress={() => router.push('/(app)/(admin)/homework-create')}
             >
               <Text style={styles.emptyBtnText}>+ 첫 숙제 출제하기</Text>
             </TouchableOpacity>
@@ -261,15 +337,102 @@ export default function TeacherHomeworkScreen() {
                 submitCount={submitted}
                 onPress={() =>
                   router.push({
-                    pathname: '/(app)/(teacher)/homework-review',
+                    pathname: '/(app)/(admin)/homework-review',
                     params: { hwId: hw.id },
                   })
                 }
+                onEdit={() => openEdit(hw)}
+                onDelete={() => handleDelete(hw)}
               />
             );
           })}
         </ScrollView>
       )}
+
+      {/* ── 수정 모달 ── */}
+      <Modal
+        visible={!!editTarget}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditTarget(null)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPress={() => setEditTarget(null)} />
+          <View style={styles.editSheet}>
+            <View style={styles.editHandle} />
+            <View style={styles.editBar}>
+              <TouchableOpacity onPress={() => setEditTarget(null)} style={styles.editSideBtn}>
+                <Text style={styles.editCancel}>취소</Text>
+              </TouchableOpacity>
+              <Text style={styles.editTitle}>숙제 수정</Text>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={isSaving || !editTitle.trim()}
+                style={styles.editSideBtn}
+              >
+                {isSaving
+                  ? <ActivityIndicator size="small" color="#5B50E8" />
+                  : <Text style={[styles.editSave, !editTitle.trim() && styles.editSaveDisabled]}>저장</Text>
+                }
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.editLabel}>제목</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="숙제 제목"
+              placeholderTextColor="#94A3B8"
+              maxLength={100}
+            />
+            <Text style={styles.editLabel}>내용</Text>
+            <TextInput
+              style={[styles.editInput, styles.editInputMulti]}
+              value={editContent}
+              onChangeText={setEditContent}
+              placeholder="숙제 내용 (선택)"
+              placeholderTextColor="#94A3B8"
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            <Text style={styles.editLabel}>마감일</Text>
+            <TouchableOpacity
+              style={styles.dateBtn}
+              onPress={() => setShowDatePicker(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={16} color="#5B50E8" />
+              <Text style={styles.dateBtnText}>{formatDateTime(editDueDate)}</Text>
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={editDueDate}
+                mode="datetime"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                onChange={(_: DateTimePickerEvent, date?: Date) => {
+                  if (Platform.OS === 'android') setShowDatePicker(false);
+                  if (date) setEditDueDate(date);
+                }}
+                minimumDate={new Date()}
+                locale="ko-KR"
+              />
+            )}
+            {Platform.OS === 'ios' && showDatePicker && (
+              <TouchableOpacity
+                style={styles.dateConfirmBtn}
+                onPress={() => setShowDatePicker(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dateConfirmText}>확인</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Pro 업그레이드 바텀시트 */}
       <ProUpgradeSheet
@@ -365,7 +528,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 32 },
   emptyEmoji: { fontSize: 40, marginBottom: 4 },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
-  emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center' },
   emptyBtn: {
     marginTop: 8,
     backgroundColor: '#5B50E8',
@@ -377,4 +539,44 @@ const styles = StyleSheet.create({
 
   // 목록
   list: { padding: 16, gap: 12, paddingBottom: 32 },
+
+  // 수정 모달
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  editSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 40, paddingHorizontal: 20,
+  },
+  editHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center', marginTop: 12, marginBottom: 4,
+  },
+  editBar: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', paddingVertical: 12,
+  },
+  editSideBtn: { minWidth: 44 },
+  editTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  editCancel: { fontSize: 15, color: '#64748B' },
+  editSave: { fontSize: 15, fontWeight: '700', color: '#5B50E8' },
+  editSaveDisabled: { color: '#CBD5E1' },
+  editLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 },
+  editInput: {
+    backgroundColor: '#F1F0FB', borderWidth: 1.5, borderColor: '#E2E8F0',
+    borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14,
+    fontSize: 15, color: '#0F172A', marginBottom: 16,
+  },
+  editInputMulti: { height: 90, textAlignVertical: 'top' },
+  dateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#F1F0FB', borderWidth: 1.5, borderColor: '#E2E8F0',
+    borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 12,
+  },
+  dateBtnText: { fontSize: 15, color: '#0F172A', fontWeight: '600' },
+  dateConfirmBtn: {
+    backgroundColor: '#5B50E8', borderRadius: 12,
+    paddingVertical: 10, alignItems: 'center', marginTop: 4,
+  },
+  dateConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

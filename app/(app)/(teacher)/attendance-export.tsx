@@ -164,7 +164,7 @@ export default function AttendanceExportScreen() {
 
       {/* ── 헤더 ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.navigate('/(app)/(teacher)/attendance')} activeOpacity={0.7} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.export.title}</Text>
@@ -288,7 +288,7 @@ export default function AttendanceExportScreen() {
       {/* ── Pro 플랜 게이팅 시트 ── */}
       <ProUpgradeSheet
         visible={showProSheet}
-        onClose={() => { setShowProSheet(false); router.navigate('/(app)/(teacher)/attendance'); }}
+        onClose={() => { setShowProSheet(false); router.back(); }}
         featureName={strings.export.proFeatureName}
       />
 

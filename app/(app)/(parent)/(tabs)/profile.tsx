@@ -27,13 +27,13 @@ import { getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { auth } from '../../../lib/firebase';
-import { Collections } from '../../../lib/firestore';
-import { initFCM } from '../../../lib/fcm';
-import { useAuthStore } from '../../../store/useAuthStore';
-import { strings } from '../../../constants/strings';
-import { validateLinkCode } from '../../../lib/auth';
-import type { User, Class } from '../../../types';
+import { auth } from '../../../../lib/firebase';
+import { Collections } from '../../../../lib/firestore';
+import { initFCM } from '../../../../lib/fcm';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { strings } from '../../../../constants/strings';
+import { validateLinkCode } from '../../../../lib/auth';
+import type { User, Class } from '../../../../types';
 
 // AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
 const NOTIF_HOMEWORK_KEY   = 'parent_notif_homework';

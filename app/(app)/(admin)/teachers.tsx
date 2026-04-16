@@ -110,7 +110,7 @@ export default function AdminTeachersScreen() {
     <View style={styles.container}>
       {/* ── 헤더 ── */}
       <View style={[styles.header, { paddingTop: top + 12 }]}>
-        <TouchableOpacity onPress={() => router.navigate('/(app)/(admin)/settings')} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color="#0F172A" />
         </TouchableOpacity>
         <View>

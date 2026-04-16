@@ -1,17 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
+  Modal, FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  query, where, getDocs, getCountFromServer,
+  query, where, getDocs,
   orderBy, limit, documentId, onSnapshot,
 } from 'firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
-import { getAbsentCountToday } from '../../../../lib/attendance';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { useNotificationStore } from '../../../../store/useNotificationStore';
 import { Class, Homework, Notice, AttendanceRecord } from '../../../../types';
@@ -20,6 +20,10 @@ import { Class, Homework, Notice, AttendanceRecord } from '../../../../types';
 interface ClassStat {
   studentCount: number;
   presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  notEnteredCount: number;
+  enteredCount: number; // 출결 입력된 학생 수 (onSnapshot 먼저 도착할 때 임시 보관용)
 }
 
 // 숙제 + 제출 통계 타입
@@ -52,19 +56,22 @@ export default function TeacherHomeScreen() {
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  // 바텀 시트에 표시할 반 (null이면 닫힘)
+  const [sheetClass, setSheetClass] = useState<Class | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // 헤더 통계
-  const [pendingHomeworkCount, setPendingHomeworkCount] = useState(0);
-  const [absentTodayCount, setAbsentTodayCount] = useState(0);
-  const [monthlyRate, setMonthlyRate] = useState<number | null>(null);
 
   // 반별 학생 수 + 오늘 출석 수 { classId: { studentCount, presentCount } }
   const [classStats, setClassStats] = useState<Record<string, ClassStat>>({});
 
-  // 숙제 검사 현황
-  const [hwStats, setHwStats] = useState<HwStat[]>([]);
+  // 숙제 원본 목록 (onSnapshot)
+  const [rawHwList, setRawHwList] = useState<Homework[]>([]);
+  // 숙제별 전체 제출 수 { hwId: count } — submissions onSnapshot으로 실시간 갱신
+  const [submissionCountsMap, setSubmissionCountsMap] = useState<Record<string, number>>({});
+  // 숙제별 미검사 제출 수 { hwId: count } — status === 'submitted' (피드백 전)
+  const [uncheckedCountsMap, setUncheckedCountsMap] = useState<Record<string, number>>({});
+  // 반별 학생 수 { classId: count }
+  const [studentCountsMap, setStudentCountsMap] = useState<Record<string, number>>({});
 
   // 담당 반 목록 실시간 구독
   useEffect(() => {
@@ -97,123 +104,190 @@ export default function TeacherHomeScreen() {
     return () => unsub();
   }, [user?.academy_id]);
 
-  // 오늘 출결 통계 — 반 목록 변경 또는 오늘 날짜 변경 시 갱신
+  // 반별 학생 수 로드 (1회성 — 출결 카운트는 아래 onSnapshot이 담당)
   useEffect(() => {
-    const classIds = user?.assigned_class_ids ?? [];
-    if (!user?.academy_id || classes.length === 0 || classIds.length === 0) return;
+    if (!user?.academy_id || classes.length === 0) return;
 
-    const todayStr = getTodayStr();
-
-    (async () => {
-      try {
-        // ① 오늘 결석 수
-        const absentCount = await getAbsentCountToday(classIds, todayStr);
-        setAbsentTodayCount(absentCount);
-
-        // ② 반별 학생 수 + 오늘 출석 수
-        const statsResults = await Promise.all(
-          classes.map(async (cls) => {
-            const [studentSnap, recordsSnap] = await Promise.all([
-              getDocs(query(Collections.users(),
-                where('academy_id', '==', user.academy_id),
-                where('class_id', '==', cls.id),
-                where('role', '==', 'student'),
-              )),
-              getDocs(Collections.attendanceRecords(cls.id, todayStr)),
-            ]);
-            const studentCount = studentSnap.docs.filter(d => d.data().is_active !== false).length;
-            let presentCount = 0;
-            recordsSnap.forEach(d => {
-              if ((d.data() as AttendanceRecord).status === 'present') presentCount++;
-            });
-            return { classId: cls.id, studentCount, presentCount };
-          })
-        );
-        const statsMap: Record<string, ClassStat> = {};
-        statsResults.forEach(({ classId, studentCount, presentCount }) => {
-          statsMap[classId] = { studentCount, presentCount };
+    Promise.all(
+      classes.map(async (cls) => {
+        const studentSnap = await getDocs(query(Collections.users(),
+          where('academy_id', '==', user.academy_id),
+          where('class_id', '==', cls.id),
+          where('role', '==', 'student'),
+        ));
+        const studentCount = studentSnap.docs.filter(d => d.data().is_active !== false).length;
+        return { classId: cls.id, studentCount };
+      })
+    ).then((statsResults) => {
+      setClassStats((prev) => {
+        const next = { ...prev };
+        statsResults.forEach(({ classId, studentCount }) => {
+          const existing = next[classId] ?? {};
+          // onSnapshot이 먼저 실행됐다면 enteredCount가 저장되어 있음 → 즉시 정확한 notEnteredCount 계산
+          const enteredCount = existing.enteredCount ?? 0;
+          next[classId] = {
+            ...existing,
+            studentCount,
+            presentCount:    existing.presentCount    ?? 0,
+            absentCount:     existing.absentCount     ?? 0,
+            lateCount:       existing.lateCount       ?? 0,
+            enteredCount,
+            notEnteredCount: Math.max(0, studentCount - enteredCount),
+          };
         });
-        setClassStats(statsMap);
-
-        // ③ 이번달 출석률
-        const now = new Date();
-        const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const todayDay = now.getDate();
-        let totalPresent = 0, totalRec = 0;
-        await Promise.all(
-          classes.flatMap(cls =>
-            Array.from({ length: todayDay }, (_, i) => i + 1).map(async (day) => {
-              const date = `${yearMonth}-${String(day).padStart(2, '0')}`;
-              const snap = await getDocs(Collections.attendanceRecords(cls.id, date));
-              snap.forEach(d => {
-                totalRec++;
-                if ((d.data() as AttendanceRecord).status === 'present') totalPresent++;
-              });
-            })
-          )
-        );
-        setMonthlyRate(totalRec > 0 ? Math.round((totalPresent / totalRec) * 100) : null);
-      } catch (e) {
-        console.error('[TeacherHome] 출결 통계 조회 실패:', e);
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+        return next;
+      });
+    }).catch(e => {
+      console.error('[TeacherHome] 학생 수 조회 실패:', e);
+    }).finally(() => {
+      setIsLoading(false);
+    });
   }, [classes.map(c => c.id).join(','), user?.academy_id]);
 
-  // 숙제 검사 현황 실시간 구독 — 숙제 추가·제출 시 즉시 반영
+  // ── 오늘 출결 실시간 구독 ─────────────────────────────────────
+  // 선생님이 출결을 입력하면 담당 반 카드의 출석 수·결석 수가 즉시 갱신됨
+  useEffect(() => {
+    if (classes.length === 0) return;
+    const todayStr = getTodayStr();
+
+    const unsubs = classes.map((cls) =>
+      onSnapshot(
+        Collections.attendanceRecords(cls.id, todayStr),
+        (snap) => {
+          setClassStats((prev) => {
+            const existing = prev[cls.id];
+
+            let presentCount = 0, absentCount = 0, lateCount = 0;
+            const enteredUids = new Set<string>();
+            snap.forEach((d) => {
+              enteredUids.add(d.id);
+              const status = (d.data() as AttendanceRecord).status;
+              if (status === 'present') presentCount++;
+              else if (status === 'absent') absentCount++;
+              else if (status === 'late') lateCount++;
+            });
+            const enteredCount = enteredUids.size;
+
+            // 학생 수가 아직 로드 안 됐을 때도 enteredCount를 저장해 둠
+            // → 이후 학생 수 로드 시 notEnteredCount를 정확하게 계산할 수 있음
+            if (!existing) {
+              return {
+                ...prev,
+                [cls.id]: { studentCount: 0, presentCount, absentCount, lateCount, enteredCount, notEnteredCount: 0 },
+              };
+            }
+
+            const notEnteredCount = Math.max(0, existing.studentCount - enteredCount);
+            return {
+              ...prev,
+              [cls.id]: { ...existing, presentCount, absentCount, lateCount, enteredCount, notEnteredCount },
+            };
+          });
+        },
+        (e) => console.warn('[TeacherHome] 출결 구독 실패:', e)
+      )
+    );
+
+    return () => unsubs.forEach((u) => u());
+  }, [classes.map(c => c.id).join(',')]);
+
+  // ── 숙제 목록 실시간 구독 ──────────────────────────────────
   useEffect(() => {
     const classIds = user?.assigned_class_ids ?? [];
     if (!user?.academy_id || classIds.length === 0) return;
 
-    let cancelled = false;
-
     const unsub = onSnapshot(
       query(Collections.homeworks(), where('class_id', 'in', classIds.slice(0, 10))),
       (snap) => {
-        (async () => {
-          try {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const hwList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
-
-            const hwStatList = await Promise.all(
-              hwList.map(async (hw) => {
-                const [subCount, studentSnap] = await Promise.all([
-                  getCountFromServer(Collections.submissions(hw.id)),
-                  getDocs(query(Collections.users(),
-                    where('academy_id', '==', user.academy_id!),
-                    where('class_id', '==', hw.class_id),
-                    where('role', '==', 'student'),
-                  )),
-                ]);
-                return {
-                  ...hw,
-                  submittedCount: subCount.data().count,
-                  totalStudents: studentSnap.docs.filter(d => d.data().is_active !== false).length,
-                  dDays: calcDDays(hw.due_date.toDate()),
-                } as HwStat;
-              })
-            );
-
-            if (cancelled) return;
-
-            hwStatList.sort((a, b) => {
-              if (a.dDays === 0 && b.dDays !== 0) return -1;
-              if (b.dDays === 0 && a.dDays !== 0) return 1;
-              return a.dDays - b.dDays;
-            });
-            setHwStats(hwStatList);
-            setPendingHomeworkCount(hwList.filter(hw => hw.due_date.toDate() >= today).length);
-          } catch (e) {
-            console.error('[TeacherHome] 숙제 현황 조회 실패:', e);
-          }
-        })();
-      }
+        setRawHwList(snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework)));
+      },
+      (e) => console.error('[TeacherHome] 숙제 목록 구독 실패:', e)
     );
-
-    return () => { cancelled = true; unsub(); };
+    return () => unsub();
   }, [user?.academy_id, user?.assigned_class_ids?.join(',')]);
+
+  // ── 각 숙제 제출 수 실시간 구독 ─────────────────────────────
+  // 학생이 제출하거나 선생님이 피드백을 달 때 submissions 컬렉션이 변경되므로
+  // 전체 제출 수(submittedCount)와 미검사 수(uncheckedCount)를 동시에 갱신
+  useEffect(() => {
+    if (rawHwList.length === 0) return;
+
+    const unsubs = rawHwList.map((hw) =>
+      onSnapshot(
+        Collections.submissions(hw.id),
+        (snap) => {
+          // 전체 제출 수
+          setSubmissionCountsMap(prev => ({ ...prev, [hw.id]: snap.size }));
+          // 미검사 수 = status가 'submitted'인 것 (선생님 피드백 전)
+          const unchecked = snap.docs.filter(d => d.data().status === 'submitted').length;
+          setUncheckedCountsMap(prev => ({ ...prev, [hw.id]: unchecked }));
+        },
+        (e) => console.warn(`[TeacherHome] 제출 구독 실패(${hw.id}):`, e)
+      )
+    );
+    return () => unsubs.forEach(u => u());
+  }, [rawHwList.map(h => h.id).join(',')]);
+
+  // ── 반별 학생 수 조회 ────────────────────────────────────────
+  // 학생 수는 자주 바뀌지 않으므로 rawHwList 반 목록이 달라질 때만 재조회
+  useEffect(() => {
+    if (rawHwList.length === 0 || !user?.academy_id) return;
+
+    const uniqueClassIds = [...new Set(rawHwList.map(h => h.class_id))];
+    Promise.all(
+      uniqueClassIds.map(async (classId) => {
+        const snap = await getDocs(query(
+          Collections.users(),
+          where('academy_id', '==', user.academy_id!),
+          where('class_id', '==', classId),
+          where('role', '==', 'student'),
+        ));
+        return { classId, count: snap.docs.filter(d => d.data().is_active !== false).length };
+      })
+    ).then((results) => {
+      const map: Record<string, number> = {};
+      results.forEach(({ classId, count }) => { map[classId] = count; });
+      setStudentCountsMap(map);
+    }).catch(e => console.warn('[TeacherHome] 학생 수 조회 실패:', e));
+  }, [rawHwList.map(h => h.class_id).join(','), user?.academy_id]);
+
+  // ── 숙제 통계 병합 (실시간 상태 3개 → 렌더용 파생 데이터) ──
+  // 마감일이 내일 이하(dDays <= 1)인 숙제만 표시 — 임박하거나 지난 숙제 위주
+  const hwStats = useMemo<HwStat[]>(() => {
+    const list = rawHwList
+      .map(hw => ({
+        ...hw,
+        submittedCount: submissionCountsMap[hw.id] ?? 0,
+        totalStudents: studentCountsMap[hw.class_id] ?? 0,
+        dDays: calcDDays(hw.due_date.toDate()),
+      }))
+      .filter(hw => hw.dDays <= 1); // 오늘(D-0), 내일(D-1), 이미 지난 것만
+    list.sort((a, b) => {
+      if (a.dDays === 0 && b.dDays !== 0) return -1;
+      if (b.dDays === 0 && a.dDays !== 0) return 1;
+      return a.dDays - b.dDays;
+    });
+    return list;
+  }, [rawHwList, submissionCountsMap, studentCountsMap]);
+
+  // 미검사 숙제 수 — 제출됐지만 선생님이 아직 피드백하지 않은 제출물 총 수
+  // status === 'submitted' 인 것만 집계 (선생님이 피드백 달면 즉시 감소)
+  const pendingHomeworkCount = useMemo(() =>
+    Object.values(uncheckedCountsMap).reduce((sum, c) => sum + c, 0),
+    [uncheckedCountsMap]
+  );
+
+  // 오늘 결석 수 — classStats에서 실시간으로 파생 (별도 state 불필요)
+  const absentTodayCount = useMemo(
+    () => Object.values(classStats).reduce((sum, s) => sum + (s.absentCount ?? 0), 0),
+    [classStats]
+  );
+
+  // 오늘 출결 미입력 수 — 아직 출결이 입력되지 않은 학생 수 합산 (실시간)
+  const notEnteredTodayCount = useMemo(
+    () => Object.values(classStats).reduce((sum, s) => sum + (s.notEnteredCount ?? 0), 0),
+    [classStats]
+  );
 
   if (isLoading) {
     return (
@@ -224,8 +298,8 @@ export default function TeacherHomeScreen() {
   }
 
   return (
+    <View style={styles.container}>
     <ScrollView
-      style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
@@ -251,14 +325,6 @@ export default function TeacherHomeScreen() {
             >
               <Ionicons name="person-add-outline" size={18} color="#fff" />
             </TouchableOpacity>
-            {/* 영상 관리 버튼 */}
-            <TouchableOpacity
-              style={styles.headerActionBtn}
-              onPress={() => router.push('/(app)/(teacher)/video-list')}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="videocam-outline" size={18} color="#fff" />
-            </TouchableOpacity>
             {/* 알림 */}
             <TouchableOpacity
               style={styles.headerActionBtn}
@@ -283,10 +349,8 @@ export default function TeacherHomeScreen() {
             <Text style={styles.statLbl}>오늘 결석</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statNum}>
-              {monthlyRate !== null ? `${monthlyRate}%` : '-'}
-            </Text>
-            <Text style={styles.statLbl}>이번달 출석률</Text>
+            <Text style={styles.statNum}>{notEnteredTodayCount}</Text>
+            <Text style={styles.statLbl}>출석 미입력</Text>
           </View>
         </View>
       </LinearGradient>
@@ -346,7 +410,9 @@ export default function TeacherHomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>📌 담당 반</Text>
-          <TouchableOpacity><Text style={styles.sectionLink}>전체</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(app)/(teacher)/(tabs)/students')} activeOpacity={0.7}>
+            <Text style={styles.sectionLink}>전체보기</Text>
+          </TouchableOpacity>
         </View>
 
         {classes.length === 0 ? (
@@ -359,7 +425,7 @@ export default function TeacherHomeScreen() {
                 <TouchableOpacity
                   key={c.id}
                   style={[styles.classCard, selectedClassId === c.id && styles.classCardActive]}
-                  onPress={() => setSelectedClassId(c.id)}
+                  onPress={() => { setSelectedClassId(c.id); setSheetClass(c); }}
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.classCardName, selectedClassId === c.id && styles.classCardNameActive]}>
@@ -382,7 +448,9 @@ export default function TeacherHomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>📝 숙제 검사 현황</Text>
-          <TouchableOpacity><Text style={styles.sectionLink}>전체</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(app)/(teacher)/(tabs)/homework')} activeOpacity={0.7}>
+            <Text style={styles.sectionLink}>전체보기</Text>
+          </TouchableOpacity>
         </View>
 
         {hwStats.length === 0 ? (
@@ -395,7 +463,12 @@ export default function TeacherHomeScreen() {
             const isDDay = hw.dDays === 0;
             const isPast = hw.dDays < 0;
             return (
-              <View key={hw.id} style={styles.hwCard}>
+              <TouchableOpacity
+                key={hw.id}
+                style={styles.hwCard}
+                onPress={() => router.push(`/(app)/(teacher)/homework-review?hwId=${hw.id}`)}
+                activeOpacity={0.8}
+              >
                 <View style={styles.hwTopRow}>
                   <Text style={styles.hwTitle} numberOfLines={1}>{hw.title}</Text>
                   <View style={[styles.dDayChip, isDDay || isPast ? styles.dDayRed : styles.dDayGray]}>
@@ -404,9 +477,17 @@ export default function TeacherHomeScreen() {
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.hwSub}>
-                  마감 {hw.due_date.toDate().toLocaleDateString('ko-KR')}
-                </Text>
+                {/* 반 이름 + 마감일 */}
+                <View style={styles.hwMetaRow}>
+                  <View style={styles.classNameChip}>
+                    <Text style={styles.classNameChipText}>
+                      {classes.find(c => c.id === hw.class_id)?.name ?? '알 수 없는 반'}
+                    </Text>
+                  </View>
+                  <Text style={styles.hwSub}>
+                    마감 {hw.due_date.toDate().toLocaleDateString('ko-KR')}
+                  </Text>
+                </View>
                 <View style={styles.hwStatusRow}>
                   <Text style={styles.hwStatusLabel}>제출 현황</Text>
                   <Text style={styles.hwStatusCount}>
@@ -426,7 +507,7 @@ export default function TeacherHomeScreen() {
                     </Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -475,6 +556,119 @@ export default function TeacherHomeScreen() {
       </View>
 
     </ScrollView>
+
+    {/* ── 반 상세 바텀 시트 ── */}
+
+    <Modal
+      visible={sheetClass !== null}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setSheetClass(null)}
+    >
+      <TouchableOpacity
+        style={styles.sheetOverlay}
+        activeOpacity={1}
+        onPress={() => setSheetClass(null)}
+      >
+        <View style={styles.sheetContainer}>
+          {/* 핸들 */}
+          <View style={styles.sheetHandle} />
+
+          {/* 헤더 */}
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.sheetTitle}>{sheetClass?.name}</Text>
+              <Text style={styles.sheetSubtitle}>
+                학생 {classStats[sheetClass?.id ?? '']?.studentCount ?? '-'}명
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setSheetClass(null)} activeOpacity={0.7}>
+              <Ionicons name="close" size={22} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          {/* 오늘 출결 현황 4칸 */}
+          <Text style={styles.sheetSectionTitle}>오늘 출결 현황</Text>
+          {(() => {
+            const stat = classStats[sheetClass?.id ?? ''];
+            return (
+              <View style={styles.sheetStatGrid}>
+                <View style={[styles.sheetStatBox, { backgroundColor: '#ECFDF5' }]}>
+                  <Text style={[styles.sheetStatNum, { color: '#10B981' }]}>
+                    {stat?.presentCount ?? '-'}
+                  </Text>
+                  <Text style={[styles.sheetStatLbl, { color: '#065F46' }]}>출석</Text>
+                </View>
+                <View style={[styles.sheetStatBox, { backgroundColor: '#FEF2F2' }]}>
+                  <Text style={[styles.sheetStatNum, { color: '#EF4444' }]}>
+                    {stat?.absentCount ?? '-'}
+                  </Text>
+                  <Text style={[styles.sheetStatLbl, { color: '#991B1B' }]}>결석</Text>
+                </View>
+                <View style={[styles.sheetStatBox, { backgroundColor: '#FFFBEB' }]}>
+                  <Text style={[styles.sheetStatNum, { color: '#F59E0B' }]}>
+                    {stat?.lateCount ?? '-'}
+                  </Text>
+                  <Text style={[styles.sheetStatLbl, { color: '#78350F' }]}>지각</Text>
+                </View>
+                <View style={[styles.sheetStatBox, { backgroundColor: '#F1F5F9' }]}>
+                  <Text style={[styles.sheetStatNum, { color: '#64748B' }]}>
+                    {stat?.notEnteredCount ?? '-'}
+                  </Text>
+                  <Text style={[styles.sheetStatLbl, { color: '#334155' }]}>미입력</Text>
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* 빠른 이동 버튼 3개 */}
+          <View style={styles.sheetActionRow}>
+            <TouchableOpacity
+              style={styles.sheetActionBtn}
+              onPress={() => {
+                setSheetClass(null);
+                router.push({ pathname: '/(app)/(teacher)/attendance', params: { classId: sheetClass?.id } });
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.sheetActionIcon, { backgroundColor: '#FEF2F2' }]}>
+                <Ionicons name="calendar-outline" size={22} color="#EF4444" />
+              </View>
+              <Text style={styles.sheetActionLabel}>출결 입력</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sheetActionBtn}
+              onPress={() => {
+                setSheetClass(null);
+                router.push('/(app)/(teacher)/(tabs)/homework');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.sheetActionIcon, { backgroundColor: '#EEEDF9' }]}>
+                <Ionicons name="book-outline" size={22} color="#5B50E8" />
+              </View>
+              <Text style={styles.sheetActionLabel}>숙제 검사</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sheetActionBtn}
+              onPress={() => {
+                setSheetClass(null);
+                router.push('/(app)/(teacher)/(tabs)/students');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.sheetActionIcon, { backgroundColor: '#ECFDF5' }]}>
+                <Ionicons name="people-outline" size={22} color="#10B981" />
+              </View>
+              <Text style={styles.sheetActionLabel}>학생 목록</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+    </View>
   );
 }
 
@@ -589,7 +783,15 @@ const styles = StyleSheet.create({
   dDayText: { fontSize: 11, fontWeight: '700' },
   dDayTextRed: { color: '#991B1B' },
   dDayTextGray: { color: '#334155' },
-  hwSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  hwMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  classNameChip: {
+    backgroundColor: '#EEEDF9',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  classNameChipText: { fontSize: 11, fontWeight: '700', color: '#5B50E8' },
+  hwSub: { fontSize: 12, color: '#64748B' },
   hwStatusRow: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginTop: 10,
@@ -612,6 +814,59 @@ const styles = StyleSheet.create({
     paddingVertical: 3, paddingHorizontal: 8,
   },
   chipRedText: { fontSize: 11, fontWeight: '700', color: '#991B1B' },
+
+  // ── 반 상세 바텀 시트 ──
+  sheetOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheetContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 40,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center', marginTop: 12, marginBottom: 4,
+  },
+  sheetHeader: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
+  },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  sheetSubtitle: { fontSize: 13, color: '#64748B', marginTop: 2 },
+  sheetSectionTitle: {
+    fontSize: 13, fontWeight: '700', color: '#475569',
+    marginHorizontal: 20, marginTop: 16, marginBottom: 10,
+  },
+  sheetStatGrid: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: 20,
+  },
+  sheetStatBox: {
+    flex: 1, borderRadius: 12,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  sheetStatNum: { fontSize: 22, fontWeight: '800' },
+  sheetStatLbl: { fontSize: 11, fontWeight: '600', marginTop: 3 },
+  sheetActionRow: {
+    flexDirection: 'row', gap: 10,
+    paddingHorizontal: 20, marginTop: 20,
+  },
+  sheetActionBtn: {
+    flex: 1, backgroundColor: '#F8FAFC',
+    borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: 14, paddingVertical: 16,
+    alignItems: 'center', gap: 8,
+  },
+  sheetActionIcon: {
+    width: 44, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sheetActionLabel: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
 
   // ── 공지 카드 ──
   noticeCard: { borderRadius: 14, marginBottom: 8, overflow: 'hidden' },

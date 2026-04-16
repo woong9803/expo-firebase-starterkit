@@ -17,6 +17,12 @@ import {
   View,
   Text,
   FlatList,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Switch,
+  Alert,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
@@ -26,7 +32,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuthStore } from '../../../store/useAuthStore';
-import { subscribeNotices } from '../../../lib/notice';
+import { subscribeNotices, updateNotice, deleteNotice } from '../../../lib/notice';
 import NoticeCard from '../../../components/NoticeCard';
 import { strings } from '../../../constants/strings';
 import type { Notice } from '../../../types';
@@ -38,6 +44,7 @@ import type { Notice } from '../../../types';
 interface Props {
   showCreateButton?: boolean;  // true면 우상단 '+' 버튼 표시
   onCreatePress?: () => void;  // '+' 버튼 탭 콜백
+  showEditButtons?: boolean;   // true면 각 카드에 수정/삭제 버튼 표시 (선생님/admin)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -54,7 +61,7 @@ function formatDate(notice: Notice): string {
 // NoticeListScreen
 // ─────────────────────────────────────────────────────────────
 
-export default function NoticeListScreen({ showCreateButton, onCreatePress }: Props) {
+export default function NoticeListScreen({ showCreateButton, onCreatePress, showEditButtons }: Props) {
   const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
   const navigation = useNavigation();
@@ -63,6 +70,13 @@ export default function NoticeListScreen({ showCreateButton, onCreatePress }: Pr
 
   const [notices, setNotices]     = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // ── 수정 모달 상태 ──
+  const [editTarget, setEditTarget]         = useState<Notice | null>(null);
+  const [editTitle, setEditTitle]           = useState('');
+  const [editContent, setEditContent]       = useState('');
+  const [editIsImportant, setEditIsImportant] = useState(false);
+  const [isSaving, setIsSaving]             = useState(false);
 
   // ── 실시간 공지 목록 구독 ──
   useEffect(() => {
@@ -93,6 +107,54 @@ export default function NoticeListScreen({ showCreateButton, onCreatePress }: Pr
   // ── 공지 카드 탭 → 상세 화면 이동 ──
   const handleNoticePress = (noticeId: string) => {
     router.push(`/common/notice-detail?noticeId=${noticeId}`);
+  };
+
+  // ── 수정 모달 열기 ──
+  const openEdit = (notice: Notice) => {
+    setEditTarget(notice);
+    setEditTitle(notice.title);
+    setEditContent(notice.content);
+    setEditIsImportant(notice.is_important);
+  };
+
+  // ── 수정 저장 ──
+  const handleSave = async () => {
+    if (!editTarget || !editTitle.trim() || !editContent.trim()) return;
+    setIsSaving(true);
+    try {
+      await updateNotice(editTarget.id, {
+        title: editTitle.trim(),
+        content: editContent.trim(),
+        isImportant: editIsImportant,
+      });
+      setEditTarget(null);
+    } catch {
+      Alert.alert('오류', '수정에 실패했어요. 다시 시도해주세요.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ── 삭제 ──
+  const handleDelete = (notice: Notice) => {
+    Alert.alert(
+      '공지 삭제',
+      `"${notice.title}" 공지를 삭제할까요?\n삭제한 공지는 복구할 수 없어요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteNotice(notice.id);
+            } catch {
+              Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -143,6 +205,8 @@ export default function NoticeListScreen({ showCreateButton, onCreatePress }: Pr
               isImportant={item.is_important}
               createdAt={formatDate(item)}
               onPress={() => handleNoticePress(item.id)}
+              onEdit={showEditButtons ? () => openEdit(item) : undefined}
+              onDelete={showEditButtons ? () => handleDelete(item) : undefined}
             />
           )}
           ListEmptyComponent={
@@ -152,6 +216,85 @@ export default function NoticeListScreen({ showCreateButton, onCreatePress }: Pr
           }
         />
       )}
+
+      {/* ── 수정 모달 ── */}
+      <Modal
+        visible={!!editTarget}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditTarget(null)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity
+            style={styles.modalBg}
+            activeOpacity={1}
+            onPress={() => setEditTarget(null)}
+          />
+          <View style={styles.modalSheet}>
+            {/* 핸들바 */}
+            <View style={styles.modalHandle} />
+
+            {/* 헤더 */}
+            <View style={styles.modalBar}>
+              <TouchableOpacity onPress={() => setEditTarget(null)} style={styles.modalSideBtn}>
+                <Text style={styles.modalCancel}>취소</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>공지 수정</Text>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={isSaving || !editTitle.trim() || !editContent.trim()}
+                style={styles.modalSideBtn}
+              >
+                {isSaving
+                  ? <ActivityIndicator size="small" color="#5B50E8" />
+                  : <Text style={[
+                      styles.modalSave,
+                      (!editTitle.trim() || !editContent.trim()) && styles.modalSaveDisabled,
+                    ]}>저장</Text>
+                }
+              </TouchableOpacity>
+            </View>
+
+            {/* 중요 공지 토글 */}
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>중요 공지</Text>
+              <Switch
+                value={editIsImportant}
+                onValueChange={setEditIsImportant}
+                trackColor={{ false: '#E2E8F0', true: '#EF4444' }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {/* 제목 입력 */}
+            <Text style={styles.inputLabel}>제목</Text>
+            <TextInput
+              style={styles.input}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="공지 제목"
+              placeholderTextColor="#94A3B8"
+              maxLength={100}
+            />
+
+            {/* 내용 입력 */}
+            <Text style={styles.inputLabel}>내용</Text>
+            <TextInput
+              style={[styles.input, styles.inputMulti]}
+              value={editContent}
+              onChangeText={setEditContent}
+              placeholder="공지 내용"
+              placeholderTextColor="#94A3B8"
+              multiline
+              numberOfLines={5}
+              textAlignVertical="top"
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -216,5 +359,59 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 15,
     color: '#94A3B8',
+  },
+
+  // ── 수정 모달 ──
+  modalOverlay: { flex: 1 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 40, paddingHorizontal: 20,
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center',
+    marginTop: 12, marginBottom: 4,
+  },
+  modalBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  modalSideBtn: { minWidth: 44 },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  modalCancel: { fontSize: 15, color: '#64748B' },
+  modalSave: { fontSize: 15, fontWeight: '700', color: '#5B50E8' },
+  modalSaveDisabled: { color: '#CBD5E1' },
+
+  // 중요 공지 토글 행
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+    marginBottom: 16,
+  },
+  toggleLabel: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+
+  // 입력 필드
+  inputLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 },
+  input: {
+    backgroundColor: '#F1F0FB',
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 14,
+    fontSize: 15, color: '#0F172A',
+    marginBottom: 16,
+  },
+  inputMulti: {
+    height: 120,
+    textAlignVertical: 'top',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,19 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuthStore } from '../../../store/useAuthStore';
-import { getMonthlyAttendance } from '../../../lib/attendance';
-import MonthlyCalendar from '../../../components/MonthlyCalendar';
-import { strings } from '../../../constants/strings';
-import type { AttendanceRecord, AttendanceStatus } from '../../../types/index';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../../lib/firebase';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { getMonthlyAttendance } from '../../../../lib/attendance';
+import MonthlyCalendar from '../../../../components/MonthlyCalendar';
+import { strings } from '../../../../constants/strings';
+import type { AttendanceRecord, AttendanceStatus } from '../../../../types/index';
+
+// 오늘 날짜 문자열 (YYYY-MM-DD)
+function getTodayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // ─────────────────────────────────────────────────────────────
 // StudentAttendanceScreen
@@ -83,6 +91,10 @@ export default function StudentAttendanceScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
+  // 날짜별 onSnapshot 구독 관리 (중복 방지 + 달 전환 시 정리)
+  const subscribedDatesRef = useRef<Set<string>>(new Set());
+  const dateUnsubsRef      = useRef<Record<string, () => void>>({});
+
   // MonthlyCalendar에 전달할 status 전용 맵 (색상 표시용)
   const attendanceMap: Record<string, AttendanceStatus> = useMemo(
     () =>
@@ -112,6 +124,64 @@ export default function StudentAttendanceScreen() {
   useEffect(() => {
     loadMonthlyData();
   }, [loadMonthlyData]);
+
+  // ── 이번 달 1일 ~ 오늘 전체 실시간 구독 ─────────────────────
+  // 기존 방식(오늘만 구독 or 기록 있는 날만 구독)은 선생님이
+  // 아직 미입력인 과거 날짜를 뒤늦게 입력하면 반영이 안 되는 문제 있음
+  // → 이번 달 모든 날짜(1일~오늘)를 구독해 어느 날이든 즉시 갱신
+  // → 과거 달은 변경될 일 없으므로 getMonthlyAttendance 1회 로드로 충분
+  useEffect(() => {
+    if (!user?.uid || !user?.class_id) return;
+
+    // 이전 구독 해제
+    Object.values(dateUnsubsRef.current).forEach(u => u());
+    dateUnsubsRef.current = {};
+    subscribedDatesRef.current.clear();
+
+    const now = new Date();
+    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+
+    // 이번 달이면 오늘까지만, 과거 달이면 해당 월의 마지막 날까지 구독
+    // → 선생님이 과거 날짜를 뒤늦게 수정해도 달 이동 없이 즉시 반영
+    const lastDay   = isCurrentMonth ? now.getDate() : new Date(year, month, 0).getDate();
+    const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+
+    for (let day = 1; day <= lastDay; day++) {
+      const dateStr   = `${yearMonth}-${String(day).padStart(2, '0')}`;
+      subscribedDatesRef.current.add(dateStr);
+
+      const recordRef = doc(
+        db,
+        'attendances',
+        `${user.class_id}_${dateStr}`,
+        'records',
+        user.uid,
+      );
+
+      dateUnsubsRef.current[dateStr] = onSnapshot(recordRef, (snap) => {
+        setRecordMap((prev) => {
+          if (!snap.exists()) {
+            if (!prev[dateStr]) return prev; // 원래도 없으면 스킵
+            const next = { ...prev };
+            delete next[dateStr];
+            return next;
+          }
+          const newData = snap.data() as AttendanceRecord;
+          const existing = prev[dateStr];
+          if (existing?.status === newData.status && existing?.reason === newData.reason) {
+            return prev; // 실제 변경 없으면 리렌더 스킵
+          }
+          return { ...prev, [dateStr]: newData };
+        });
+      });
+    }
+
+    return () => {
+      Object.values(dateUnsubsRef.current).forEach(u => u());
+      dateUnsubsRef.current = {};
+      subscribedDatesRef.current.clear();
+    };
+  }, [user?.uid, user?.class_id, year, month]);
 
   // ── 이달 요약 계산 ─────────────────────────────────────────
   const summary = useMemo(() => {

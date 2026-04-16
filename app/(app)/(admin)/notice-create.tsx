@@ -90,8 +90,12 @@ export default function AdminNoticeCreateScreen() {
         targetClassIds: targetAll ? [] : selectedClassIds,
         targetRoles: resolveTargetRoles(),
       });
-      // Tabs 구조에서 router.back()이 홈으로 가는 버그 → 명시적으로 공지 탭으로 이동
-      router.navigate('/(app)/(admin)/notices');
+      // router.back()이 스택이 비어있을 때 에러를 던지는 케이스 방어
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(app)/(admin)/(tabs)/notices');
+      }
     } catch (e) {
       console.error('[AdminNoticeCreate] 공지 저장 실패:', e);
       Alert.alert('', strings.common.error);
@@ -108,7 +112,7 @@ export default function AdminNoticeCreateScreen() {
       {/* ── 헤더 ── */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.navigate('/(app)/(admin)/notices')}
+          onPress={() => router.canGoBack() ? router.back() : router.replace('/(app)/(admin)/(tabs)/notices')}
           activeOpacity={0.7}
           style={styles.backBtn}
         >

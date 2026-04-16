@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
 } from 'react-native';
@@ -6,14 +6,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getDoc, getDocs, doc, onSnapshot, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
-import { db } from '../../../lib/firebase';
-import { Collections } from '../../../lib/firestore';
-import { getMonthlyAttendance, sendAbsenceReason } from '../../../lib/attendance';
-import { useAuthStore } from '../../../store/useAuthStore';
-import { useNotificationStore } from '../../../store/useNotificationStore';
-import { strings } from '../../../constants/strings';
-import type { User, AttendanceRecord, AttendanceStatus, Homework, Submission, Notice } from '../../../types/index';
+import { useFocusEffect } from '@react-navigation/native';
+import { getDoc, getDocs, doc, onSnapshot, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { db } from '../../../../lib/firebase';
+import { Collections } from '../../../../lib/firestore';
+import { getMonthlyAttendance, sendAbsenceReason } from '../../../../lib/attendance';
+import { subscribeNotices } from '../../../../lib/notice';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { useNotificationStore } from '../../../../store/useNotificationStore';
+import { strings } from '../../../../constants/strings';
+import type { User, AttendanceRecord, AttendanceStatus, Homework, Submission, Notice } from '../../../../types/index';
 
 // 결석 사유 목록 — strings.ts에서 관리
 const REASONS = strings.attendance.absenceReasons;
@@ -50,6 +52,9 @@ export default function ParentHomeScreen() {
 
   // ── 이번달 출결 맵 ──────────────────────────────────────────
   const [monthlyAttendance, setMonthlyAttendance] = useState<Record<string, AttendanceRecord>>({});
+  // 날짜별 onSnapshot 구독 관리 ref (중복 구독 방지 + 자녀 전환 시 정리)
+  const monthlySubDatesRef = useRef<Set<string>>(new Set());
+  const monthlyUnsubsRef   = useRef<Record<string, () => void>>({});
 
   // ── 결석 사유 전송 ──────────────────────────────────────────
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
@@ -176,48 +181,60 @@ export default function ParentHomeScreen() {
     return () => unsub();
   }, [selectedChild?.uid, selectedChild?.class_id, todayStr]);
 
-  // ── 3-1) 오늘 숙제 현황 로드 (자녀 변경 시 재조회) ────────
-  useEffect(() => {
-    if (!selectedChild?.class_id || !selectedChild?.uid) {
-      setTodayHomeworks([]);
-      return;
-    }
+  // ── 3-1) 오늘 숙제 현황 로드 — 탭 포커스 시마다 재조회 ────────
+  // submissions 서브컬렉션은 실시간 구독 대상이 아니므로 포커스마다 갱신
+  // useFocusEffect는 async 함수를 직접 받지 않으므로 내부 async IIFE 사용
+  useFocusEffect(
+    useCallback(() => {
+      if (!selectedChild?.class_id || !selectedChild?.uid) {
+        setTodayHomeworks([]);
+        return;
+      }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+      const childUid = selectedChild.uid;
+      const classId = selectedChild.class_id;
 
-    getDocs(
-      query(Collections.homeworks(), where('class_id', '==', selectedChild.class_id))
-    ).then(async (hwSnap) => {
-      const list = hwSnap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
+      (async () => {
+        try {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-      // 내일 자정 기준 (오늘 + 1일)
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
+          const hwSnap = await getDocs(
+            query(Collections.homeworks(), where('class_id', '==', classId))
+          );
+          const list = hwSnap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
 
-      // 마감일이 오늘 또는 내일인 숙제만 표시 (당일 + 전날 알림 용도)
-      const active = list.filter(hw => {
-        const due = hw.due_date.toDate();
-        due.setHours(0, 0, 0, 0);
-        return due.getTime() >= today.getTime() && due.getTime() <= tomorrow.getTime();
-      });
+          // 내일 자정 기준 (오늘 + 1일)
+          const tomorrow = new Date(today);
+          tomorrow.setDate(today.getDate() + 1);
 
-      const withStatus = await Promise.all(
-        active.map(async (hw) => {
-          const subSnap = await getDoc(Collections.submission(hw.id, selectedChild.uid));
-          const sub = subSnap.exists() ? (subSnap.data() as Submission) : null;
-          return {
-            ...hw,
-            submitted: !!sub,
-            subStatus: sub?.status ?? null,
-            feedback: sub?.feedback ?? null,
-            feedback_comment: sub?.feedback_comment ?? '',
-          } as HwStatus;
-        })
-      );
-      setTodayHomeworks(withStatus);
-    }).catch(() => setTodayHomeworks([]));
-  }, [selectedChild?.uid, selectedChild?.class_id]);
+          // 마감일이 오늘 또는 내일인 숙제만 표시 (당일 + 전날 알림 용도)
+          const active = list.filter(hw => {
+            const due = hw.due_date.toDate();
+            due.setHours(0, 0, 0, 0);
+            return due.getTime() >= today.getTime() && due.getTime() <= tomorrow.getTime();
+          });
+
+          const withStatus = await Promise.all(
+            active.map(async (hw) => {
+              const subSnap = await getDoc(Collections.submission(hw.id, childUid));
+              const sub = subSnap.exists() ? (subSnap.data() as Submission) : null;
+              return {
+                ...hw,
+                submitted: !!sub,
+                subStatus: sub?.status ?? null,
+                feedback: sub?.feedback ?? null,
+                feedback_comment: sub?.feedback_comment ?? '',
+              } as HwStatus;
+            })
+          );
+          setTodayHomeworks(withStatus);
+        } catch {
+          setTodayHomeworks([]);
+        }
+      })();
+    }, [selectedChild?.uid, selectedChild?.class_id])
+  );
 
   // ── 3) 이번달 출석률 로드 ──────────────────────────────────
   useEffect(() => {
@@ -230,6 +247,67 @@ export default function ParentHomeScreen() {
       .then(setMonthlyAttendance)
       .catch(() => setMonthlyAttendance({}));
   }, [selectedChild?.uid, selectedChild?.class_id, year, month]);
+
+  // ── 3-2) 오늘 출결 → 이번달 요약 실시간 동기화 ─────────────────
+  // todayRecord는 이미 onSnapshot으로 실시간 구독 중
+  // monthlyAttendance의 오늘 항목에 반영해 이번달 출석률·요약 카드도 즉시 갱신
+  useEffect(() => {
+    if (todayRecord === undefined) return; // 로딩 중
+    setMonthlyAttendance((prev) => {
+      if (todayRecord === null) {
+        const next = { ...prev };
+        delete next[todayStr];
+        return next;
+      }
+      return { ...prev, [todayStr]: todayRecord };
+    });
+  }, [todayRecord, todayStr]);
+
+  // ── 3-3) 자녀·달 변경 시 날짜별 구독 전체 해제 ──────────────────
+  useEffect(() => {
+    return () => {
+      Object.values(monthlyUnsubsRef.current).forEach(u => u());
+      monthlyUnsubsRef.current = {};
+      monthlySubDatesRef.current.clear();
+    };
+  }, [selectedChild?.uid, selectedChild?.class_id]);
+
+  // ── 3-4) monthlyAttendance에 기록된 날짜들 실시간 구독 ────────────
+  // 선생님이 오늘 외 다른 날짜 출결을 변경해도 이번달 통계가 즉시 갱신됨
+  useEffect(() => {
+    if (!selectedChild?.uid || !selectedChild?.class_id) return;
+
+    Object.keys(monthlyAttendance).forEach((dateStr) => {
+      // 이미 구독 중인 날짜는 건너뜀
+      if (monthlySubDatesRef.current.has(dateStr)) return;
+
+      monthlySubDatesRef.current.add(dateStr);
+      const recordRef = doc(
+        db,
+        'attendances',
+        `${selectedChild.class_id}_${dateStr}`,
+        'records',
+        selectedChild.uid,
+      );
+
+      monthlyUnsubsRef.current[dateStr] = onSnapshot(recordRef, (snap) => {
+        setMonthlyAttendance((prev) => {
+          if (!snap.exists()) {
+            const next = { ...prev };
+            delete next[dateStr];
+            return next;
+          }
+          const newData = snap.data() as AttendanceRecord;
+          // 실제 값이 바뀐 경우에만 갱신 (불필요한 리렌더 방지)
+          const existing = prev[dateStr];
+          if (existing?.status === newData.status && existing?.reason === newData.reason) {
+            return prev;
+          }
+          return { ...prev, [dateStr]: newData };
+        });
+      });
+    });
+  }, [monthlyAttendance, selectedChild?.uid, selectedChild?.class_id]);
 
   // 이번달 출석률 계산 (present 건수 / 전체 기록 건수)
   const monthlyRate = useMemo(() => {
@@ -249,26 +327,41 @@ export default function ParentHomeScreen() {
     };
   }, [monthlyAttendance]);
 
-  // ── 4) 최근 공지 로드 (학원 기준) ────────────────────────────
+  // ── 4) 최근 공지 실시간 구독 ────────────────────────────────
+  // 역할(parent) + 자녀가 속한 반 기반 필터링 적용
+  // subscribeNotices로 역할 필터 처리, 반 필터는 자녀 class_id로 콜백 내 처리
   useEffect(() => {
     if (!user?.academy_id) return;
 
+    // 자녀들의 반 ID 목록 (children 상태가 아직 안 로드됐으면 빈 배열)
+    const childClassIds = children
+      .map((c) => c.class_id)
+      .filter((id): id is string => !!id);
+
     setIsLoadingNotices(true);
-    getDocs(
-      query(
-        Collections.notices(),
-        where('academy_id', '==', user.academy_id),
-        orderBy('is_important', 'desc'),
-        orderBy('created_at', 'desc'),
-        limit(2),
-      )
-    )
-      .then((snap) => {
-        setRecentNotices(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notice)));
-      })
-      .catch(() => setRecentNotices([]))
-      .finally(() => setIsLoadingNotices(false));
-  }, [user?.academy_id]);
+
+    const unsub = subscribeNotices(
+      user.academy_id,
+      (list) => {
+        // 전체 반 공지(target_class_ids=[]) 또는 자녀가 속한 반 공지만 표시
+        const filtered = list.filter(
+          (n) =>
+            !n.target_class_ids ||
+            n.target_class_ids.length === 0 ||
+            (childClassIds.length > 0 &&
+              n.target_class_ids.some((cid) => childClassIds.includes(cid)))
+        );
+        setRecentNotices(filtered.slice(0, 2));
+        setIsLoadingNotices(false);
+      },
+      null,     // 반 필터는 위 콜백에서 직접 처리
+      'parent', // 학부모 대상 공지만 표시
+    );
+
+    return () => unsub();
+  // children 목록이 바뀌면(자녀 추가·반 변경 시) 공지 필터를 재구독
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.academy_id, children.map((c) => c.class_id).join(',')]);
 
   // ── 5) 결석 사유 전송 ──────────────────────────────────────
   const handleSendReason = useCallback(async () => {
@@ -305,10 +398,12 @@ export default function ParentHomeScreen() {
     if (todayRecord === undefined) return { emoji: '⏳', label: '확인 중...', sub: '' };
     if (todayRecord === null)      return { emoji: '❓', label: '미확인', sub: '아직 출결이 입력되지 않았어요' };
     const cfg = STATUS_CONFIG[todayRecord.status];
+    // 사유는 결석·지각일 때만 표시 — 출석·휴원으로 바뀌면 숨김
+    const showReason = todayRecord.status === 'absent' || todayRecord.status === 'late';
     return {
       emoji: cfg.emoji,
       label: cfg.label,
-      sub: todayRecord.reason ?? '',
+      sub: showReason ? (todayRecord.reason ?? '') : '',
     };
   }, [todayRecord]);
 
@@ -544,9 +639,11 @@ export default function ParentHomeScreen() {
               </View>
             ) : (
               recentNotices.map((notice) => (
-                <View
+                <TouchableOpacity
                   key={notice.id}
                   style={[styles.noticeCard, notice.is_important ? styles.noticeCardImportant : styles.noticeCardNormal]}
+                  onPress={() => router.push(`/common/notice-detail?noticeId=${notice.id}`)}
+                  activeOpacity={0.8}
                 >
                   <View style={styles.noticeRow}>
                     {/* 좌측 세로바 */}
@@ -563,7 +660,7 @@ export default function ParentHomeScreen() {
                       </Text>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>

@@ -124,3 +124,15 @@ export interface AppConfig {
   latest_version: string;
   force_update_message: string;
 }
+
+// videos/{videoId} — 선생님이 반에 등록한 YouTube 영상
+export interface Video {
+  id: string;
+  title: string;            // 영상 제목
+  youtube_url: string;      // YouTube 원본 URL (예: https://youtu.be/xxxxx)
+  video_id: string;         // YouTube videoId (파싱된 값, 썸네일·재생에 사용)
+  class_id: string;         // 대상 반 ID
+  academy_id: string;       // 학원 ID (보안 규칙 필터링용)
+  created_by: string;       // 등록한 선생님 uid
+  created_at: Timestamp;
+}

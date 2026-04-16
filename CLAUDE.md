@@ -55,3 +55,4 @@ constants/       # strings.ts — UI 텍스트 (하드코딩 금지)
 | `.claude/rules/coding.md` | 코딩 컨벤션, Firebase·환경변수·상태관리 규칙 | `app/` `components/` `lib/` `store/` `types/` `constants/` 작업 시 |
 | `.claude/rules/security.md` | Security Rules 원칙, 역할별 권한표, 학원 승인 정책 | `firestore.rules` `storage.rules` `app/(auth)/` `lib/firebase.ts` `functions/` 작업 시 |
 | `.claude/rules/domain-terms.md` | 역할·출결·숙제·구독 등 도메인 용어 정의 | `app/` `components/` `lib/` `store/` `types/` 작업 시 |
+| `.claude/rules/ui-screens.md` | 화면별 디자인 토큰·컴포넌트 스펙·역할별 UI 구성 | `app/` `components/` 작업 시 |

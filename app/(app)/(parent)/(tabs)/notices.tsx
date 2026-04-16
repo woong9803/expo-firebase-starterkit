@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import NoticeListScreen from '../common/notice-list';
+import NoticeListScreen from '../../common/notice-list';
 
 export default function ParentNoticesScreen() {
   return <NoticeListScreen />;

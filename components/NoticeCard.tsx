@@ -8,6 +8,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import ReadProgressBar from './ReadProgressBar';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -20,6 +21,8 @@ interface Props {
   readCount?: number;     // 읽은 사람 수 (있으면 프로그레스바 표시)
   totalCount?: number;    // 전체 대상 수
   onPress: () => void;
+  onEdit?: () => void;    // 있으면 카드 내부에 수정 버튼 표시 (선생님/admin)
+  onDelete?: () => void;  // 있으면 카드 내부에 삭제 버튼 표시
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -32,16 +35,19 @@ export default function NoticeCard({
   readCount,
   totalCount,
   onPress,
+  onEdit,
+  onDelete,
 }: Props) {
-  // 읽음 현황 프로그레스바 표시 여부 (둘 다 있어야 표시)
   const showProgress =
     readCount !== undefined &&
     totalCount !== undefined &&
     totalCount > 0;
 
+  const showActions = !!(onEdit || onDelete);
+
   return (
     <TouchableOpacity
-      style={[styles.card, isImportant ? styles.cardImportant : styles.cardNormal]}
+      style={styles.card}
       onPress={onPress}
       activeOpacity={0.8}
     >
@@ -74,6 +80,32 @@ export default function NoticeCard({
             <ReadProgressBar readCount={readCount!} totalCount={totalCount!} />
           </View>
         )}
+
+        {/* 수정/삭제 버튼 — 선생님/admin에서만 표시 */}
+        {showActions && (
+          <View style={styles.actionRow}>
+            {onEdit && (
+              <TouchableOpacity
+                style={styles.editBtn}
+                onPress={(e) => { e.stopPropagation?.(); onEdit(); }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="pencil-outline" size={13} color="#5B50E8" />
+                <Text style={styles.editBtnText}>수정</Text>
+              </TouchableOpacity>
+            )}
+            {onDelete && (
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trash-outline" size={13} color="#EF4444" />
+                <Text style={styles.deleteBtnText}>삭제</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -87,16 +119,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 14,
     borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
     overflow: 'hidden',
     marginBottom: 10,
-  },
-  cardNormal: {
-    backgroundColor: '#fff',
-    borderColor: '#E2E8F0',
-  },
-  cardImportant: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
   },
 
   // ── 좌측 세로바 ──
@@ -154,4 +180,23 @@ const styles = StyleSheet.create({
   progressWrapper: {
     marginTop: 6,
   },
+
+  // ── 수정/삭제 버튼 ──
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  editBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EEEDF9', borderRadius: 8,
+    paddingVertical: 5, paddingHorizontal: 10,
+  },
+  editBtnText: { fontSize: 12, fontWeight: '700', color: '#5B50E8' },
+  deleteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FEF2F2', borderRadius: 8,
+    paddingVertical: 5, paddingHorizontal: 10,
+  },
+  deleteBtnText: { fontSize: 12, fontWeight: '700', color: '#EF4444' },
 });

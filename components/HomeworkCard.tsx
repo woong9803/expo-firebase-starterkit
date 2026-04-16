@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
   title: string;
@@ -18,6 +19,8 @@ interface Props {
   totalCount?: number;    // 전체 학생 수 (있으면 프로그레스바 표시)
   status?: 'pending' | 'submitted' | 'checked'; // 숙제 상태 칩 (선택)
   onPress: () => void;
+  onEdit?: () => void;    // 있으면 카드 내부에 수정 버튼 표시 (선생님/admin)
+  onDelete?: () => void;  // 있으면 카드 내부에 삭제 버튼 표시
 }
 
 export default function HomeworkCard({
@@ -30,6 +33,8 @@ export default function HomeworkCard({
   totalCount = 0,
   status,
   onPress,
+  onEdit,
+  onDelete,
 }: Props) {
   // D-Day 표시 텍스트
   const dDayLabel = dDay === 0 ? 'D-0' : dDay > 0 ? `D-${dDay}` : '마감';
@@ -96,6 +101,32 @@ export default function HomeworkCard({
           </Text>
         </View>
       )}
+
+      {/* 수정/삭제 버튼 — 선생님/admin에서만 표시 */}
+      {(onEdit || onDelete) && (
+        <View style={styles.actionRow}>
+          {onEdit && (
+            <TouchableOpacity
+              style={styles.editBtn}
+              onPress={(e) => { e.stopPropagation?.(); onEdit(); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="pencil-outline" size={13} color="#5B50E8" />
+              <Text style={styles.editBtnText}>수정</Text>
+            </TouchableOpacity>
+          )}
+          {onDelete && (
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash-outline" size={13} color="#EF4444" />
+              <Text style={styles.deleteBtnText}>삭제</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -160,6 +191,25 @@ const styles = StyleSheet.create({
   submitCount: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
   progressTrack: { height: 5, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
   progressFill:  { height: '100%', backgroundColor: '#5B50E8', borderRadius: 3 },
+
+  // 수정/삭제 버튼
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  editBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EEEDF9', borderRadius: 8,
+    paddingVertical: 5, paddingHorizontal: 10,
+  },
+  editBtnText: { fontSize: 12, fontWeight: '700', color: '#5B50E8' },
+  deleteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FEF2F2', borderRadius: 8,
+    paddingVertical: 5, paddingHorizontal: 10,
+  },
+  deleteBtnText: { fontSize: 12, fontWeight: '700', color: '#EF4444' },
 
   // 상태 칩
   statusChip: {

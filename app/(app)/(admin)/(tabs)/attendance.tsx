@@ -73,7 +73,9 @@ export default function AdminAttendanceScreen() {
   const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
 
-  const dateListRef = useRef<FlatList<string>>(null);
+  const dateListRef  = useRef<FlatList<string>>(null);
+  // 출결 onSnapshot 구독 해제 함수 목록 (날짜/반 변경 시 정리)
+  const statsUnsubsRef = useRef<Array<() => void>>([]);
 
   const [classes, setClasses]     = useState<Class[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(TODAY);
@@ -120,54 +122,82 @@ export default function AdminAttendanceScreen() {
     });
   }, [user?.academy_id]);
 
-  // ── 2. 날짜 변경 시 반별 출결 통계 집계 ──
+  // ── 2. 날짜/반 변경 시 반별 출결 통계 실시간 구독 ──
+  // getDocs → onSnapshot 교체: 선생님이 출결 입력 시 카드가 즉시 갱신됨
   useEffect(() => {
     if (classes.length === 0 || !user?.academy_id) return;
+
+    // 이전 구독 먼저 해제
+    statsUnsubsRef.current.forEach(u => u());
+    statsUnsubsRef.current = [];
 
     setIsLoadingStats(true);
     setClassStats({});
 
+    // ① 학생 수는 변동이 적으므로 1회 조회
     Promise.all(
       classes.map(async (cls) => {
-        const [studentSnap, recordsSnap] = await Promise.all([
-          // is_active 필터 제거 — 자가 가입 학생 포함, 메모리에서 필터
-          getDocs(
-            query(
-              Collections.users(),
-              where('academy_id', '==', user.academy_id),
-              where('class_id', '==', cls.id),
-              where('role', '==', 'student'),
-            )
-          ),
-          getDocs(Collections.attendanceRecords(cls.id, selectedDate)),
-        ]);
-
-        const totalStudents = studentSnap.docs.filter(d => d.data().is_active !== false).length;
-        let present = 0, late = 0, absent = 0;
-
-        recordsSnap.forEach(d => {
-          const r = d.data() as AttendanceRecord;
-          if (r.status === 'present') present++;
-          else if (r.status === 'late') late++;
-          else if (r.status === 'absent') absent++;
-        });
-
-        const rate = totalStudents > 0
-          ? Math.round((present / totalStudents) * 100)
-          : 0;
-
-        return { classId: cls.id, stat: { totalStudents, present, late, absent, rate } };
+        const snap = await getDocs(query(
+          Collections.users(),
+          where('academy_id', '==', user.academy_id),
+          where('class_id', '==', cls.id),
+          where('role', '==', 'student'),
+        ));
+        return { classId: cls.id, totalStudents: snap.docs.filter(d => d.data().is_active !== false).length };
       })
-    ).then(results => {
-      const map: Record<string, ClassStat> = {};
-      results.forEach(({ classId, stat }) => { map[classId] = stat; });
-      setClassStats(map);
+    ).then((studentResults) => {
+      // 학생 수 맵 (클로저로 onSnapshot 콜백에서 참조)
+      const countMap: Record<string, number> = {};
+      studentResults.forEach(({ classId, totalStudents }) => { countMap[classId] = totalStudents; });
+
+      // ② 날짜별 출결 레코드 실시간 구독 — 선생님 입력 즉시 반영
+      let initialCount = 0;
+      const unsubs = classes.map((cls) =>
+        onSnapshot(
+          Collections.attendanceRecords(cls.id, selectedDate),
+          (snap) => {
+            const totalStudents = countMap[cls.id] ?? 0;
+            let present = 0, late = 0, absent = 0;
+            snap.forEach(d => {
+              const r = d.data() as AttendanceRecord;
+              if (r.status === 'present') present++;
+              else if (r.status === 'late')   late++;
+              else if (r.status === 'absent') absent++;
+            });
+            // totalStudents가 0이면 실제 입력된 학생 수를 분모로 사용 (fallback)
+            // → 학생 수 조회가 실패하거나 지연되더라도 의미 있는 출석률 표시
+            const totalForRate = totalStudents > 0
+              ? totalStudents
+              : (present + late + absent);
+            const rate = totalForRate > 0
+              ? Math.round((present / totalForRate) * 100) : 0;
+
+            setClassStats(prev => ({ ...prev, [cls.id]: { totalStudents, present, late, absent, rate } }));
+
+            // 모든 반의 첫 번째 스냅샷이 도착하면 로딩 해제
+            initialCount++;
+            if (initialCount >= classes.length) setIsLoadingStats(false);
+          },
+          (e) => {
+            console.error('[AdminAttendance] 출결 구독 실패:', e);
+            initialCount++;
+            if (initialCount >= classes.length) setIsLoadingStats(false);
+          }
+        )
+      );
+
+      statsUnsubsRef.current = unsubs;
     }).catch(e => {
-      console.error('[AdminAttendance] 통계 로드 실패:', e);
-    }).finally(() => {
+      console.error('[AdminAttendance] 학생 수 조회 실패:', e);
       setIsLoadingStats(false);
     });
-  }, [classes, selectedDate]);
+
+    // cleanup: 컴포넌트 언마운트 또는 의존성 변경 시 구독 해제
+    return () => {
+      statsUnsubsRef.current.forEach(u => u());
+      statsUnsubsRef.current = [];
+    };
+  }, [classes.map(c => c.id).join(','), selectedDate, user?.academy_id]);
 
   // ── 엑셀 내보내기 (공유) ──
   const handleExport = useCallback(async () => {

@@ -8,7 +8,7 @@
  * - 다자녀(2명 이상)이면 상단 '자녀 전환' 버튼 표시
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,10 +28,10 @@ import {
   getDoc,
 } from 'firebase/firestore';
 
-import { useAuthStore } from '../../../store/useAuthStore';
-import { Collections } from '../../../lib/firestore';
-import { strings } from '../../../constants/strings';
-import type { User, Homework, Submission } from '../../../types';
+import { useAuthStore } from '../../../../store/useAuthStore';
+import { Collections } from '../../../../lib/firestore';
+import { strings } from '../../../../constants/strings';
+import type { User, Homework, Submission } from '../../../../types';
 
 // ─────────────────────────────────────────────────────────────
 // 타입
@@ -155,7 +155,9 @@ export default function ParentHomeworkScreen() {
   }, [paramChildUid]);
 
   const [childUser, setChildUser] = useState<User | null>(null);
-  const [homeworks, setHomeworks] = useState<HomeworkWithStatus[]>([]);
+  // 숙제 원본 목록과 제출 맵을 분리 — 각각 실시간 구독
+  const [rawHomeworks, setRawHomeworks] = useState<Homework[]>([]);
+  const [submissionsMap, setSubmissionsMap] = useState<Record<string, Submission | null>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   // ── 자녀 User 문서 조회 ─────────────────────────────────────
@@ -175,9 +177,9 @@ export default function ParentHomeworkScreen() {
       .catch((e) => console.warn('[ParentHomework] 자녀 조회 오류:', e));
   }, [activeChildUid]);
 
-  // ── 반 숙제 실시간 구독 + 제출 여부 조회 ───────────────────
+  // ── 반 숙제 실시간 구독 ─────────────────────────────────────
   useEffect(() => {
-    if (!childUser?.class_id || !childUser?.uid) {
+    if (!childUser?.class_id) {
       setIsLoading(false);
       return;
     }
@@ -191,39 +193,54 @@ export default function ParentHomeworkScreen() {
 
     const unsub = onSnapshot(
       q,
-      async (snap) => {
+      (snap) => {
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Homework));
-
-        // 각 숙제에 대해 제출 여부/피드백 조회
-        const withStatus = await Promise.all(
-          list.map(async (hw) => {
-            try {
-              const subSnap = await getDoc(Collections.submission(hw.id, childUser.uid));
-              const sub = subSnap.exists() ? (subSnap.data() as Submission) : null;
-              return {
-                ...hw,
-                submitted: !!sub,
-                subStatus: sub?.status ?? null,
-                feedback: sub?.feedback ?? null,
-                feedback_comment: sub?.feedback_comment ?? '',
-              } as HomeworkWithStatus;
-            } catch {
-              return { ...hw, submitted: false, subStatus: null, feedback: null } as HomeworkWithStatus;
-            }
-          })
-        );
-
-        setHomeworks(withStatus);
+        setRawHomeworks(list);
         setIsLoading(false);
       },
       (err) => {
-        console.warn('[ParentHomework] onSnapshot 오류:', err);
+        console.warn('[ParentHomework] 숙제 onSnapshot 오류:', err);
         setIsLoading(false);
       }
     );
 
     return () => unsub();
-  }, [childUser?.class_id, childUser?.uid]);
+  }, [childUser?.class_id]);
+
+  // ── 각 숙제 제출 상태 실시간 구독 ──────────────────────────
+  // 학생이 제출하거나 선생님이 피드백을 줄 때 즉시 반영하기 위해
+  // 각 submission 문서를 개별 onSnapshot으로 구독
+  useEffect(() => {
+    if (!childUser?.uid || rawHomeworks.length === 0) return;
+
+    const unsubs = rawHomeworks.map((hw) =>
+      onSnapshot(
+        Collections.submission(hw.id, childUser.uid),
+        (snap) => {
+          const sub = snap.exists() ? (snap.data() as Submission) : null;
+          setSubmissionsMap((prev) => ({ ...prev, [hw.id]: sub }));
+        },
+        (err) => console.warn(`[ParentHomework] submission(${hw.id}) 구독 오류:`, err)
+      )
+    );
+
+    return () => unsubs.forEach((u) => u());
+  }, [rawHomeworks, childUser?.uid]);
+
+  // ── 숙제 + 제출 상태 병합 ───────────────────────────────────
+  const homeworks = useMemo<HomeworkWithStatus[]>(() =>
+    rawHomeworks.map((hw) => {
+      const sub = submissionsMap[hw.id] ?? null;
+      return {
+        ...hw,
+        submitted: !!sub,
+        subStatus: sub?.status ?? null,
+        feedback: sub?.feedback ?? null,
+        feedback_comment: sub?.feedback_comment ?? '',
+      };
+    }),
+    [rawHomeworks, submissionsMap]
+  );
 
   // ── 숙제 카드 탭 ────────────────────────────────────────────
   const handleHwPress = useCallback((hw: HomeworkWithStatus) => {
