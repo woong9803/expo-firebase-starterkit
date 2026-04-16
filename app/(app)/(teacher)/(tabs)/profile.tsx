@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { getDocs, query, where } from 'firebase/firestore';
@@ -340,28 +341,47 @@ export default function TeacherProfileScreen() {
           </TouchableOpacity>
         ) : (
           assignedClasses.map((cls) => (
-            <TouchableOpacity
-              key={cls.id}
-              style={styles.classCard}
-              onPress={() => router.push(`/(app)/(teacher)/students?classId=${cls.id}`)}
-              activeOpacity={0.75}
-            >
-              <View style={styles.classCardLeft}>
-                <View style={styles.classIconBox}>
-                  <Text style={styles.classIconText}>🏫</Text>
+            <View key={cls.id} style={styles.classCard}>
+              {/* 반 정보 + 학생 보기 */}
+              <TouchableOpacity
+                style={styles.classCardMain}
+                onPress={() => router.push(`/(app)/(teacher)/students?classId=${cls.id}`)}
+                activeOpacity={0.75}
+              >
+                <View style={styles.classCardLeft}>
+                  <View style={styles.classIconBox}>
+                    <Text style={styles.classIconText}>🏫</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.className}>{cls.name}</Text>
+                    <Text style={styles.classStudentCount}>
+                      학생 {cls.student_count ?? 0}명
+                    </Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.className}>{cls.name}</Text>
-                  <Text style={styles.classStudentCount}>
-                    학생 {cls.student_count ?? 0}명
-                  </Text>
+                <View style={styles.classCardRight}>
+                  <Text style={styles.classActionLabel}>학생 보기</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#5B50E8" />
                 </View>
-              </View>
-              <View style={styles.classCardRight}>
-                <Text style={styles.classActionLabel}>학생 보기</Text>
-                <Ionicons name="chevron-forward" size={16} color="#5B50E8" />
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+              {/* 학생 초대코드 복사 */}
+              {cls.invite_code && (
+                <TouchableOpacity
+                  style={styles.codeRow}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(cls.invite_code!);
+                    Alert.alert('복사 완료', `학생 초대코드가 복사됐어요.\n${cls.invite_code}`);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.codeLabel}>학생 초대코드</Text>
+                  <View style={styles.codeChip}>
+                    <Text style={styles.codeChipText}>{cls.invite_code}</Text>
+                    <Ionicons name="copy-outline" size={12} color="#5B50E8" />
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
           ))
         )}
       </View>
@@ -592,13 +612,33 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  classCardMain: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#FAFAFA',
+  },
+  codeLabel: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  codeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#EEEDF9', borderRadius: 6,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  codeChipText: { fontSize: 13, fontWeight: '800', color: '#5B50E8', letterSpacing: 1.5 },
   classCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',

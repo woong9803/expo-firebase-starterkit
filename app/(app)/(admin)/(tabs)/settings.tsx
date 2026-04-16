@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
+import * as Clipboard from 'expo-clipboard';
 import {
   query, where, getDocs, onSnapshot, addDoc, updateDoc, deleteDoc, getCountFromServer,
   arrayUnion, arrayRemove,
@@ -343,6 +344,12 @@ export default function AdminSettingsScreen() {
     );
   };
 
+  // ── 코드 클립보드 복사 ──
+  const handleCopyCode = async (code: string, label: string) => {
+    await Clipboard.setStringAsync(code);
+    Alert.alert('복사 완료', `${label} 코드가 복사됐어요.\n${code}`);
+  };
+
   // ── 초대코드 공유 ──
   const handleShareCode = async (code: string, label: string) => {
     try {
@@ -445,9 +452,18 @@ export default function AdminSettingsScreen() {
                   <View style={styles.classInfo}>
                     <Text style={styles.className}>{cls.name}</Text>
                     <Text style={styles.classSub}>
-                      {classTeacherMap[cls.id] ?? '선생님 미배정'} · {studentCounts[cls.id] ?? 0}명 · {cls.invite_code}
+                      {classTeacherMap[cls.id] ?? '선생님 미배정'} · {studentCounts[cls.id] ?? 0}명
                       {cls.subject ? `\n교습과목: ${cls.subject}` : ''}
                     </Text>
+                    {/* 반 초대코드 + 복사 버튼 */}
+                    <TouchableOpacity
+                      style={styles.codeChip}
+                      onPress={() => handleCopyCode(cls.invite_code ?? '', `${cls.name} 학생 초대`)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.codeChipText}>{cls.invite_code}</Text>
+                      <Ionicons name="copy-outline" size={12} color="#5B50E8" />
+                    </TouchableOpacity>
                   </View>
 
                   {/* 설정 버튼 */}
@@ -526,7 +542,7 @@ export default function AdminSettingsScreen() {
             </View>
             <TouchableOpacity
               style={styles.copyBtn}
-              onPress={() => handleShareCode(academy?.academy_code ?? '', '선생님')}
+              onPress={() => handleCopyCode(academy?.academy_code ?? '', '선생님 초대')}
               activeOpacity={0.8}
             >
               <Text style={styles.copyBtnText}>복사</Text>
@@ -794,6 +810,13 @@ const styles = StyleSheet.create({
   classInfo:  { flex: 1 },
   className:  { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   classSub:   { fontSize: 13, color: '#64748B', marginTop: 2 },
+  codeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start', marginTop: 6,
+    backgroundColor: '#EEEDF9', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  codeChipText: { fontSize: 12, fontWeight: '700', color: '#5B50E8', letterSpacing: 1 },
   settingBtn: {
     paddingHorizontal: 14, paddingVertical: 6,
     borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0',
