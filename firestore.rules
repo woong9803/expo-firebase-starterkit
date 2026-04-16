@@ -96,10 +96,16 @@ service cloud.firestore {
                           && resource.data.get('role', '') == 'student'));
       // 본인 문서만 수정 가능
       // - role: 미설정 상태에서만 한 번 허용 (온보딩), 이후 변경 불가
-      // - is_active: 클라이언트 직접 변경 불가 (Cloud Functions 전용)
+      // - is_active: 최초 역할 설정(온보딩) 시에만 true 허용, 이후 변경 불가 (Cloud Functions 전용)
       allow update: if isAuthenticated()
                     && request.auth.uid == uid
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['is_active'])
+                    && (
+                      // 일반 수정: is_active 변경 불가
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['is_active'])
+                      // 예외: 최초 역할 설정(온보딩) 시에만 is_active: true 허용
+                      || ((!resource.data.keys().hasAny(['role']) || resource.data.get('role', '') == '')
+                          && request.resource.data.get('is_active', false) == true)
+                    )
                     && (
                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
                       || !resource.data.keys().hasAny(['role'])
@@ -114,6 +120,15 @@ service cloud.firestore {
                     && resource.data.role == 'student'
                     && request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly(['class_id', 'is_active', 'teacher_feedback'])
+                    && isMyAcademyPendingOrActive();
+      // admin: 선생님 담당반 지정/변경 (assigned_class_ids 필드만 허용)
+      // 설정 화면에서 반별 담당 선생님 칩 토글 시 사용
+      allow update: if isAuthenticated()
+                    && isAdmin()
+                    && resource.data.academy_id == getUserData().academy_id
+                    && resource.data.role == 'teacher'
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['assigned_class_ids'])
                     && isMyAcademyPendingOrActive();
       // 학부모: 자녀 연동 시 guardian_phone 자동 기록 (법정 출석부용)
       // 자신의 children 배열에 포함된 학생의 guardian_phone 필드만 업데이트 허용
@@ -288,6 +303,29 @@ service cloud.firestore {
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['is_read']);
       // 삭제 불가
       allow delete: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    // videos/{videoId} — 수업 영상
+    // ─────────────────────────────────────────────
+    match /videos/{videoId} {
+      // teacher·admin: 자기 학원 소속이면 읽기 가능 (담당 반 무관하게 접근)
+      // student: 본인 반 영상만 읽기 가능
+      // resource.data 기반 체크 대신 요청자의 역할·소속으로 판단
+      // → list 쿼리에서도 안정적으로 동작하도록 homeworks 패턴 적용
+      allow read: if isAuthenticated()
+                  && isMyAcademyPendingOrActive()
+                  && (isStaff()
+                      || getUserData().class_id == resource.data.class_id);
+      // teacher 또는 admin만 영상 등록 가능, rejected 학원은 차단
+      allow create: if isAuthenticated()
+                    && isStaff()
+                    && isMyAcademyPendingOrActive();
+      // 같은 학원 소속 teacher·admin만 수정·삭제 가능
+      allow update, delete: if isAuthenticated()
+                            && isStaff()
+                            && isAcademyMember(resource.data.academy_id)
+                            && isAcademyPendingOrActive(resource.data.academy_id);
     }
 
     // ─────────────────────────────────────────────
