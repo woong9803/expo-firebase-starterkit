@@ -4,7 +4,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onAuthStateChanged } from 'firebase/auth';
-import { getDoc } from 'firebase/firestore';
+import { getDoc, onSnapshot } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { Collections } from '../lib/firestore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -96,6 +96,23 @@ export default function RootLayout() {
       unsubscribe();
     };
   }, []);
+
+  // 내 user 문서 실시간 구독 — admin이 assigned_class_ids 등을 변경하면 즉시 반영
+  // onAuthStateChanged는 로그인 시 1회만 조회하므로 이후 변경은 감지 못함
+  useEffect(() => {
+    if (!user?.uid || !user?.role) return;
+
+    const unsub = onSnapshot(
+      Collections.user(user.uid),
+      (snap) => {
+        if (snap.exists()) {
+          setUser({ ...snap.data(), uid: snap.id } as User);
+        }
+      },
+      (e) => console.warn('[RootLayout] user 문서 구독 실패:', e)
+    );
+    return () => unsub();
+  }, [user?.uid]);
 
   // FCM 리스너 등록 — 로그인된 사용자에게만 적용
   // 알림 클릭 딥링크 이동 + 토큰 갱신 자동 업데이트
