@@ -19,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { query, where, getDocs } from 'firebase/firestore';
+import { query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { useNotificationStore } from '../../../../store/useNotificationStore';
@@ -75,65 +75,55 @@ export default function AdminHomeScreen() {
   const [classRates, setClassRates]         = useState<Record<string, number>>({});
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
 
-  // Firestore에서 학생 수·선생님 수·반 목록 로드
+  // 학생 수 실시간 구독
   useEffect(() => {
     if (!user?.academy_id) return;
+    const unsub = onSnapshot(
+      query(Collections.users(), where('academy_id', '==', user.academy_id), where('role', '==', 'student')),
+      (snap) => setStudentCount(snap.docs.filter(d => d.data().is_active !== false).length)
+    );
+    return () => unsub();
+  }, [user?.academy_id]);
 
-    (async () => {
-      try {
-        // is_active 필터 제거 → getDocs + 메모리 필터 (자가 가입 학생 포함)
-        const [studentSnap, teacherSnap, classSnap] = await Promise.all([
-          getDocs(
-            query(
-              Collections.users(),
-              where('academy_id', '==', user.academy_id),
-              where('role', '==', 'student'),
-            )
-          ),
-          getDocs(
-            query(
-              Collections.users(),
-              where('academy_id', '==', user.academy_id),
-              where('role', '==', 'teacher'),
-            )
-          ),
-          // 반 목록 (출석률 표시용으로 문서 전체 필요)
-          getDocs(
-            query(
-              Collections.classes(),
-              where('academy_id', '==', user.academy_id),
-            )
-          ),
-        ]);
+  // 선생님 수 실시간 구독
+  useEffect(() => {
+    if (!user?.academy_id) return;
+    const unsub = onSnapshot(
+      query(Collections.users(), where('academy_id', '==', user.academy_id), where('role', '==', 'teacher')),
+      (snap) => setTeacherCount(snap.docs.filter(d => d.data().is_active !== false).length)
+    );
+    return () => unsub();
+  }, [user?.academy_id]);
 
-        const classList = classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
-        setStudentCount(studentSnap.docs.filter(d => d.data().is_active !== false).length);
-        setTeacherCount(teacherSnap.docs.filter(d => d.data().is_active !== false).length);
+  // 반 목록 실시간 구독 — 반 추가/삭제/이름 변경 즉시 반영
+  useEffect(() => {
+    if (!user?.academy_id) return;
+    const unsub = onSnapshot(
+      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
+      async (snap) => {
+        const classList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         setClasses(classList);
 
-        // 반별 학생 수 병렬 집계
+        // 반별 학생 수 집계
         const countResults = await Promise.all(
           classList.map(async cls => {
-            const snap = await getDocs(
-              query(
-                Collections.users(),
-                where('academy_id', '==', user.academy_id),
-                where('class_id', '==', cls.id),
-                where('role', '==', 'student'),
-              )
-            );
-            return { classId: cls.id, count: snap.docs.filter(d => d.data().is_active !== false).length };
+            const s = await getDocs(query(
+              Collections.users(),
+              where('academy_id', '==', user.academy_id),
+              where('class_id', '==', cls.id),
+              where('role', '==', 'student'),
+            ));
+            return { classId: cls.id, count: s.docs.filter(d => d.data().is_active !== false).length };
           })
         );
         const cMap: Record<string, number> = {};
         countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
         setClassStudentCounts(cMap);
-      } catch (e) {
-        console.error('[AdminHome] 통계 조회 실패:', e);
-      } finally {
         setIsLoading(false);
-      }
-    })();
+      },
+      (e) => { console.error('[AdminHome] 반 구독 실패:', e); setIsLoading(false); }
+    );
+    return () => unsub();
   }, [user?.academy_id]);
 
   // ── 반 목록 로드 완료 후 오늘 출결 통계 집계 ──

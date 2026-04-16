@@ -18,7 +18,7 @@ import {
 const ACCESSORY_ID = 'adminStudents';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, getDocs, updateDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { query, where, getDocs, onSnapshot, updateDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { User, Class, AttendanceRecord } from '../../../../types';
@@ -94,38 +94,30 @@ export default function AdminStudentsScreen() {
   const [editEnrollDate, setEditEnrollDate]       = useState(''); // YYYY-MM-DD 문자열
   const [isSavingEdit, setIsSavingEdit]           = useState(false);
 
-  // ── 1. 학생 + 반 목록 로드 (활성/비활성 모두) ──
-  // is_active 필터 제거 — 자가 가입 학생은 is_active 필드 자체가 없으므로
-  // 단일 쿼리로 조회 후 메모리에서 분리 (is_active !== false = 활성, false = 비활성)
+  // ── 1. 학생 + 반 목록 실시간 구독 (활성/비활성 모두) ──
   useEffect(() => {
     if (!user?.academy_id) return;
 
-    (async () => {
-      try {
-        const [studentSnap, classSnap] = await Promise.all([
-          getDocs(
-            query(
-              Collections.users(),
-              where('academy_id', '==', user.academy_id),
-              where('role', '==', 'student'),
-            )
-          ),
-          getDocs(
-            query(Collections.classes(), where('academy_id', '==', user.academy_id))
-          ),
-        ]);
-
-        const allStudents: User[] = studentSnap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
-        const classList = classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
-
-        setStudents(allStudents);
-        setClasses(classList);
-      } catch (e) {
-        console.error('[AdminStudents] 로드 실패:', e);
-      } finally {
+    const unsubStudents = onSnapshot(
+      query(
+        Collections.users(),
+        where('academy_id', '==', user.academy_id),
+        where('role', '==', 'student'),
+      ),
+      (snap) => {
+        setStudents(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
         setIsLoading(false);
-      }
-    })();
+      },
+      (e) => { console.error('[AdminStudents] 학생 구독 실패:', e); setIsLoading(false); }
+    );
+
+    const unsubClasses = onSnapshot(
+      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
+      (snap) => setClasses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Class))),
+      (e) => console.error('[AdminStudents] 반 구독 실패:', e)
+    );
+
+    return () => { unsubStudents(); unsubClasses(); };
   }, [user?.academy_id]);
 
   // ── 2. 반 목록 로드 완료 후 이번달 출석 집계 ──
