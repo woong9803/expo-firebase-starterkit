@@ -141,7 +141,7 @@ export default function PendingScreen() {
 
         <TouchableOpacity
           style={styles.btnPrimary}
-          onPress={() => router.replace('/(app)')}
+          onPress={() => router.replace('/(app)/(admin)')}
           activeOpacity={0.85}
         >
           <Text style={styles.btnPrimaryText}>미리 탐색해보기</Text>
