@@ -125,7 +125,7 @@ export default function AttendanceRow({
       {/* ── 보기 모드: 사유 텍스트 (저장 완료 후) ── */}
       {showReasonText && (
         <Text style={styles.reasonText}>
-          💬 {reason}
+          {reason}
         </Text>
       )}
 

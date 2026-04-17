@@ -76,7 +76,7 @@ export default function AdminHomeScreen() {
     // pending 상태에서 active로 바뀐 시점에만 알림 표시
     if (prevStatus === 'pending' && academy?.status === 'active') {
       Alert.alert(
-        '🎉 학원 승인 완료!',
+        '학원 승인 완료!',
         `${academy.name} 학원이 승인되었어요.\n이제 모든 기능을 사용할 수 있어요!`,
         [{ text: '확인' }],
       );
@@ -445,7 +445,7 @@ export default function AdminHomeScreen() {
       {/* ── 승인 대기 배너 ── */}
       {isPending && (
         <View style={styles.pendingBanner}>
-          <Text style={styles.pendingTitle}>⏳ 승인 대기 중</Text>
+          <Text style={styles.pendingTitle}>승인 대기 중</Text>
           <Text style={styles.pendingDesc}>
             학생 3명, 반 1개까지 이용 가능해요. 승인 완료 시 모든 기능이 열립니다.
           </Text>
@@ -454,7 +454,7 @@ export default function AdminHomeScreen() {
 
       {/* ── 빠른 작업 ── */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>⚡ 빠른 작업</Text>
+        <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>빠른 작업</Text>
         <View style={styles.quickGrid}>
           {/* 숙제 출제 */}
           <TouchableOpacity
@@ -505,7 +505,7 @@ export default function AdminHomeScreen() {
 
       {/* ── 오늘의 출결 ── */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📋 오늘의 출결</Text>
+        <Text style={styles.sectionTitle}>오늘의 출결</Text>
         <View style={styles.alertGrid}>
           {/* 결석 */}
           <TouchableOpacity
@@ -552,7 +552,7 @@ export default function AdminHomeScreen() {
       {/* ── 반별 출석률 ── */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>📊 반별 출석률</Text>
+          <Text style={styles.cardTitle}>반별 출석률</Text>
         </View>
         {isLoading ? (
           <ActivityIndicator color="#5B50E8" style={{ paddingVertical: 12 }} />
@@ -622,7 +622,7 @@ export default function AdminHomeScreen() {
 
             {absentItems.length === 0 ? (
               <View style={styles.modalEmpty}>
-                <Text style={styles.modalEmptyText}>결석자가 없어요 🎉</Text>
+                <Text style={styles.modalEmptyText}>결석자가 없어요</Text>
               </View>
             ) : (
               <FlatList
@@ -676,7 +676,7 @@ export default function AdminHomeScreen() {
 
             {notEnteredItems.length === 0 ? (
               <View style={styles.modalEmpty}>
-                <Text style={styles.modalEmptyText}>미입력 학생이 없어요 ✅</Text>
+                <Text style={styles.modalEmptyText}>미입력 학생이 없어요</Text>
               </View>
             ) : (
               <FlatList
@@ -729,7 +729,7 @@ export default function AdminHomeScreen() {
 
             {lateItems.length === 0 ? (
               <View style={styles.modalEmpty}>
-                <Text style={styles.modalEmptyText}>지각자가 없어요 🎉</Text>
+                <Text style={styles.modalEmptyText}>지각자가 없어요</Text>
               </View>
             ) : (
               <FlatList

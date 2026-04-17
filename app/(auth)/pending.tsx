@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -93,7 +94,7 @@ export default function PendingScreen() {
       {/* ── 아이콘 + 제목 ── */}
       <View style={styles.heroArea}>
         <View style={styles.iconBox}>
-          <Text style={styles.iconEmoji}>⏳</Text>
+          <Ionicons name="time-outline" size={36} color="#F59E0B" />
         </View>
         <Text style={styles.title}>승인 대기 중</Text>
         <Text style={styles.subtitle}>
@@ -104,7 +105,7 @@ export default function PendingScreen() {
 
       {/* ── 신청 정보 카드 ── */}
       <View style={styles.infoCard}>
-        <Text style={styles.infoCardTitle}>📋 신청 정보</Text>
+        <Text style={styles.infoCardTitle}>신청 정보</Text>
 
         {isLoading ? (
           <ActivityIndicator color="#F59E0B" style={{ marginTop: 8 }} />

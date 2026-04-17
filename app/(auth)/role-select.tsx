@@ -9,37 +9,49 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { UserRole } from '../../types';
 
 // 역할 카드 순서: 선생님 → 학생 → 학부모 → 원장님
-const ROLE_CARDS = [
+const ROLE_CARDS: Array<{
+  role: UserRole;
+  label: string;
+  desc: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  iconBg: string;
+  iconColor: string;
+}> = [
   {
-    role: 'teacher' as UserRole,
+    role: 'teacher',
     label: '선생님',
     desc: '숙제 출제, 출결 관리, 피드백',
-    emoji: '👩‍🏫',
+    icon: 'school-outline',
     iconBg: '#E6F1FB',
+    iconColor: '#3B82F6',
   },
   {
-    role: 'student' as UserRole,
+    role: 'student',
     label: '학생',
     desc: '숙제 제출, 수업 영상, 출결 확인',
-    emoji: '👧',
+    icon: 'person-outline',
     iconBg: '#ECFDF5',
+    iconColor: '#10B981',
   },
   {
-    role: 'parent' as UserRole,
+    role: 'parent',
     label: '학부모',
     desc: '자녀 숙제 확인, 결석 사유 전송',
-    emoji: '👨‍👩‍👧',
+    icon: 'people-outline',
     iconBg: '#FFFBEB',
+    iconColor: '#F59E0B',
   },
   {
-    role: 'admin' as UserRole,
+    role: 'admin',
     label: '원장님 (admin)',
     desc: '학원 전체 관리, 통계',
-    emoji: '🏫',
+    icon: 'business-outline',
     iconBg: '#F5F3FF',
+    iconColor: '#5B50E8',
   },
 ];
 
@@ -97,7 +109,7 @@ export default function RoleSelectScreen() {
             >
               {/* 아이콘 박스 48×48 */}
               <View style={[styles.iconBox, { backgroundColor: item.iconBg }]}>
-                <Text style={styles.iconEmoji}>{item.emoji}</Text>
+                <Ionicons name={item.icon} size={24} color={item.iconColor} />
               </View>
 
               {/* 텍스트 */}
@@ -216,9 +228,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  iconEmoji: {
-    fontSize: 26,
-  },
+  // iconEmoji 스타일 제거 — Ionicons로 교체됨
 
   // 텍스트
   cardText: {

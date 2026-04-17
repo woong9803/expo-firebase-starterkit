@@ -29,10 +29,10 @@ interface Props {
 // ─── Pro 플랜 혜택 목록 ────────────────────────────────────────────────────────
 
 const PRO_BENEFITS = [
-  '📷 숙제 스캔 제출 · 검사 피드백',
-  '📊 출결 엑셀 자동 생성 (법정 출석부)',
-  '📢 전체 공지 + 학부모 알림',
-  '👥 무제한 학생 · 선생님 · 반',
+  '숙제 스캔 제출 · 검사 피드백',
+  '출결 엑셀 자동 생성 (법정 출석부)',
+  '전체 공지 + 학부모 알림',
+  '무제한 학생 · 선생님 · 반',
 ];
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ export default function ProUpgradeSheet({ visible, onClose, featureName }: Props
 
         {/* Pro 뱃지 */}
         <View style={styles.proBadge}>
-          <Text style={styles.proBadgeText}>✨ Pro</Text>
+          <Text style={styles.proBadgeText}>Pro</Text>
         </View>
 
         {/* 제목 */}

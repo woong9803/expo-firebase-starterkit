@@ -205,7 +205,7 @@ export default function RegisterScreen() {
 
             {/* 카카오 — 버튼만 구현, 기능은 나중에 */}
             <TouchableOpacity style={[styles.socialBtn, styles.socialKakao]} activeOpacity={0.85}>
-              <Text style={styles.socialEmoji}>💬</Text>
+              <Text style={styles.socialEmoji}>K</Text>
             </TouchableOpacity>
 
             {/* Google */}
@@ -215,7 +215,7 @@ export default function RegisterScreen() {
 
             {/* Apple */}
             <TouchableOpacity style={[styles.socialBtn, styles.socialApple]} activeOpacity={0.85}>
-              <Text style={styles.socialEmoji}>🍎</Text>
+              <Text style={styles.socialEmoji}>A</Text>
             </TouchableOpacity>
 
           </View>

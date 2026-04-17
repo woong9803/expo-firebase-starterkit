@@ -57,7 +57,6 @@ export default function CameraScanner({
   if (!permission.granted) {
     return (
       <View style={styles.permissionContainer}>
-        <Text style={styles.permissionEmoji}>📷</Text>
         <Text style={styles.permissionTitle}>카메라 권한이 필요해요</Text>
         <Text style={styles.permissionDesc}>
           숙제 사진을 촬영하려면{'\n'}카메라 접근 권한을 허용해주세요.
@@ -124,7 +123,7 @@ export default function CameraScanner({
             activeOpacity={0.8}
           >
             <Text style={styles.toggleText}>
-              {grayscale ? '⬛ 흑백' : '🎨 컬러'}
+              {grayscale ? '흑백' : '컬러'}
             </Text>
           </TouchableOpacity>
           <View style={styles.counterPill}>

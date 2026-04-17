@@ -179,7 +179,7 @@ export default function LoginScreen() {
 
           {/* 카카오 — UI만 구현 */}
           <TouchableOpacity style={styles.btnKakao} activeOpacity={0.85} disabled={isLoading}>
-            <Text style={styles.btnKakaoText}>💬 카카오로 로그인</Text>
+            <Text style={styles.btnKakaoText}>카카오로 로그인</Text>
           </TouchableOpacity>
 
           {/* Google */}

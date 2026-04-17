@@ -20,12 +20,12 @@ import type { User, AttendanceRecord, AttendanceStatus, Homework, Submission, No
 // 결석 사유 목록 — strings.ts에서 관리
 const REASONS = strings.attendance.absenceReasons;
 
-// 출결 상태별 이모지 / 레이블 매핑
+// 출결 상태별 레이블 매핑 (이모지 제거)
 const STATUS_CONFIG: Record<AttendanceStatus, { emoji: string; label: string }> = {
-  present:  { emoji: '✅', label: strings.attendance.present },
-  late:     { emoji: '⏰', label: strings.attendance.late },
-  absent:   { emoji: '❌', label: strings.attendance.absent },
-  onLeave:  { emoji: '🏠', label: strings.attendance.onLeave },
+  present:  { emoji: '', label: strings.attendance.present },
+  late:     { emoji: '', label: strings.attendance.late },
+  absent:   { emoji: '', label: strings.attendance.absent },
+  onLeave:  { emoji: '', label: strings.attendance.onLeave },
 };
 
 // 오늘 날짜 문자열 (YYYY-MM-DD) — 로컬 시간 기준
@@ -395,8 +395,8 @@ export default function ParentHomeScreen() {
 
   // ── 오늘 출결 표시 값 계산 ─────────────────────────────────
   const statusDisplay = useMemo(() => {
-    if (todayRecord === undefined) return { emoji: '⏳', label: '확인 중...', sub: '' };
-    if (todayRecord === null)      return { emoji: '❓', label: '미확인', sub: '아직 출결이 입력되지 않았어요' };
+    if (todayRecord === undefined) return { emoji: '', label: '확인 중...', sub: '' };
+    if (todayRecord === null)      return { emoji: '', label: '미확인', sub: '아직 출결이 입력되지 않았어요' };
     const cfg = STATUS_CONFIG[todayRecord.status];
     // 사유는 결석·지각일 때만 표시 — 출석·휴원으로 바뀌면 숨김
     const showReason = todayRecord.status === 'absent' || todayRecord.status === 'late';
@@ -530,7 +530,7 @@ export default function ParentHomeScreen() {
         {/* ── 오늘 숙제 현황 — 자녀가 있을 때만 표시 ── */}
         {selectedChild && todayHomeworks.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>✏️ 오늘 숙제</Text>
+            <Text style={styles.sectionTitle}>오늘 숙제</Text>
             {todayHomeworks.map((hw) => {
               // 4가지 상태 분류
               const isRetry   = hw.subStatus === 'checked' && hw.feedback === '💧';
@@ -563,10 +563,10 @@ export default function ParentHomeScreen() {
                         isPending ? styles.hwStatusPending :
                         styles.hwStatusMissing
                       }>
-                        {isRetry   ? '💧 다시 제출 필요'  :
-                         isDone    ? '✅ 완료'            :
-                         isPending ? '⏳ 검사 대기 중'    :
-                         '❌ 미제출'}
+                        {isRetry   ? '다시 제출 필요'  :
+                         isDone    ? '완료'            :
+                         isPending ? '검사 대기 중'    :
+                         '미제출'}
                       </Text>
                     </View>
                     {/* 💧 상태일 때 선생님 코멘트 표시 */}
@@ -588,7 +588,7 @@ export default function ParentHomeScreen() {
           && todayRecord?.status !== 'onLeave'
           && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📋 결석 사유 전송</Text>
+            <Text style={styles.sectionTitle}>결석 사유 전송</Text>
             <Text style={styles.reasonDesc}>
               오늘 결석하나요? 선생님께 사유를 보내주세요.
             </Text>
@@ -669,7 +669,7 @@ export default function ParentHomeScreen() {
         {/* ── 선생님 피드백 섹션 — teacher_feedback 필드 기반 ── */}
         {selectedChild && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitleDark}>💬 선생님 피드백</Text>
+            <Text style={styles.sectionTitleDark}>선생님 피드백</Text>
 
             {selectedChild.teacher_feedback?.text ? (
               <View style={styles.teacherFeedbackCard}>
@@ -680,7 +680,7 @@ export default function ParentHomeScreen() {
                   {/* 작성자 + 날짜 행 */}
                   <View style={styles.teacherFeedbackMeta}>
                     <Text style={styles.teacherFeedbackAuthor}>
-                      ✏️ {selectedChild.teacher_feedback.author_name} 선생님
+                      {selectedChild.teacher_feedback.author_name} 선생님
                     </Text>
                     {selectedChild.teacher_feedback.created_at && (
                       <Text style={styles.teacherFeedbackDate}>
@@ -707,7 +707,7 @@ export default function ParentHomeScreen() {
         {/* ── 자녀가 없을 때 안내 ── */}
         {!isLoadingChildren && children.length === 0 && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyCardEmoji}>👨‍👧</Text>
+            <Ionicons name="people-outline" size={36} color="#CBD5E1" />
             <Text style={styles.emptyCardTitle}>자녀를 연동해주세요</Text>
             <Text style={styles.emptyCardSub}>
               자녀의 연동코드를 입력하면{'\n'}출결·숙제 현황을 확인할 수 있어요.
