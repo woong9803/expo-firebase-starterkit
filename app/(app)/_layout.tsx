@@ -68,7 +68,9 @@ export default function AppLayout() {
         router.replace('/(app)/(parent)');
         break;
     }
-  }, [user, academy, pendingExploreGranted]);
+  // 의존성에 user 전체를 넣으면 notif_prefs 등 무관한 필드 변경 시에도 재실행되어
+  // 현재 탭을 홈으로 강제 이동하는 버그 발생 — 라우팅 결정에 필요한 필드만 지정
+  }, [user?.role, user?.academy_id, user?.phone_verified, academy?.status, pendingExploreGranted]);
 
   return <Slot />;
 }

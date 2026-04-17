@@ -22,6 +22,7 @@ import {
   arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { auth } from '../../../../lib/firebase';
+import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { User, Class } from '../../../../types';
@@ -67,6 +68,7 @@ export default function AdminSettingsScreen() {
   // { classId: teacherName } — 선생님 역매핑
   const [classTeacherMap, setClassTeacherMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading]           = useState(true);
+  const [isPwModalVisible, setIsPwModalVisible] = useState(false);
 
   // ── 새 반 만들기 모달 ──
   const [isNewClassModalVisible, setIsNewClassModalVisible] = useState(false);
@@ -391,6 +393,7 @@ export default function AdminSettingsScreen() {
     : toMonthDay(academy?.created_at);
 
   return (
+    <>
     <ScrollView
       style={[styles.container, { paddingTop: top }]}
       contentContainerStyle={styles.scrollContent}
@@ -409,7 +412,7 @@ export default function AdminSettingsScreen() {
         <View style={styles.academyCardInner}>
           {/* 학원 아이콘 */}
           <View style={styles.academyIconBox}>
-            <Text style={styles.academyIconEmoji}>🏫</Text>
+            <Ionicons name="business-outline" size={28} color="#fff" />
           </View>
 
           {/* 학원 정보 */}
@@ -424,8 +427,8 @@ export default function AdminSettingsScreen() {
               academy?.status === 'active' ? styles.statusBadgeActive : styles.statusBadgePending,
             ]}>
               <Text style={styles.statusBadgeText}>
-                {academy?.status === 'active' ? '✓ 승인 완료' :
-                 academy?.status === 'pending' ? '⏳ 승인 대기' : '❌ 반려'}
+                {academy?.status === 'active' ? '승인 완료' :
+                 academy?.status === 'pending' ? '승인 대기' : '반려'}
               </Text>
             </View>
           </View>
@@ -434,7 +437,7 @@ export default function AdminSettingsScreen() {
 
       {/* ── 반 관리 ── */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📚 반 관리</Text>
+        <Text style={styles.sectionTitle}>반 관리</Text>
         <View style={styles.card}>
           {classes.length === 0 ? (
             <Text style={styles.emptyText}>등록된 반이 없어요</Text>
@@ -443,11 +446,6 @@ export default function AdminSettingsScreen() {
               <View key={cls.id}>
                 {idx > 0 && <View style={styles.divider} />}
                 <View style={styles.classRow}>
-                  {/* 핀 아이콘 */}
-                  <View style={styles.classIconBox}>
-                    <Text style={styles.classIconEmoji}>📌</Text>
-                  </View>
-
                   {/* 반 정보 */}
                   <View style={styles.classInfo}>
                     <Text style={styles.className}>{cls.name}</Text>
@@ -498,7 +496,7 @@ export default function AdminSettingsScreen() {
 
       {/* ── 선생님 관리 ── */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>👑 선생님 관리</Text>
+        <Text style={styles.sectionTitle}>선생님 관리</Text>
         <View style={styles.card}>
           {teachers.length === 0 ? (
             <Text style={styles.emptyText}>등록된 선생님이 없어요</Text>
@@ -507,11 +505,6 @@ export default function AdminSettingsScreen() {
               <View key={t.uid}>
                 {idx > 0 && <View style={styles.divider} />}
                 <View style={styles.teacherRow}>
-                  {/* 왕관 아이콘 */}
-                  <View style={styles.teacherIconBox}>
-                    <Text style={styles.teacherIconEmoji}>👑</Text>
-                  </View>
-
                   {/* 선생님 정보 */}
                   <View style={styles.teacherInfo}>
                     <Text style={styles.teacherName}>{t.name}</Text>
@@ -551,6 +544,19 @@ export default function AdminSettingsScreen() {
           </>
           )}
         </View>
+      </View>
+
+      {/* ── 계정 설정 (비밀번호 변경 + 로그아웃) ── */}
+      <View style={styles.accountSection}>
+        <TouchableOpacity
+          style={styles.accountBtn}
+          onPress={() => setIsPwModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="lock-closed-outline" size={18} color="#5B50E8" />
+          <Text style={styles.accountBtnText}>비밀번호 변경</Text>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
       </View>
 
       {/* ── 로그아웃 ── */}
@@ -730,6 +736,13 @@ export default function AdminSettingsScreen() {
       </Modal>
 
     </ScrollView>
+
+    {/* ── 비밀번호 변경 모달 ── */}
+    <PasswordChangeModal
+      visible={isPwModalVisible}
+      onClose={() => setIsPwModalVisible(false)}
+    />
+    </>
   );
 }
 
@@ -801,11 +814,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
-  classIconBox: {
-    width: 40, height: 40, borderRadius: 10,
-    backgroundColor: '#F1F0FB',
-    alignItems: 'center', justifyContent: 'center',
-  },
   classIconEmoji: { fontSize: 20 },
   classInfo:  { flex: 1 },
   className:  { fontSize: 16, fontWeight: '700', color: '#0F172A' },
@@ -841,12 +849,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
-  teacherIconBox: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  teacherIconEmoji: { fontSize: 20 },
   teacherInfo:  { flex: 1 },
   teacherName:  { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   teacherSub:   { fontSize: 13, color: '#64748B', marginTop: 2 },
@@ -877,9 +879,23 @@ const styles = StyleSheet.create({
   },
   copyBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
+  // 계정 설정 (비밀번호 변경)
+  accountSection: {
+    marginHorizontal: 16, marginTop: 8,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1, borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  accountBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 16, paddingHorizontal: 18,
+  },
+  accountBtnText: { fontSize: 15, fontWeight: '600', color: '#0F172A' },
+
   // 로그아웃
   logoutBtn: {
-    marginHorizontal: 16, marginTop: 4,
+    marginHorizontal: 16, marginTop: 8,
     paddingVertical: 14, borderRadius: 14,
     borderWidth: 1, borderColor: '#E2E8F0',
     alignItems: 'center', backgroundColor: '#fff',

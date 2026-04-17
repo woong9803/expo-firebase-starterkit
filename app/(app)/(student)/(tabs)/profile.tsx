@@ -31,6 +31,7 @@ import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { updateDoc } from 'firebase/firestore';
 import { Class, Homework, AttendanceRecord } from '../../../../types';
+import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 
 // AsyncStorage 키 — 알림 ON/OFF 설정 저장
 const NOTIF_HOMEWORK_KEY = 'student_notif_homework';
@@ -55,6 +56,7 @@ export default function StudentProfileScreen() {
   const [homeworkNotif, setHomeworkNotif] = useState(true);
   const [feedbackNotif, setFeedbackNotif] = useState(true);
   const [noticeNotif, setNoticeNotif]     = useState(true);
+  const [isPwModalVisible, setIsPwModalVisible] = useState(false);
 
   // ── 알림 설정 불러오기 ─────────────────────────
   useEffect(() => {
@@ -230,12 +232,8 @@ export default function StudentProfileScreen() {
     ]);
   };
 
-  // ── 비밀번호 변경 (준비 중) ───────────────────
-  const handlePasswordChange = () => {
-    Alert.alert('비밀번호 변경', '이 기능은 준비 중이에요.\n곧 업데이트될 예정입니다.', [
-      { text: '확인' },
-    ]);
-  };
+  // ── 비밀번호 변경 모달 열기 ──────────────────
+  const handlePasswordChange = () => setIsPwModalVisible(true);
 
   // ── 문의하기 ──────────────────────────────────
   const handleInquiry = () => {
@@ -255,6 +253,7 @@ export default function StudentProfileScreen() {
   const linkCode = user?.link_code ?? '';
 
   return (
+    <>
     <ScrollView style={styles.container} bounces={false}>
       {/* ── 초록 그라데이션 프로필 영역 ── */}
       <LinearGradient
@@ -267,7 +266,7 @@ export default function StudentProfileScreen() {
         {/* 아바타 */}
         <View style={styles.avatarWrapper}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarEmoji}>👧</Text>
+            <Text style={styles.avatarEmoji}>{(user?.name ?? '학생').slice(0, 1)}</Text>
           </View>
         </View>
 
@@ -283,7 +282,7 @@ export default function StudentProfileScreen() {
         <View style={styles.chipRow}>
           {(stats.streak > 0) && (
             <View style={styles.chip}>
-              <Text style={styles.chipText}>🔥 {stats.streak}일 연속제출</Text>
+              <Text style={styles.chipText}>{stats.streak}일 연속제출</Text>
             </View>
           )}
           {stats.attendanceRate > 0 && (
@@ -313,7 +312,7 @@ export default function StudentProfileScreen() {
             {/* 스트릭 */}
             <View style={styles.statItem}>
               <Text style={[styles.statValue, { color: '#10B981' }]}>
-                🔥{stats.streak}
+                {stats.streak}
               </Text>
               <Text style={styles.statLabel}>연속제출</Text>
             </View>
@@ -376,7 +375,7 @@ export default function StudentProfileScreen() {
         {/* 숙제 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>📚</Text>
+            <Ionicons name="book-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <View>
               <Text style={styles.menuLabel}>숙제 알림</Text>
               <Text style={styles.menuSub}>마감·미제출 알림</Text>
@@ -395,7 +394,7 @@ export default function StudentProfileScreen() {
         {/* 피드백 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>✅</Text>
+            <Ionicons name="checkmark-circle-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <View>
               <Text style={styles.menuLabel}>피드백 알림</Text>
               <Text style={styles.menuSub}>선생님 검사 결과 알림</Text>
@@ -414,7 +413,7 @@ export default function StudentProfileScreen() {
         {/* 공지 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>📢</Text>
+            <Ionicons name="megaphone-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <View>
               <Text style={styles.menuLabel}>공지 알림</Text>
               <Text style={styles.menuSub}>새 공지사항 알림</Text>
@@ -433,7 +432,7 @@ export default function StudentProfileScreen() {
         {/* 비밀번호 변경 */}
         <TouchableOpacity style={styles.menuItem} onPress={handlePasswordChange} activeOpacity={0.7}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>🔒</Text>
+            <Ionicons name="lock-closed-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>비밀번호 변경</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
@@ -444,7 +443,7 @@ export default function StudentProfileScreen() {
         {/* 문의하기 */}
         <TouchableOpacity style={styles.menuItem} onPress={handleInquiry} activeOpacity={0.7}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>❓</Text>
+            <Ionicons name="help-circle-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>문의하기</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
@@ -458,6 +457,13 @@ export default function StudentProfileScreen() {
 
       <View style={{ height: 32 }} />
     </ScrollView>
+
+    {/* 비밀번호 변경 모달 */}
+    <PasswordChangeModal
+      visible={isPwModalVisible}
+      onClose={() => setIsPwModalVisible(false)}
+    />
+    </>
   );
 }
 
@@ -642,9 +648,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   menuIcon: {
-    fontSize: 22,
     width: 28,
-    textAlign: 'center',
+    alignItems: 'center',
   },
   menuLabel: {
     fontSize: 16,

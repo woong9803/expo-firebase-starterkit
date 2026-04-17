@@ -34,6 +34,7 @@ import { useAuthStore } from '../../../../store/useAuthStore';
 import { strings } from '../../../../constants/strings';
 import { validateLinkCode } from '../../../../lib/auth';
 import type { User, Class } from '../../../../types';
+import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 
 // AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
 const NOTIF_HOMEWORK_KEY   = 'parent_notif_homework';
@@ -60,6 +61,9 @@ export default function ParentProfileScreen() {
   const [linkCodeInput, setLinkCodeInput] = useState('');
   const [isLinking, setIsLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+
+  // ── 비밀번호 변경 모달 ─────────────────────────────────
+  const [isPwModalVisible, setIsPwModalVisible] = useState(false);
 
   // ── 알림 설정 ──────────────────────────────────────────
   const [homeworkNotif, setHomeworkNotif]     = useState(true);
@@ -313,6 +317,7 @@ export default function ParentProfileScreen() {
   const childrenCount = children.length;
 
   return (
+    <>
     <ScrollView style={styles.container} bounces={false} showsVerticalScrollIndicator={false}>
 
       {/* ── 자녀 추가 연동 모달 ── */}
@@ -393,7 +398,7 @@ export default function ParentProfileScreen() {
         {/* 아바타 원형 */}
         <View style={styles.avatarWrapper}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarEmoji}>👨‍👦</Text>
+            <Text style={styles.avatarEmoji}>{(user?.name ?? '부모').slice(0, 1)}</Text>
           </View>
         </View>
 
@@ -418,7 +423,7 @@ export default function ParentProfileScreen() {
                 <View style={styles.childRow}>
                   {/* 자녀 아바타 */}
                   <View style={styles.childAvatar}>
-                    <Text style={styles.childAvatarEmoji}>👦</Text>
+                    <Text style={styles.childAvatarEmoji}>{child.name.slice(0, 1)}</Text>
                   </View>
 
                   {/* 자녀 이름 + 반·학원 정보 */}
@@ -461,7 +466,7 @@ export default function ParentProfileScreen() {
         {/* 숙제 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>📚</Text>
+            <Ionicons name="book-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <View>
               <Text style={styles.menuLabel}>{strings.profile.homeworkNotif}</Text>
               <Text style={styles.menuSub}>마감·미제출·피드백 알림</Text>
@@ -480,7 +485,7 @@ export default function ParentProfileScreen() {
         {/* 출결 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>📋</Text>
+            <Ionicons name="clipboard-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <View>
               <Text style={styles.menuLabel}>출결 알림</Text>
               <Text style={styles.menuSub}>결석·지각 처리 시 알림</Text>
@@ -499,7 +504,7 @@ export default function ParentProfileScreen() {
         {/* 공지 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>📢</Text>
+            <Ionicons name="megaphone-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <View>
               <Text style={styles.menuLabel}>{strings.profile.noticeNotif}</Text>
               <Text style={styles.menuSub}>새 공지사항 알림</Text>
@@ -515,10 +520,21 @@ export default function ParentProfileScreen() {
 
         <View style={styles.menuDivider} />
 
+        {/* 비밀번호 변경 */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => setIsPwModalVisible(true)} activeOpacity={0.7}>
+          <View style={styles.menuLeft}>
+            <Ionicons name="lock-closed-outline" size={20} color="#64748B" style={styles.menuIcon} />
+            <Text style={styles.menuLabel}>비밀번호 변경</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
         {/* 문의하기 */}
         <TouchableOpacity style={styles.menuItem} onPress={handleInquiry} activeOpacity={0.7}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>❓</Text>
+            <Ionicons name="help-circle-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>{strings.profile.inquiry}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
@@ -533,6 +549,13 @@ export default function ParentProfileScreen() {
       {/* 하단 여백 */}
       <View style={{ height: 32 }} />
     </ScrollView>
+
+    {/* 비밀번호 변경 모달 */}
+    <PasswordChangeModal
+      visible={isPwModalVisible}
+      onClose={() => setIsPwModalVisible(false)}
+    />
+    </>
   );
 }
 

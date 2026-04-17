@@ -21,7 +21,7 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
-import { getDocs, query, where } from 'firebase/firestore';
+import { getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -31,6 +31,7 @@ import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { updateDoc } from 'firebase/firestore';
 import { Class, AttendanceRecord } from '../../../../types';
+import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 
 // AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
 const NOTIF_PREF_KEY = 'teacher_push_enabled';
@@ -38,7 +39,6 @@ const NOTIF_PREF_KEY = 'teacher_push_enabled';
 // 통계 데이터 타입
 interface Stats {
   studentCount: number;   // 담당 학생 수
-  checkedCount: number;   // 숙제 검사 완료 수
   attendanceRate: number; // 이번 달 출석률 (%)
 }
 
@@ -49,9 +49,12 @@ export default function TeacherProfileScreen() {
 
   // ── 상태 ──────────────────────────────────────
   const [assignedClasses, setAssignedClasses] = useState<Class[]>([]);
-  const [stats, setStats] = useState<Stats>({ studentCount: 0, checkedCount: 0, attendanceRate: 0 });
+  // { classId: 학생 수 } — 실시간 구독으로 갱신
+  const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
+  const [stats, setStats] = useState<Stats>({ studentCount: 0, attendanceRate: 0 });
   const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(true);
+  const [isPwModalVisible, setIsPwModalVisible] = useState(false);
 
   // ── 푸시 알림 설정 불러오기 ────────────────────
   useEffect(() => {
@@ -90,74 +93,86 @@ export default function TeacherProfileScreen() {
     }
   }, [user?.uid]);
 
-  // ── 통계 + 담당반 데이터 로드 ─────────────────
+  // ── 1) 담당 반 실시간 구독 ────────────────────
+  // 반 이름·정보가 변경되면 즉시 화면에 반영
   useEffect(() => {
     const classIds = user?.assigned_class_ids ?? [];
-    if (classIds.length === 0) {
+    if (!user?.academy_id || classIds.length === 0) {
       setAssignedClasses([]);
       setIsStatsLoading(false);
       return;
     }
 
-    (async () => {
-      try {
-        // 1) 담당 반 문서 조회
-        const classSnap = await getDocs(
-          query(Collections.classes(), where('academy_id', '==', user?.academy_id ?? ''))
-        );
-        const assignedDocs = classSnap.docs.filter((d) => classIds.includes(d.id));
-        const loadedClasses = assignedDocs.map((d) => ({ id: d.id, ...d.data() } as Class));
+    const unsub = onSnapshot(
+      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
+      (snap) => {
+        // 전체 반 중 내 담당반만 필터링
+        const filtered = snap.docs
+          .filter((d) => classIds.includes(d.id))
+          .map((d) => ({ id: d.id, ...d.data() } as Class));
+        setAssignedClasses(filtered);
+      },
+      (e) => console.warn('[TeacherProfile] 반 구독 실패:', e),
+    );
+    return () => unsub();
+  }, [user?.assigned_class_ids?.join(','), user?.academy_id]);
 
-        // 실제 학생 수 직접 쿼리 — student_count 캐시 필드가 부정확할 수 있으므로
-        const studentSnap = await getDocs(
-          query(
-            Collections.users(),
-            where('academy_id', '==', user?.academy_id ?? ''),
-            where('role', '==', 'student'),
-            where('is_active', '==', true),
-          )
-        );
+  // ── 2) 학생 수 실시간 구독 ────────────────────
+  // 학생 가입·탈퇴·반 이동 시 즉시 카운트 갱신
+  useEffect(() => {
+    const classIds = user?.assigned_class_ids ?? [];
+    if (!user?.academy_id || classIds.length === 0) {
+      setStudentCounts({});
+      setStats((prev) => ({ ...prev, studentCount: 0 }));
+      return;
+    }
+
+    const unsub = onSnapshot(
+      query(
+        Collections.users(),
+        where('academy_id', '==', user.academy_id),
+        where('role', '==', 'student'),
+        where('is_active', '==', true),
+      ),
+      (snap) => {
         // class_id별 학생 수 집계
         const countByClass: Record<string, number> = {};
-        studentSnap.docs.forEach((d) => {
+        snap.docs.forEach((d) => {
           const cid = d.data().class_id as string | null;
           if (cid && classIds.includes(cid)) {
             countByClass[cid] = (countByClass[cid] ?? 0) + 1;
           }
         });
-        // loadedClasses에 실제 학생 수 반영
-        const classesWithCount = loadedClasses.map((c) => ({
-          ...c,
-          student_count: countByClass[c.id] ?? 0,
-        }));
-        const totalStudents = classesWithCount.reduce((sum, c) => sum + c.student_count!, 0);
-        setAssignedClasses(classesWithCount);
+        setStudentCounts(countByClass);
+        // 총 담당 학생 수도 통계에 즉시 반영
+        const total = Object.values(countByClass).reduce((a, b) => a + b, 0);
+        setStats((prev) => ({ ...prev, studentCount: total }));
+      },
+      (e) => console.warn('[TeacherProfile] 학생 수 구독 실패:', e),
+    );
+    return () => unsub();
+  }, [user?.assigned_class_ids?.join(','), user?.academy_id]);
 
-        // 2) 숙제 검사 완료 수 — 이 선생님이 만든 숙제의 checked 제출물 집계
-        //    Firestore 비용 절감을 위해 최근 20개 숙제만 처리
-        const hwSnap = await getDocs(
-          query(Collections.homeworks(), where('created_by', '==', user?.uid ?? ''))
-        );
-        const recentHws = hwSnap.docs.slice(0, 20);
-        const checkedCounts = await Promise.all(
-          recentHws.map(async (hwDoc) => {
-            const subSnap = await getDocs(
-              query(Collections.submissions(hwDoc.id), where('status', '==', 'checked'))
-            );
-            return subSnap.size;
-          })
-        );
-        const totalChecked = checkedCounts.reduce((a, b) => a + b, 0);
+  // ── 3) 숙제 검사 수 + 출석률 일회성 로드 ────────
+  // 집계 비용이 크므로 담당반 변경 시에만 재조회
+  useEffect(() => {
+    const classIds = user?.assigned_class_ids ?? [];
+    if (!user?.uid || classIds.length === 0) {
+      setStats((prev) => ({ ...prev, attendanceRate: 0 }));
+      setIsStatsLoading(false);
+      return;
+    }
 
-        // 3) 이번 달 출석률 계산 — 담당반 × 이번 달 날짜별 records 집계
-        //    Firestore 비용 절감: 최대 3개 반 × 오늘까지 지난 날짜만 처리
+    (async () => {
+      setIsStatsLoading(true);
+      try {
+        // 이번 달 출석률 — 최대 3개 반 × 오늘까지 날짜 처리 (Firestore 비용 절감)
         const today = new Date();
         const year = today.getFullYear();
         const month = today.getMonth() + 1;
         const todayDay = today.getDate();
         const targetClassIds = classIds.slice(0, 3);
 
-        // 이번 달 1일 ~ 오늘까지의 날짜 배열 생성
         const dates = Array.from({ length: todayDay }, (_, i) => {
           const d = new Date(year, month - 1, i + 1);
           return d.toISOString().split('T')[0];
@@ -184,18 +199,14 @@ export default function TeacherProfileScreen() {
 
         const rate = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
-        setStats({
-          studentCount: totalStudents,
-          checkedCount: totalChecked,
-          attendanceRate: rate,
-        });
+        setStats((prev) => ({ ...prev, attendanceRate: rate }));
       } catch (e) {
-        console.error('[TeacherProfile] 데이터 로드 실패:', e);
+        console.error('[TeacherProfile] 통계 로드 실패:', e);
       } finally {
         setIsStatsLoading(false);
       }
     })();
-  }, [user?.assigned_class_ids?.join(',')]);
+  }, [user?.assigned_class_ids?.join(','), user?.uid]);
 
   // ── 로그아웃 ──────────────────────────────────
   const handleLogout = () => {
@@ -213,12 +224,8 @@ export default function TeacherProfileScreen() {
     ]);
   };
 
-  // ── 비밀번호 변경 (준비 중) ───────────────────
-  const handlePasswordChange = () => {
-    Alert.alert('비밀번호 변경', '이 기능은 준비 중이에요.\n곧 업데이트될 예정입니다.', [
-      { text: '확인' },
-    ]);
-  };
+  // ── 비밀번호 변경 모달 열기 ──────────────────
+  const handlePasswordChange = () => setIsPwModalVisible(true);
 
   // ── 소셜 계정 연결 (준비 중) ─────────────────
   const handleSocialConnect = () => {
@@ -243,6 +250,7 @@ export default function TeacherProfileScreen() {
   };
 
   return (
+    <>
     <ScrollView style={styles.container} bounces={false}>
       {/* ── 보라 그라데이션 프로필 영역 ── */}
       <LinearGradient
@@ -255,7 +263,7 @@ export default function TeacherProfileScreen() {
         {/* 아바타 */}
         <View style={styles.avatarWrapper}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarEmoji}>👩‍💻</Text>
+            <Text style={styles.avatarEmoji}>{(user?.name ?? '선생님').slice(0, 1)}</Text>
           </View>
         </View>
 
@@ -288,16 +296,6 @@ export default function TeacherProfileScreen() {
                 {stats.studentCount}
               </Text>
               <Text style={styles.statLabel}>담당 학생</Text>
-            </View>
-
-            <View style={styles.statDivider} />
-
-            {/* 숙제 검사 완료 수 */}
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#5B50E8' }]}>
-                {stats.checkedCount}
-              </Text>
-              <Text style={styles.statLabel}>검사 완료</Text>
             </View>
 
             <View style={styles.statDivider} />
@@ -350,12 +348,12 @@ export default function TeacherProfileScreen() {
               >
                 <View style={styles.classCardLeft}>
                   <View style={styles.classIconBox}>
-                    <Text style={styles.classIconText}>🏫</Text>
+                    <Ionicons name="business-outline" size={18} color="#5B50E8" />
                   </View>
                   <View>
                     <Text style={styles.className}>{cls.name}</Text>
                     <Text style={styles.classStudentCount}>
-                      학생 {cls.student_count ?? 0}명
+                      학생 {studentCounts[cls.id] ?? 0}명
                     </Text>
                   </View>
                 </View>
@@ -391,7 +389,7 @@ export default function TeacherProfileScreen() {
         {/* 푸시 알림 토글 */}
         <View style={styles.menuItem}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>🔔</Text>
+            <Ionicons name="notifications-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>푸시 알림</Text>
           </View>
           <Switch
@@ -407,7 +405,7 @@ export default function TeacherProfileScreen() {
         {/* 비밀번호 변경 */}
         <TouchableOpacity style={styles.menuItem} onPress={handlePasswordChange} activeOpacity={0.7}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>🔒</Text>
+            <Ionicons name="lock-closed-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>비밀번호 변경</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
@@ -418,7 +416,7 @@ export default function TeacherProfileScreen() {
         {/* 소셜 계정 연결 */}
         <TouchableOpacity style={styles.menuItem} onPress={handleSocialConnect} activeOpacity={0.7}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>📱</Text>
+            <Ionicons name="phone-portrait-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>소셜 계정 연결</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
@@ -429,7 +427,7 @@ export default function TeacherProfileScreen() {
         {/* 문의하기 */}
         <TouchableOpacity style={styles.menuItem} onPress={handleInquiry} activeOpacity={0.7}>
           <View style={styles.menuLeft}>
-            <Text style={styles.menuIcon}>❓</Text>
+            <Ionicons name="help-circle-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>문의하기</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
@@ -444,6 +442,13 @@ export default function TeacherProfileScreen() {
       {/* 하단 여백 */}
       <View style={{ height: 32 }} />
     </ScrollView>
+
+    {/* 비밀번호 변경 모달 */}
+    <PasswordChangeModal
+      visible={isPwModalVisible}
+      onClose={() => setIsPwModalVisible(false)}
+    />
+    </>
   );
 }
 
