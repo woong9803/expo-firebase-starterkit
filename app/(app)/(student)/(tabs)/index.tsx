@@ -14,8 +14,8 @@ import { useAuthStore } from '../../../../store/useAuthStore';
 import { useNotificationStore } from '../../../../store/useNotificationStore';
 import { Homework, Submission, Notice } from '../../../../types';
 
-// 스트릭 막대 개수 (고정 장식용)
-const BAR_COUNT = 14;
+// 스탬프 카드 한 장당 스탬프 수
+const STAMPS_PER_CARD = 10;
 
 // 숙제 + 제출 상태를 합친 타입
 interface HwItem extends Homework {
@@ -121,12 +121,12 @@ export default function StudentHomeScreen() {
       {/* ── 헤더 (흰 배경) ── */}
       <View style={[styles.header, { paddingTop: top + 12 }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>꾸준함이 실력이에요 ✨</Text>
+          <Text style={styles.greeting}>꾸준함이 실력이에요</Text>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{user?.name ?? ''}</Text>
             {/* 스트릭 뱃지 — 인라인, 작게 */}
             <View style={styles.streakBadge}>
-              <Text style={styles.streakBadgeText}>🔥 {streak}일</Text>
+              <Text style={styles.streakBadgeText}>{streak}일</Text>
             </View>
           </View>
         </View>
@@ -154,38 +154,46 @@ export default function StudentHomeScreen() {
           end={{ x: 1, y: 1 }}
           style={styles.streakCard}
         >
+          {/* 상단: 스트릭 숫자 + 카드 진행 표시 */}
           <View style={styles.streakTop}>
-            <View>
-              <Text style={styles.streakLabel}>연속 제출</Text>
-              <Text style={styles.streakNum}>🔥 {streak}일</Text>
-            </View>
-            <View>
-              <Text style={styles.streakRightText}>마감 전 제출 기준</Text>
-              <Text style={styles.streakRightText}>지각 시 초기화</Text>
+            <Text style={styles.streakNum}>{streak}일째 숙제 완료</Text>
+            <View style={styles.streakCardBadge}>
+              <Text style={styles.streakCardBadgeText}>
+                {Math.floor(streak / STAMPS_PER_CARD) + 1}번째 카드
+              </Text>
+              <Ionicons name="chevron-forward" size={12} color="rgba(255,255,255,0.8)" />
             </View>
           </View>
-          {/* 막대 그래프 */}
-          <View style={styles.barChart}>
-            {Array.from({ length: BAR_COUNT }, (_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.bar,
-                  {
-                    height: 12 + (i % 4) * 6,
-                    backgroundColor: i >= BAR_COUNT - Math.min(streak, BAR_COUNT) ? '#fff' : 'rgba(255,255,255,0.3)',
-                  },
-                ]}
-              />
-            ))}
+          {/* 미니 스탬프 미리보기 — 현재 카드 진행도 */}
+          <View style={styles.stampRow}>
+            {Array.from({ length: STAMPS_PER_CARD }, (_, i) => {
+              // 현재 카드에서 몇 번째 스탬프까지 찍혔는지
+              const progressOnCard = streak % STAMPS_PER_CARD === 0 && streak > 0
+                ? STAMPS_PER_CARD
+                : streak % STAMPS_PER_CARD;
+              const isFilled = i < progressOnCard;
+              return (
+                <View
+                  key={i}
+                  style={[styles.stamp, isFilled ? styles.stampFilled : styles.stampEmpty]}
+                >
+                  {isFilled && <Ionicons name="checkmark" size={12} color="#059669" />}
+                </View>
+              );
+            })}
           </View>
+          {/* 진행 텍스트 */}
+          <Text style={styles.stampProgress}>
+            {streak % STAMPS_PER_CARD === 0 && streak > 0 ? STAMPS_PER_CARD : streak % STAMPS_PER_CARD}
+            {' / '}{STAMPS_PER_CARD} 완료 · 눌러서 전체 보기
+          </Text>
         </LinearGradient>
         </TouchableOpacity>
       </View>
 
       {/* ── 빠른 작업 ── */}
       <View style={styles.sectionPad}>
-        <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>⚡ 빠른 작업</Text>
+        <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>빠른 작업</Text>
         <View style={styles.quickRow}>
           {/* 숙제 제출 */}
           <TouchableOpacity
@@ -237,7 +245,7 @@ export default function StudentHomeScreen() {
       {/* ── 내 숙제 ── */}
       <View style={styles.sectionPad}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>✏️ 내 숙제</Text>
+          <Text style={styles.sectionTitle}>내 숙제</Text>
           <TouchableOpacity onPress={() => router.push('/(app)/(student)/(tabs)/homework')} activeOpacity={0.7}>
             <Text style={styles.sectionLink}>전체보기</Text>
           </TouchableOpacity>
@@ -246,7 +254,7 @@ export default function StudentHomeScreen() {
         {!user?.class_id ? (
           <Text style={styles.emptyText}>반에 배정된 후 숙제가 표시돼요</Text>
         ) : homeworks.length === 0 ? (
-          <Text style={styles.emptyText}>제출할 숙제가 없어요 🎉</Text>
+          <Text style={styles.emptyText}>제출할 숙제가 없어요</Text>
         ) : (
           <View style={styles.hwList}>
             {homeworks.map((hw) => {
@@ -259,7 +267,7 @@ export default function StudentHomeScreen() {
                       <View style={styles.hwTopRow}>
                         <Text style={styles.hwTitle} numberOfLines={1}>{hw.title}</Text>
                         <View style={styles.chipRetry}>
-                          <Text style={styles.chipRetryText}>💧 다시풀기</Text>
+                          <Text style={styles.chipRetryText}>다시풀기</Text>
                         </View>
                       </View>
                       <Text style={styles.hwSub}>마감 {hw.due_date.toDate().toLocaleDateString('ko-KR')}</Text>
@@ -268,7 +276,7 @@ export default function StudentHomeScreen() {
                         activeOpacity={0.85}
                         onPress={() => router.push(`/(app)/(student)/homework-submit?hwId=${hw.id}&skipAlert=true`)}
                       >
-                        <Text style={styles.submitBtnText}>📷 다시 제출하기</Text>
+                        <Text style={styles.submitBtnText}>다시 제출하기</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -293,7 +301,7 @@ export default function StudentHomeScreen() {
                         activeOpacity={0.85}
                         onPress={() => router.push(`/(app)/(student)/homework-submit?hwId=${hw.id}`)}
                       >
-                        <Text style={styles.submitBtnText}>📷 지금 제출하기</Text>
+                        <Text style={styles.submitBtnText}>지금 제출하기</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -330,7 +338,7 @@ export default function StudentHomeScreen() {
       {/* ── 최근 공지 ── */}
       <View style={styles.sectionPad}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📢 최근 공지</Text>
+          <Text style={styles.sectionTitle}>최근 공지</Text>
           <TouchableOpacity
             onPress={() => router.push('/common/notice-list')}
             activeOpacity={0.7}
@@ -430,14 +438,29 @@ const styles = StyleSheet.create({
   streakTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  streakLabel: { fontSize: 13, color: 'rgba(255,255,255,0.85)' },
-  streakNum: { fontSize: 30, fontWeight: '800', color: '#fff', marginTop: 2 },
-  streakRightText: { fontSize: 12, color: 'rgba(255,255,255,0.75)', textAlign: 'right' },
-  barChart: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  bar: { width: 8, borderRadius: 2 },
+  streakNum: { fontSize: 22, fontWeight: '800', color: '#fff' },
+  streakCardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  streakCardBadgeText: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
+  // 미니 스탬프
+  stampRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  stamp: {
+    width: 26, height: 26, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stampFilled: { backgroundColor: '#fff' },
+  stampEmpty: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  stampProgress: { fontSize: 11, color: 'rgba(255,255,255,0.75)' },
 
   // ── 섹션 헤더 ──
   sectionHeader: {

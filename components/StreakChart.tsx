@@ -10,8 +10,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { DayStreak } from '../lib/streak';
 
 interface Props {
-  data: DayStreak[];       // fetchStreakData 결과 배열 (날짜 오름차순)
-  currentStreak: number;   // 현재 연속 스트릭 일수 (User.streak)
+  data: DayStreak[];  // fetchStreakData 결과 배열 (날짜 오름차순)
 }
 
 /** 상태별 막대 색상 */
@@ -30,33 +29,23 @@ const STATUS_LABEL: Record<DayStreak['status'], string> = {
   none:      '없음',
 };
 
-export default function StreakChart({ data, currentStreak }: Props) {
+export default function StreakChart({ data }: Props) {
   // 막대 최대 높이 (submitted 기준 100%)
   const MAX_BAR_HEIGHT = 48;
 
   return (
     <View style={styles.container}>
-      {/* 상단 스트릭 요약 */}
-      <View style={styles.summaryRow}>
-        <View>
-          <Text style={styles.summaryLabel}>현재 스트릭</Text>
-          <View style={styles.streakCountRow}>
-            <Text style={styles.streakCount}>{currentStreak}</Text>
-            <Text style={styles.streakUnit}>일 연속</Text>
+      {/* 범례 */}
+      <View style={styles.legend}>
+        {(['submitted', 'late', 'missed'] as const).map((s) => (
+          <View key={s} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: BAR_COLOR[s] }]} />
+            <Text style={styles.legendLabel}>{STATUS_LABEL[s]}</Text>
           </View>
-        </View>
-        {/* 범례 */}
-        <View style={styles.legend}>
-          {(['submitted', 'late', 'missed'] as const).map((s) => (
-            <View key={s} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: BAR_COLOR[s] }]} />
-              <Text style={styles.legendLabel}>{STATUS_LABEL[s]}</Text>
-            </View>
-          ))}
-        </View>
+        ))}
       </View>
 
-      {/* 막대 차트 — 가로 스크롤 */}
+      {/* 막대 차트 — 왼쪽(오래된 날짜)부터 오른쪽(오늘)으로 채워짐 */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -110,37 +99,11 @@ const styles = StyleSheet.create({
     gap: 16,
   },
 
-  // 상단 요약
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#64748B',
-    marginBottom: 2,
-  },
-  streakCountRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-  },
-  streakCount: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#10B981',
-  },
-  streakUnit: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-
   // 범례
   legend: {
-    gap: 6,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'flex-end',
   },
   legendItem: {
     flexDirection: 'row',
