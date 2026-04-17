@@ -304,7 +304,6 @@ export default function AdminHomeworkScreen() {
         </View>
       ) : filteredHomeworks.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyEmoji}>📝</Text>
           <Text style={styles.emptyTitle}>
             {selectedClassId ? `${selectedClassName} 숙제가 없어요` : '출제된 숙제가 없어요'}
           </Text>

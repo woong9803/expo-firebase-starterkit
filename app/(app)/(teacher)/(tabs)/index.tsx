@@ -409,7 +409,7 @@ export default function TeacherHomeScreen() {
       {/* ── 담당 반 ── */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📌 담당 반</Text>
+          <Text style={styles.sectionTitle}>담당 반</Text>
           <TouchableOpacity onPress={() => router.push('/(app)/(teacher)/(tabs)/students')} activeOpacity={0.7}>
             <Text style={styles.sectionLink}>전체보기</Text>
           </TouchableOpacity>
@@ -447,7 +447,7 @@ export default function TeacherHomeScreen() {
       {/* ── 숙제 검사 현황 ── */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📝 숙제 검사 현황</Text>
+          <Text style={styles.sectionTitle}>숙제 검사 현황</Text>
           <TouchableOpacity onPress={() => router.push('/(app)/(teacher)/(tabs)/homework')} activeOpacity={0.7}>
             <Text style={styles.sectionLink}>전체보기</Text>
           </TouchableOpacity>
@@ -516,7 +516,7 @@ export default function TeacherHomeScreen() {
       {/* ── 최근 공지 ── */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>📢 최근 공지</Text>
+          <Text style={styles.sectionTitle}>최근 공지</Text>
           <TouchableOpacity
             onPress={() => router.push('/common/notice-list')}
             activeOpacity={0.7}

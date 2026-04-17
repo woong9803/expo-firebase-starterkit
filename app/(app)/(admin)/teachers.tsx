@@ -128,7 +128,6 @@ export default function AdminTeachersScreen() {
         </View>
       ) : teachers.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyEmoji}>👩‍🏫</Text>
           <Text style={styles.emptyTitle}>등록된 선생님이 없어요</Text>
           <Text style={styles.emptyDesc}>
             학원 코드를 공유하면 선생님이 가입할 수 있어요.

@@ -37,13 +37,13 @@ import { strings } from '../../../constants/strings';
 import type { AppNotification } from '../../../types';
 
 // ─────────────────────────────────────────────────────────────
-// 알림 타입별 이모지 아이콘
+// 알림 타입별 Ionicons 이름 + 색상 매핑
 // ─────────────────────────────────────────────────────────────
-const NOTIFICATION_ICONS: Record<AppNotification['type'], string> = {
-  homework_feedback: '📝',
-  homework_due: '⏰',
-  attendance: '📋',
-  notice: '📢',
+const NOTIFICATION_ICONS: Record<AppNotification['type'], { name: React.ComponentProps<typeof Ionicons>['name']; color: string }> = {
+  homework_feedback: { name: 'document-text-outline', color: '#5B50E8' },
+  homework_due:      { name: 'time-outline',          color: '#EF4444' },
+  attendance:        { name: 'clipboard-outline',     color: '#10B981' },
+  notice:            { name: 'megaphone-outline',     color: '#F59E0B' },
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -89,9 +89,12 @@ function NotificationItem({ item, onPress }: NotificationItemProps) {
 
       {/* 알림 타입 아이콘 */}
       <View style={styles.iconBox}>
-        <Text style={styles.iconText}>
-          {NOTIFICATION_ICONS[item.type] ?? '🔔'}
-        </Text>
+        {(() => {
+          const ic = NOTIFICATION_ICONS[item.type];
+          return ic
+            ? <Ionicons name={ic.name} size={20} color={ic.color} />
+            : <Ionicons name="notifications-outline" size={20} color="#64748B" />;
+        })()}
       </View>
 
       {/* 알림 내용 */}
@@ -186,7 +189,7 @@ export default function NotificationInboxScreen() {
     if (isLoading) return null;
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyIcon}>🔔</Text>
+        <Ionicons name="notifications-outline" size={40} color="#CBD5E1" style={{ marginBottom: 8 }} />
         <Text style={styles.emptyText}>{strings.notification.empty}</Text>
       </View>
     );

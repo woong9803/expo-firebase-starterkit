@@ -127,7 +127,7 @@ export default function CreateStudentScreen() {
           {/* 계정 카드 */}
           <View style={styles.resultCard}>
             <View style={styles.resultHeader}>
-              <Text style={styles.resultCardTitle}>📋 학생 계정 정보</Text>
+              <Text style={styles.resultCardTitle}>학생 계정 정보</Text>
               <View style={styles.resultBadge}>
                 <Text style={styles.resultBadgeText}>임시 계정</Text>
               </View>

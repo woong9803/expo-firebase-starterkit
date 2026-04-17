@@ -287,7 +287,6 @@ export default function ParentHomeworkScreen() {
       {/* ── 자녀 없음 ── */}
       {!isLoading && !activeChildUid && (
         <View style={styles.centerBox}>
-          <Text style={styles.emptyIcon}>👨‍👧</Text>
           <Text style={styles.emptyText}>{strings.parent.noChildren}</Text>
         </View>
       )}
@@ -304,7 +303,6 @@ export default function ParentHomeworkScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.centerBox}>
-              <Text style={styles.emptyIcon}>📚</Text>
               <Text style={styles.emptyText}>{strings.parent.noHomework}</Text>
             </View>
           }

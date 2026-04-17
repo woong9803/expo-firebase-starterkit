@@ -138,7 +138,6 @@ export default function ClassSelectScreen() {
         </View>
       ) : classes.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyEmoji}>🏫</Text>
           <Text style={styles.emptyTitle}>등록된 반이 없어요</Text>
           <Text style={styles.emptyDesc}>원장님께 반 생성을 요청해주세요.</Text>
         </View>

@@ -122,7 +122,6 @@ export default function ChildrenSwitchScreen() {
       {/* ── 자녀 없음 ── */}
       {!isLoading && children.length === 0 && (
         <View style={styles.centerBox}>
-          <Text style={styles.emptyIcon}>👨‍👧</Text>
           <Text style={styles.emptyText}>{strings.parent.noChildren}</Text>
         </View>
       )}

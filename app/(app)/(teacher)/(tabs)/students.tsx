@@ -269,7 +269,7 @@ export default function TeacherStudentsScreen() {
                   {/* 저장된 피드백 미리보기 */}
                   {hasFeedback && (
                     <Text style={styles.feedbackPreview} numberOfLines={1}>
-                      📝 {item.teacher_feedback!.text}
+                      {item.teacher_feedback!.text}
                     </Text>
                   )}
                 </View>

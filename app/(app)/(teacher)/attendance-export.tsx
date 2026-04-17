@@ -254,7 +254,7 @@ export default function AttendanceExportScreen() {
 
         {/* ── 내보내기 안내 카드 ── */}
         <View style={styles.infoCard}>
-          <Text style={styles.infoCardTitle}>📋 법정 출석부 형식</Text>
+          <Text style={styles.infoCardTitle}>법정 출석부 형식</Text>
           <Text style={styles.infoCardDesc}>
             교육청 제출용 법정 출석부(xlsx) 형식으로 생성됩니다.{'\n'}
             번호·성명·생년월일·보호자연락처·수강기간·출결 기호·합계가 포함됩니다.

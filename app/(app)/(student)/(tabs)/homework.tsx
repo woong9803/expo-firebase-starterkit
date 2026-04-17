@@ -240,9 +240,6 @@ export default function StudentHomeworkScreen() {
         </View>
       ) : tabItems.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyEmoji}>
-            {activeTab === '미제출' ? '🎉' : activeTab === '검사대기' ? '⏳' : activeTab === '다시제출' ? '💧' : '✅'}
-          </Text>
           <Text style={styles.emptyTitle}>
             {activeTab === '미제출' ? '미제출 숙제가 없어요!'
               : activeTab === '검사대기' ? '검사 대기 중인 숙제가 없어요'
@@ -308,7 +305,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
         {!!content && <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>}
         <Text style={styles.cardDue}>마감 {dueStr}</Text>
         <View style={styles.feedbackRow}>
-          <Text style={styles.feedbackEmoji}>{submission.feedback ?? '✅'}</Text>
+          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
           <Text style={styles.feedbackLabel}>
             {submission.feedback === '👍' ? '선생님이 잘했어요!' : '검사 완료 · 피드백 대기 중'}
           </Text>
@@ -335,7 +332,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
         {!!content && <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>}
         <Text style={styles.cardDue}>마감 {dueStr}</Text>
         <View style={styles.feedbackRow}>
-          <Text style={styles.feedbackEmoji}>💧</Text>
+          <Ionicons name="refresh-circle" size={16} color="#F59E0B" />
           <Text style={[styles.feedbackLabel, { color: '#78350F' }]}>선생님이 다시 풀어보래요</Text>
         </View>
         {/* 선생님 텍스트 코멘트 */}
