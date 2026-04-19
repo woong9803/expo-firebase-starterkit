@@ -17,6 +17,8 @@ import {
   signInWithEmail,
   signInWithGoogle,
   signInWithApple,
+  signInWithKakao,
+  checkUserDocExists,
 } from '../../lib/auth';
 import { strings } from '../../constants/strings';
 
@@ -46,31 +48,33 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  // 소셜 로그인 공통 처리 — 신규 유저면 phone-input으로, 기존 유저면 _layout 자동 라우팅
+  const handleSocialLogin = async (
+    loginFn: () => Promise<{ user: { uid: string } }>,
+    cancelCode?: string
+  ) => {
     setIsLoading(true);
     setError(null);
     try {
-      await signInWithGoogle();
+      const credential = await loginFn();
+      const isExisting = await checkUserDocExists(credential.user.uid);
+      if (!isExisting) {
+        // 신규 소셜 유저 → 온보딩(휴대폰 인증)으로 이동
+        router.push('/(auth)/phone-input');
+      }
+      // 기존 유저는 app/_layout.tsx의 onAuthStateChanged가 자동 라우팅
     } catch (e: unknown) {
+      const code = (e as { code?: string }).code;
+      if (code === cancelCode || code === 'ERR_CANCELED') return;
       setError((e as Error).message || strings.common.error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAppleLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await signInWithApple();
-    } catch (e: unknown) {
-      if ((e as { code?: string }).code !== 'ERR_CANCELED') {
-        setError((e as Error).message || strings.common.error);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const handleKakaoLogin = () => handleSocialLogin(signInWithKakao);
+  const handleGoogleLogin = () => handleSocialLogin(signInWithGoogle);
+  const handleAppleLogin  = () => handleSocialLogin(signInWithApple, 'ERR_CANCELED');
 
   return (
     <KeyboardAvoidingView
@@ -177,8 +181,8 @@ export default function LoginScreen() {
         {/* ── 소셜 버튼 ── */}
         <View style={styles.socialList}>
 
-          {/* 카카오 — UI만 구현 */}
-          <TouchableOpacity style={styles.btnKakao} activeOpacity={0.85} disabled={isLoading}>
+          {/* 카카오 */}
+          <TouchableOpacity style={styles.btnKakao} onPress={handleKakaoLogin} activeOpacity={0.85} disabled={isLoading}>
             <Text style={styles.btnKakaoText}>카카오로 로그인</Text>
           </TouchableOpacity>
 

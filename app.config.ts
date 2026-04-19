@@ -18,8 +18,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: true,
     bundleIdentifier: 'com.woongking.app',
     googleServicesFile: './GoogleService-Info.plist',
+    usesAppleSignIn: true, // Apple 로그인 capability 활성화
     infoPlist: {
-      // iOS 푸시 알림 권한 요청 시 표시되는 설명 문구
       NSUserNotificationsUsageDescription:
         '숙제 마감, 피드백, 공지 알림을 받으려면 알림 권한이 필요합니다.',
     },
@@ -42,7 +42,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     'expo-router',
     '@react-native-google-signin/google-signin', // Google 로그인
-    // 'react-native-kakao-login',               // 카카오 로그인 — API 키 발급 후 활성화
+    [
+      'react-native-kakao-login',
+      { kakaoAppKey: process.env.EXPO_PUBLIC_KAKAO_APP_KEY ?? '' },
+    ],
     [
       'expo-camera',
       {

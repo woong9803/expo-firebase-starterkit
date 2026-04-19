@@ -3,13 +3,15 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { getDoc, onSnapshot } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { Collections } from '../lib/firestore';
 import { useAuthStore } from '../store/useAuthStore';
 import { initFCM, registerFCMListeners } from '../lib/fcm';
+import { configureGoogleSignIn } from '../lib/auth';
 import { User, Academy } from '../types';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 // Firestore 조회에 타임아웃 적용 — 네트워크 지연 시 무한 대기 방지
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -21,7 +23,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-export default function RootLayout() {
+// ErrorBoundary는 class 컴포넌트이므로 훅을 직접 사용할 수 없음
+// → 내부 RootLayoutInner에서 훅을 처리하고, 외부 RootLayout이 ErrorBoundary로 감쌈
+function RootLayoutInner() {
   const router   = useRouter();
   const segments = useSegments();
   const { user, setUser, setAcademy, setAcademyId } = useAuthStore();
@@ -29,6 +33,9 @@ export default function RootLayout() {
   const { top } = useSafeAreaInsets();
 
   const [initialized, setInitialized] = useState(false);
+
+  // GoogleSignin 앱 시작 시 1회 초기화
+  useEffect(() => { configureGoogleSignIn(); }, []);
 
   useEffect(() => {
     // 안전망: 어떤 이유로도 8초 안에 초기화 안 되면 강제 탈출
@@ -51,6 +58,17 @@ export default function RootLayout() {
             );
             if (userSnap.exists()) {
               const userData = userSnap.data() as User;
+
+              // 탈퇴 처리된 계정 감지 — 즉시 로그아웃
+              if (userData.deleted_at != null) {
+                await firebaseUser.getIdToken(true).catch(() => {}); // 토큰 무효화 시도
+                await signOut(auth).catch(() => {});
+                setUser(null);
+                setInitialized(true);
+                clearTimeout(fallbackTimer);
+                return;
+              }
+
               setUser(userData);
               if (userData.academy_id) {
                 const academySnap = await withTimeout(
@@ -170,6 +188,15 @@ export default function RootLayout() {
         }}
       />
     </>
+  );
+}
+
+// 루트 레이아웃 — ErrorBoundary로 전체 앱 크래시 캐치
+export default function RootLayout() {
+  return (
+    <ErrorBoundary>
+      <RootLayoutInner />
+    </ErrorBoundary>
   );
 }
 

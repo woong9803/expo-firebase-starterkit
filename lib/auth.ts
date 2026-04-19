@@ -43,11 +43,11 @@ import { auth } from './firebase';
 import { Collections } from './firestore';
 import { User } from '../types';
 
-// 카카오 로그인 — API 키 발급 후 활성화
-// const KakaoLogin = require('react-native-kakao-login').default as {
-//   login: () => Promise<{ accessToken: string }>;
-//   logout: () => Promise<void>;
-// };
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const KakaoLogin = require('react-native-kakao-login').default as {
+  login: () => Promise<{ accessToken: string }>;
+  logout: () => Promise<void>;
+};
 
 // ─── 이메일/비밀번호 인증 ───────────────────────────────────────────
 
@@ -85,15 +85,25 @@ export const signUpWithEmail = async (
 // ─── 소셜 로그인 ───────────────────────────────────────────────────
 
 /**
+ * GoogleSignin 초기화 — 앱 시작 시 1회 호출 필요 (app/_layout.tsx에서 호출)
+ * EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: Firebase 콘솔 → Authentication → Google → 웹 클라이언트 ID
+ */
+export const configureGoogleSignIn = () => {
+  if (!GoogleSignin) return;
+  GoogleSignin.configure({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+};
+
+/**
  * Google 로그인
  * @react-native-google-signin/google-signin으로 idToken 획득 후
  * Firebase GoogleAuthProvider credential로 변환해 로그인
  */
 export const signInWithGoogle = async (): Promise<UserCredential> => {
   if (!GoogleSignin) {
-    throw new Error('Google 로그인을 사용하려면 앱을 Xcode로 빌드해야 합니다.');
+    throw new Error('Google 로그인을 사용하려면 앱을 빌드해야 합니다.');
   }
-  // Android: Google Play 서비스 가용성 확인
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
   const userInfo = await GoogleSignin.signIn();
@@ -133,17 +143,16 @@ export const signInWithApple = async (): Promise<UserCredential> => {
  *
  * ⚠️ 카카오 Admin Key는 Cloud Function 환경변수에만 있음 — 클라이언트 코드 포함 절대 금지
  */
-// 카카오 로그인 — API 키 발급 후 활성화
-// export const signInWithKakao = async (): Promise<UserCredential> => {
-//   const kakaoToken = await KakaoLogin.login();
-//   const functions = getFunctions();
-//   const kakaoLoginFn = httpsCallable<
-//     { accessToken: string },
-//     { customToken: string }
-//   >(functions, 'kakaoLogin');
-//   const result = await kakaoLoginFn({ accessToken: kakaoToken.accessToken });
-//   return signInWithCustomToken(auth, result.data.customToken);
-// };
+export const signInWithKakao = async (): Promise<UserCredential> => {
+  const kakaoToken = await KakaoLogin.login();
+  const functions = getFunctions();
+  const kakaoLoginFn = httpsCallable<
+    { accessToken: string },
+    { customToken: string }
+  >(functions, 'kakaoLogin');
+  const result = await kakaoLoginFn({ accessToken: kakaoToken.accessToken });
+  return signInWithCustomToken(auth, result.data.customToken);
+};
 
 // ─── 휴대폰 OTP 인증 ───────────────────────────────────────────────
 
@@ -181,6 +190,19 @@ export const verifyPhoneOtp = async (
   code: string
 ): Promise<UserCredential> => {
   return confirmationResult.confirm(code);
+};
+
+// ─── 소셜 로그인 신규 유저 처리 ──────────────────────────────────────
+
+/**
+ * 소셜 로그인 후 Firestore 문서 존재 여부 확인
+ * - 존재하면 true (기존 유저 → 자동 라우팅)
+ * - 없으면 false (신규 유저 → phone-input으로 온보딩 시작)
+ */
+export const checkUserDocExists = async (uid: string): Promise<boolean> => {
+  const { getDoc } = await import('firebase/firestore');
+  const snap = await getDoc(Collections.user(uid));
+  return snap.exists();
 };
 
 // ─── Firestore 사용자 문서 관리 ─────────────────────────────────────
