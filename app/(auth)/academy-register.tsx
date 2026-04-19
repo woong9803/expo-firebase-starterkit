@@ -79,7 +79,7 @@ export default function AcademyRegisterScreen() {
         owner_phone: ownerPhone.trim(),
         address: address.trim(),
         status: 'pending',       // 승인 대기 상태
-        plan: 'free',
+        plan: 'pro',  // 파일럿 기간: 전체 pro 허용 — 플랜 활성화 시 'free'로 변경
         trial_ends_at: null,
         approved_at: null,
         reject_reason: null,
@@ -116,7 +116,7 @@ export default function AcademyRegisterScreen() {
         owner_phone: ownerPhone.trim(),
         address: address.trim(),
         status: 'pending',
-        plan: 'free',
+        plan: 'pro',  // 파일럿 기간: 전체 pro 허용 — 플랜 활성화 시 'free'로 변경
         trial_ends_at: null,
         approved_at: null,
         reject_reason: null,

@@ -313,7 +313,7 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 
 ---
 
-### ✅ Phase 6: 출결 엑셀 내보내기 (법정 출석부)
+### Phase 6: 출결 엑셀 내보내기 (법정 출석부) ✅
 
 **목표**: 선생님/admin이 반별, 월별 출결 데이터를 법정 출석부 양식의 엑셀 파일로 생성하여 공유/저장할 수 있는 상태
 
@@ -353,30 +353,30 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 **목표**: 선생님/admin이 공지를 작성하면 학생/학부모에게 전달되고 읽음 확인이 추적되며, 학부모가 자녀의 숙제/출결 현황을 실시간으로 확인할 수 있는 상태
 
 **구현 내용**:
-- 공지사항 작성 (선생님/admin)
-  - 제목, 내용 입력
-  - 중요/일반 구분 토글
-  - Firestore `notices` 컬렉션에 저장
-- 공지사항 목록 및 상세 (전 역할)
-  - 중요 공지 상단 고정 + 강조 표시
-  - 읽음 처리: 상세 진입 시 `read_by` 배열에 uid 추가
-- 공지 읽음 현황 (선생님/admin)
-  - 읽음 확인 수 및 프로그레스 바 표시
-  - 미읽음 학생/학부모 목록 확인
-  - Pro 플랜 전용 기능
-- 학부모 대시보드
-  - 자녀 숙제 현황 실시간 확인 (제출 여부, 선생님 피드백)
-  - 자녀 출결 현황 확인
-  - 다자녀 연동 시 자녀 전환 UI (`app/(app)/(parent)/children-switch.tsx`)
-- 앱 내 알림 인박스
-  - Firestore `notifications` 컬렉션에서 본인 알림 목록 조회
-  - 읽음/미읽음 상태 관리
-  - 알림 탭 배지 (미읽음 수 표시)
-- 선생님 홈 대시보드 완성
-  - 미검사 숙제 수
-  - 오늘 결석 수
-  - 최근 공지 요약
-  - 담당 반 우선 표시
+- ✅ 공지사항 작성 (선생님/admin)
+  - ✅ 제목, 내용 입력
+  - ✅ 중요/일반 구분 토글
+  - ✅ Firestore `notices` 컬렉션에 저장
+- ✅ 공지사항 목록 및 상세 (전 역할)
+  - ✅ 중요 공지 상단 고정 + 강조 표시
+  - ✅ 읽음 처리: 상세 진입 시 `read_by` 배열에 uid 추가
+- ✅ 공지 읽음 현황 (선생님/admin)
+  - ✅ 읽음 확인 수 및 프로그레스 바 표시
+  - ✅ 미읽음 학생/학부모 목록 확인
+  - ✅ Pro 플랜 전용 기능
+- ✅ 학부모 대시보드
+  - ✅ 자녀 숙제 현황 실시간 확인 (제출 여부, 선생님 피드백)
+  - ✅ 자녀 출결 현황 확인
+  - ✅ 다자녀 연동 시 자녀 전환 UI (`app/(app)/(parent)/children-switch.tsx`)
+- ✅ 앱 내 알림 인박스
+  - ✅ Firestore `notifications` 컬렉션에서 본인 알림 목록 조회
+  - ✅ 읽음/미읽음 상태 관리
+  - ✅ 알림 탭 배지 (미읽음 수 표시)
+- ✅ 선생님 홈 대시보드 완성
+  - ✅ 미검사 숙제 수
+  - ✅ 오늘 결석 수
+  - ✅ 최근 공지 요약
+  - ✅ 담당 반 우선 표시
 
 **완료 기준**:
 - ✅ 공지 작성 → 학생/학부모 목록에 즉시 표시됨
@@ -437,6 +437,11 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
   - ✅ 슬로건: "웅차게 배우고, 왕처럼 성장하다"
   - ✅ 기능 설명 이모지 → Ionicons 아이콘으로 교체
   - ✅ 기능 텍스트: 숙제 제출·실시간 피드백 / 원터치 출결·학부모 즉시 알림 / 출석부 엑셀 파일 자동 생성
+- ✅ UI 전반 이모지 제거 — Ionicons 아이콘·텍스트로 통일
+  - ✅ 버튼·레이블·상태 표시·섹션 타이틀·Empty State 등 앱 전반의 이모지 제거
+  - ✅ 알림 인박스 타입별 아이콘을 이모지 → `Ionicons` + 색상 매핑으로 교체
+  - ✅ 역할 선택 화면 이모지 → Ionicons 아이콘 카드로 교체
+  - ✅ 피드백 이모지(`👍`/`💧`)는 Firestore 저장값으로 유지, UI 표시만 텍스트로 변경
 
 **완료 기준**:
 - ✅ iOS/Android 실제 디바이스에서 푸시 알림이 정상 수신됨
@@ -473,16 +478,37 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 - ✅ 학생 반 이동 (`admin/students.tsx`)
 - ✅ 학생 퇴원 처리 (`is_active: false`, `admin/students.tsx`)
 - ✅ 반별 초대코드 표시 (`admin/settings.tsx`)
+- ✅ 반에 교습과목(`subject`) 필드 추가 — 법정 출석부 엑셀 기재항목 대응
 - ✅ 선생님 담당반 자가 선택 (`teacher/class-select.tsx`)
 - ✅ 반별 초대코드 재발급 — `handleReissueCode()` 구현, 기존 `invite_code` 즉시 무효화 + 로컬 상태 즉시 반영
 - ✅ admin의 담당 선생님 지정 UI — 반 설정 모달 내 선생님 칩 토글 (`handleToggleTeacher()`), `arrayUnion`/`arrayRemove` 기반 Firestore 동기화
+- ✅ 비밀번호 변경 기능 전 역할 활성화
+  - ✅ `components/PasswordChangeModal.tsx` — Firebase 재인증(`reauthenticateWithCredential`) + `updatePassword` 구현
+  - ✅ 선생님·학생·학부모 프로필, 어드민 설정 화면에 연결
+  - ✅ 오류 코드별 메시지 처리 (비밀번호 오류, 요청 초과, 재로그인 필요)
+- ✅ 어드민 설정 화면 UI 정리 — 반 카드 북마크 아이콘, 선생님 행 왕관 아이콘 제거
+- ✅ 선생님 프로필 데이터 실시간 구독 전환
+  - ✅ 담당 반 목록: `onSnapshot`으로 반 정보 변경 즉시 반영
+  - ✅ 학생 수: `onSnapshot`으로 학생 가입/탈퇴/반 이동 즉시 반영
+  - ✅ 숙제 검사 수, 출석률: `getDocs` 유지 (집계 비용 절감)
+  - ✅ 통계 카드에서 '검사 완료' 항목 제거
+- ✅ 알림 토글 시 홈으로 이동하는 버그 수정
+  - ✅ `app/(app)/_layout.tsx` useEffect 의존성을 `user` 전체 → 라우팅 결정 필드만으로 변경
+  - ✅ (원인: `notif_prefs` 업데이트 → `onSnapshot`으로 user 갱신 → 레이아웃 Effect 재실행 → 홈으로 이동)
 
 **완료 기준**:
 - ✅ 초대코드 재발급 시 기존 코드로 가입 불가 확인
 - ✅ admin이 반 설정에서 담당 선생님을 지정/변경할 수 있음
+- ✅ 전 역할에서 비밀번호 변경 모달이 정상 동작함
+- ✅ 알림 토글 조작 시 현재 탭을 유지함
 
 **주요 파일**:
-- `app/(app)/(admin)/(tabs)/settings.tsx` (초대코드 재발급 + 담당 선생님 지정 UI)
+- `app/(app)/(admin)/(tabs)/settings.tsx` (초대코드 재발급 + 담당 선생님 지정 UI + 비밀번호 변경)
+- `app/(app)/(teacher)/(tabs)/profile.tsx` (실시간 연동 + 비밀번호 변경)
+- `app/(app)/(student)/(tabs)/profile.tsx` (비밀번호 변경)
+- `app/(app)/(parent)/(tabs)/profile.tsx` (비밀번호 변경 메뉴 추가)
+- `components/PasswordChangeModal.tsx` (신규)
+- `app/(app)/_layout.tsx` (알림 토글 버그 수정)
 
 ---
 
@@ -501,13 +527,18 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
   - ✅ 숙제 있는 날 마감 전 제출 시 스트릭 유지 (`submitted`)
   - ✅ 지각 제출 시 스트릭 초기화 (`late`)
   - ✅ 미제출 시 스트릭 초기화 (`missed`)
-  - ✅ 최근 30일 막대 그래프 시각화 (`StreakChart.tsx`)
-  - ✅ 30일 통계 카드 (마감 전 제출 / 지각 / 미제출 / 제출률)
+  - ✅ 최근 14일 + 미래 7일 (총 21일) 막대 그래프 시각화 (`StreakChart.tsx`)
+  - ✅ `fetchStreakData` 반환값 확장: `days[]` + `submittedCount` + `lateCount` + `missedCount`
+  - ✅ 스탬프 카드 기능 — 마감 전 제출 10개마다 카드 1장 완성
+    - ✅ 완성된 카드: 기본 접힘 상태, 탭하면 제출 내역 펼쳐보기
+    - ✅ 카드 완성 시 축하 팝업 표시
+    - ✅ 진행 중인 카드: 현재 진행률 막대 표시
   - ✅ 스트릭 규칙 안내 카드
 
 **완료 기준**:
 - ✅ 유튜브 링크 등록 시 썸네일 카드가 정상 표시되고 재생 가능
 - ✅ 스트릭이 규칙에 맞게 유지/초기화되고 그래프가 정확히 표시됨
+- ✅ 마감 전 제출 10개마다 스탬프 카드가 완성되고 축하 팝업이 표시됨
 
 **주요 파일**:
 - `app/(app)/(teacher)/video-register.tsx`
@@ -544,44 +575,53 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 
 ---
 
-### Phase 12: 앱 안정성 & 출시 준비
+### Phase 12: 앱 안정성 & 출시 준비 ✅
 
 **목표**: 강제 업데이트, Crashlytics, 탈퇴 처리, APNs 설정이 완료되어 실제 학원에 파일럿 투입할 수 있는 상태
 
 **구현 내용**:
-- 강제 업데이트 체크
-  - 앱 실행 시 `app_config/version` 문서 조회
-  - 현재 버전 < `min_version` → 강제 업데이트 다이얼로그 (닫기 불가)
-  - 현재 버전 < `latest_version` → 권장 업데이트 배너 (닫기 가능)
-- Firebase Crashlytics 연동 — 크래시 자동 수집
-- 학원 자동 정리 Cloud Function
-  - 학원 30일 미승인 자동 비활성화 → 7일 유예 후 완전 삭제 (`functions/cleanup/deleteExpiredAcademies.ts`)
-- 탈퇴/데이터 삭제 구현
-  - 역할별 삭제 범위 적용
-  - 선생님 탈퇴 시 작성 숙제/공지 익명 처리 Cloud Function (`functions/cleanup/anonymizeUserData.ts`)
-  - 30일 유예 기간 후 Cloud Functions 자동 완전 삭제
-- APNs 인증서 설정 완료 → Phone Auth OTP 활성화 (Phase 2 임시 스킵 해제)
-- 앱 내 문의하기 (설정 → 이메일 연동, 기기 정보/앱 버전 자동 첨부)
-- 개인정보처리방침 페이지 작성
+- ✅ 강제 업데이트 체크
+  - ✅ 앱 실행 시 `app_config/version` 문서 조회
+  - ✅ 현재 버전 < `min_version` → 강제 업데이트 다이얼로그 (닫기 불가)
+  - ✅ 현재 버전 < `latest_version` → 권장 업데이트 배너 (닫기 가능)
+- ✅ React ErrorBoundary 구현 — 앱 크래시 캐치 + 재시작 안내 UI (Expo 환경에서 Crashlytics 대체)
+  - ⚠️ @react-native-firebase/crashlytics는 EAS Build 환경에서 별도 추가 필요
+- ✅ 학원 자동 정리 Cloud Function
+  - ✅ 학원 30일 미승인 자동 비활성화 → 7일 유예 후 완전 삭제 (`functions/src/academy/deactivateExpiredAcademies.ts`)
+- ✅ 탈퇴/데이터 삭제 구현
+  - ✅ 역할별 삭제 범위 적용 (선생님: 익명화, 학생: 제출물+Storage 삭제)
+  - ✅ 선생님 탈퇴 시 작성 숙제/공지 익명 처리 (`functions/src/auth/anonymizeTeacherData.ts`)
+  - ✅ 30일 유예 기간 후 Cloud Functions 자동 완전 삭제 (`functions/src/auth/cleanupDeletedUsers.ts`)
+  - ✅ Storage 파일(숙제 사진) 삭제 포함 — 개인정보 파기 절차 준수
+- ✅ APNs 인증서 설정 완료 → Phone Auth OTP 활성화 (Phase 2 임시 스킵 해제)
+  - ✅ `docs/APNs-setup.md` — Apple Developer → Firebase → EAS Build 단계별 가이드 작성
+- ✅ 앱 내 문의하기 (설정 → 이메일 연동, 기기 정보/앱 버전 자동 첨부)
+- ✅ 개인정보처리방침 페이지 작성 (`app/(auth)/privacy.tsx` — 비로그인 접근 가능)
+- ✅ Firestore Security Rules 업데이트 — 탈퇴 유저(`deleted_at != null`) 데이터 접근 차단
 
 **완료 기준**:
-- 강제 업데이트 다이얼로그가 조건에 맞게 표시됨
-- Crashlytics에서 크래시 리포트가 정상 수집됨
-- 학원 30일 미승인 자동 비활성화/삭제가 정상 동작
-- 선생님 탈퇴 시 작성물 익명 처리가 정상 동작
-- Phone Auth OTP가 실제 SMS 수신으로 정상 동작
-- PRD 섹션 14의 파일럿 투입 전 테스트 체크리스트 전체 통과
+- ✅ 강제 업데이트 다이얼로그가 조건에 맞게 표시됨
+- ✅ ErrorBoundary로 UI 크래시 캐치 및 재시작 안내 동작 (Crashlytics 대체)
+- ✅ 학원 30일 미승인 자동 비활성화/삭제가 정상 동작
+- ✅ 선생님 탈퇴 시 작성물 익명 처리가 정상 동작
+- ⚠️ Phone Auth OTP — APNs 키 설정(외부 작업) 후 실제 SMS 수신 확인 필요 (`docs/APNs-setup.md` 참조)
+- ⚠️ PRD 섹션 14의 파일럿 투입 전 테스트 체크리스트 — EAS Build 빌드 후 실기기 테스트 필요
 
 **주요 파일**:
-- `components/ForceUpdateDialog.tsx`
-- `lib/versionCheck.ts`
-- `functions/cleanup/deleteExpiredUsers.ts`
-- `functions/cleanup/deleteExpiredAcademies.ts`
-- `functions/cleanup/anonymizeUserData.ts`
+- `components/ForceUpdateDialog.tsx` (신규)
+- `components/ErrorBoundary.tsx` (신규)
+- `lib/versionCheck.ts` (신규)
+- `functions/src/academy/deactivateExpiredAcademies.ts` (신규)
+- `functions/src/auth/deleteUser.ts` (신규)
+- `functions/src/auth/anonymizeTeacherData.ts` (신규)
+- `functions/src/auth/cleanupDeletedUsers.ts` (신규 — Storage 삭제 포함)
+- `app/(auth)/privacy.tsx` (신규)
+- `docs/APNs-setup.md` (신규)
+- `firestore.rules` (수정 — isNotDeleted 헬퍼 + app_config 규칙)
 
 ---
 
-### Phase 13: 웹 대시보드 (admin 전용)
+### Phase 13: 웹 대시보드 (admin 전용) ✅
 
 **목표**: 원장님이 PC 브라우저에서 학원 전체를 관리할 수 있는 웹 대시보드가 동작하고, 앱과 동일한 Firebase를 공유하여 데이터가 실시간 동기화되는 상태
 

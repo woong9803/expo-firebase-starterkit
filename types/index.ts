@@ -1,8 +1,8 @@
 import { Timestamp } from 'firebase/firestore';
 
 export type UserRole = 'admin' | 'teacher' | 'student' | 'parent';
-export type AcademyPlan = 'free' | 'pro' | 'trial';
-export type AcademyStatus = 'pending' | 'active' | 'rejected';
+export type AcademyPlan = 'free' | 'starter' | 'standard' | 'pro' | 'trial';
+export type AcademyStatus = 'pending' | 'active' | 'rejected' | 'deactivated';
 export type AcademyType = '학원' | '교습소' | '개인과외';
 
 export interface User {
@@ -44,6 +44,7 @@ export interface Academy {
   academy_code: string;       // 선생님 가입 시 입력하는 학원코드 (6자리 영숫자)
   plan: AcademyPlan;
   trial_ends_at: Timestamp | null;
+  plan_expires_at?: Timestamp | null;  // pro 플랜 만료일 (verifyTossPayment에서 설정)
   status: AcademyStatus;
   academy_type: AcademyType;
   submitted_at: Timestamp;
@@ -123,6 +124,19 @@ export interface AppConfig {
   min_version_android: string;
   latest_version: string;
   force_update_message: string;
+}
+
+// payments/{paymentId} — 토스페이먼츠 결제 내역
+export interface Payment {
+  id: string;
+  academy_id: string;
+  order_id: string;           // 결제 요청 시 생성한 주문번호 (uuid)
+  payment_key: string;        // 토스페이먼츠 paymentKey
+  amount: number;             // 결제 금액 (원)
+  plan: AcademyPlan;          // 결제한 플랜
+  plan_months: number;        // 결제 개월 수 (기본 1개월)
+  status: 'success' | 'canceled';
+  paid_at: Timestamp;
 }
 
 // videos/{videoId} — 선생님이 반에 등록한 YouTube 영상

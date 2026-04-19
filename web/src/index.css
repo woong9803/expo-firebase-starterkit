@@ -1,0 +1,209 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-page-bg text-text-main font-sans;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* 스크롤바 */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: #f1f3f6; }
+  ::-webkit-scrollbar-thumb { background: #d0d5dd; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+}
+
+@layer components {
+  /* ── 카드 ── */
+  .card {
+    background: #ffffff;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    padding: 22px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+  }
+  .card-header {
+    padding: 18px 22px 16px;
+    border-bottom: 1px solid #e4e7ec;
+  }
+
+  /* ── 버튼 ── */
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 font-semibold transition-colors
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    background: #3b5bdb;
+    color: #ffffff;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  .btn-primary:hover:not(:disabled) { background: #2e4bc3; }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-1.5 font-medium transition-colors;
+    background: #ffffff;
+    color: #0f172a;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  .btn-secondary:hover { background: #eef1f5; }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-1.5 font-medium transition-colors;
+    background: transparent;
+    color: #475569;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  .btn-ghost:hover { background: #eef1f5; }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-1.5 font-medium transition-colors;
+    background: transparent;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  .btn-danger:hover { background: #fee4e4; }
+
+  /* sm 사이즈 버튼 — .btn-* 와 조합 */
+  .btn-sm {
+    padding: 5px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* ── 입력 필드 ── */
+  .input-field {
+    @apply w-full outline-none transition-all;
+    background: #ffffff;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #0f172a;
+  }
+  .input-field::placeholder { color: #94a3b8; }
+  .input-field:focus {
+    border-color: #3b5bdb;
+    box-shadow: 0 0 0 3px #eef2ff;
+  }
+
+  /* ── 상태 뱃지 ── */
+  .badge-success {
+    @apply inline-flex items-center font-semibold;
+    background: #e6f7ef;
+    color: #065f46;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .badge-warning {
+    @apply inline-flex items-center font-semibold;
+    background: #fef3e0;
+    color: #78350f;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .badge-danger {
+    @apply inline-flex items-center font-semibold;
+    background: #fee4e4;
+    color: #991b1b;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .badge-neutral {
+    @apply inline-flex items-center font-semibold;
+    background: #f1f3f6;
+    color: #475569;
+    border: 1px solid #e4e7ec;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .badge-accent {
+    @apply inline-flex items-center font-semibold;
+    background: #eef2ff;
+    color: #3b5bdb;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .badge-info {
+    @apply inline-flex items-center font-semibold;
+    background: #e0f2fe;
+    color: #0284c7;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+
+  /* ── 테이블 ── */
+  .table-header-cell {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+    font-weight: 600;
+    padding: 13px 16px;
+    background: #f1f3f6;
+    white-space: nowrap;
+  }
+  .table-cell {
+    padding: 13px 16px;
+    font-size: 13px;
+    color: #0f172a;
+    border-bottom: 1px solid #e4e7ec;
+  }
+  .table-row:hover td { background: #eef1f5; }
+
+  /* ── 모달 백드롭 ── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,0.5);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.15s ease;
+  }
+  .modal-box {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 12px 20px -4px rgba(16,24,40,0.1), 0 4px 8px -2px rgba(16,24,40,0.06);
+    animation: slideUp 0.2s ease;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-footer {
+    background: #f1f3f6;
+    border-top: 1px solid #e4e7ec;
+    padding: 14px 22px;
+    border-radius: 0 0 12px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { transform: translateY(12px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+}

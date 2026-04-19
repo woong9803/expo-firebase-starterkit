@@ -52,8 +52,8 @@ export default function AdminAttendanceExportScreen() {
   const { top } = useSafeAreaInsets();
   const { user, academy } = useAuthStore();
 
-  // Pro 플랜 게이팅 — free 플랜이면 업그레이드 시트 표시
-  const isPro = academy?.plan === 'pro' || academy?.plan === 'trial';
+  // 유료 플랜 게이팅 — free 플랜이면 업그레이드 시트 표시 (starter / standard / pro / trial 모두 허용)
+  const isPro = academy?.plan !== 'free' && !!academy?.plan;
   const [showProSheet, setShowProSheet] = useState(!isPro);
 
   // 학원 전체 반 목록
@@ -107,9 +107,10 @@ export default function AdminAttendanceExportScreen() {
           where('is_active', '==', true),
         )
       );
-      const students = studentsSnap.docs.map(
-        (d) => ({ uid: d.id, ...d.data() } as User)
-      );
+      // 탈퇴 학생은 엑셀에서 제외
+      const students = studentsSnap.docs
+        .map((d) => ({ uid: d.id, ...d.data() } as User))
+        .filter((s) => !s.deleted_at);
 
       if (students.length === 0) {
         Alert.alert('', strings.export.noStudents);
@@ -159,12 +160,12 @@ export default function AdminAttendanceExportScreen() {
   const selectedClass = classes.find((c) => c.id === selectedClassId);
 
   return (
-    <View style={[styles.container, { paddingTop: top }]}>
+    <View style={[styles.container, { paddingTop: 0 }]}>
 
       {/* ── 헤더 ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color="#0F172A" />
+          <Ionicons name="close" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.export.title}</Text>
         <View style={{ width: 40 }} />

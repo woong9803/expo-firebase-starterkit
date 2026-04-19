@@ -11,8 +11,11 @@ import {
   TextInput,
   Share,
   useWindowDimensions,
+  Linking,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
@@ -21,10 +24,12 @@ import {
   query, where, getDocs, onSnapshot, addDoc, updateDoc, deleteDoc, getCountFromServer,
   arrayUnion, arrayRemove,
 } from 'firebase/firestore';
-import { auth } from '../../../../lib/firebase';
+import { auth, app } from '../../../../lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
+import { strings } from '../../../../constants/strings';
 import { User, Class } from '../../../../types';
 
 // ─────────────────────────────────────────────────────────────
@@ -46,8 +51,10 @@ function toMonthDay(ts: any): string {
 
 // 플랜 표시 이름
 function planLabel(plan: string): string {
-  if (plan === 'pro') return 'Pro 플랜';
-  if (plan === 'trial') return 'Trial 플랜';
+  if (plan === 'pro') return '프로 플랜';
+  if (plan === 'standard') return '스탠다드 플랜';
+  if (plan === 'starter') return '스타터 플랜';
+  if (plan === 'trial') return '체험판';
   return 'Free 플랜';
 }
 
@@ -56,6 +63,7 @@ function planLabel(plan: string): string {
 // ─────────────────────────────────────────────────────────────
 
 export default function AdminSettingsScreen() {
+  const router = useRouter();
   const { top } = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const { user, academy, clearUser } = useAuthStore();
@@ -69,6 +77,7 @@ export default function AdminSettingsScreen() {
   const [classTeacherMap, setClassTeacherMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading]           = useState(true);
   const [isPwModalVisible, setIsPwModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // ── 새 반 만들기 모달 ──
   const [isNewClassModalVisible, setIsNewClassModalVisible] = useState(false);
@@ -97,7 +106,8 @@ export default function AdminSettingsScreen() {
         // 반별 학생 수 집계
         const countResults = await Promise.all(
           classList.map(async cls => {
-            const s = await getCountFromServer(
+            // getCountFromServer는 클라이언트 필터 불가 → getDocs로 교체 후 탈퇴 학생 제외
+            const s = await getDocs(
               query(
                 Collections.users(),
                 where('academy_id', '==', user.academy_id),
@@ -106,7 +116,8 @@ export default function AdminSettingsScreen() {
                 where('is_active', '==', true),
               )
             );
-            return { classId: cls.id, count: s.data().count };
+            const count = s.docs.filter(d => !d.data().deleted_at).length;
+            return { classId: cls.id, count };
           })
         );
         const cMap: Record<string, number> = {};
@@ -132,7 +143,10 @@ export default function AdminSettingsScreen() {
         where('is_active', '==', true),
       ),
       (snap) => {
-        const teacherList = snap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+        // 탈퇴 선생님(deleted_at != null) 제외
+        const teacherList = snap.docs
+          .filter(d => !d.data().deleted_at)
+          .map(d => ({ uid: d.id, ...d.data() } as User));
         setTeachers(teacherList);
 
         // classId → 첫 번째 담당 선생님 이름 역매핑
@@ -361,6 +375,44 @@ export default function AdminSettingsScreen() {
     }
   };
 
+  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
+  const handleInquiry = () => {
+    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: 1.0.0\n사용자 ID: ${user?.uid ?? ''}`;
+    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
+    Linking.openURL(mailto).catch(() =>
+      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
+    );
+  };
+
+  // ── 탈퇴하기 ──────────────────────────────────
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      strings.account.deleteConfirmTitle,
+      strings.account.deleteConfirmMessage,
+      [
+        { text: strings.common.cancel, style: 'cancel' },
+        {
+          text: strings.account.deleteButton,
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              const fns = getFunctions(app, 'asia-northeast3');
+              const deleteUserFn = httpsCallable(fns, 'deleteUser');
+              await deleteUserFn({});
+              await signOut(auth);
+              clearUser();
+            } catch {
+              Alert.alert(strings.common.error, strings.account.deleteFailed);
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // ── 로그아웃 ──
   const handleLogout = async () => {
     Alert.alert('로그아웃', '정말 로그아웃하실 건가요?', [
@@ -557,11 +609,48 @@ export default function AdminSettingsScreen() {
           <Text style={styles.accountBtnText}>비밀번호 변경</Text>
           <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
+
+        {/* 문의하기 */}
+        <View style={styles.accountDivider} />
+        <TouchableOpacity
+          style={styles.accountBtn}
+          onPress={handleInquiry}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="help-circle-outline" size={18} color="#5B50E8" />
+          <Text style={styles.accountBtnText}>{strings.account.inquiryTitle}</Text>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
+
+        {/* 개인정보처리방침 */}
+        <View style={styles.accountDivider} />
+        <TouchableOpacity
+          style={styles.accountBtn}
+          onPress={() => router.push('/(auth)/privacy' as never)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="document-text-outline" size={18} color="#5B50E8" />
+          <Text style={styles.accountBtnText}>{strings.account.privacyPolicy}</Text>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
       </View>
 
       {/* ── 로그아웃 ── */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
         <Text style={styles.logoutText}>로그아웃</Text>
+      </TouchableOpacity>
+
+      {/* ── 탈퇴하기 버튼 ── */}
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={handleDeleteAccount}
+        disabled={isDeleting}
+        activeOpacity={0.7}
+      >
+        {isDeleting
+          ? <ActivityIndicator size="small" color="#EF4444" />
+          : <Text style={styles.deleteText}>{strings.account.deleteAccount}</Text>
+        }
       </TouchableOpacity>
 
       {/* ── 새 반 만들기 모달 ── */}
@@ -901,6 +990,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', backgroundColor: '#fff',
   },
   logoutText: { fontSize: 16, fontWeight: '600', color: '#EF4444' },
+  accountDivider: { height: 1, backgroundColor: '#F1F5F9' },
+  deleteBtn: {
+    marginHorizontal: 16, marginTop: 8,
+    height: 44, alignItems: 'center', justifyContent: 'center',
+  },
+  deleteText: { fontSize: 14, color: '#94A3B8', textDecorationLine: 'underline' },
 
   // 모달 공통
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },

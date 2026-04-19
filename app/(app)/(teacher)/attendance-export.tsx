@@ -51,9 +51,8 @@ export default function AttendanceExportScreen() {
   const { top } = useSafeAreaInsets();
   const { user, academy } = useAuthStore();
 
-  // Pro 플랜 게이팅 — free 플랜이면 업그레이드 시트 표시
-  const isPro =
-    academy?.plan === 'pro' || academy?.plan === 'trial';
+  // 유료 플랜 게이팅 — free 플랜이면 업그레이드 시트 표시 (starter / standard / pro / trial 모두 허용)
+  const isPro = academy?.plan !== 'free' && !!academy?.plan;
   const [showProSheet, setShowProSheet] = useState(!isPro);
 
   // 선생님 담당 반 목록
@@ -108,9 +107,10 @@ export default function AttendanceExportScreen() {
           where('is_active', '==', true),
         )
       );
-      const students = studentsSnap.docs.map(
-        (d) => ({ uid: d.id, ...d.data() } as User)
-      );
+      // 탈퇴 학생은 엑셀에서 제외
+      const students = studentsSnap.docs
+        .map((d) => ({ uid: d.id, ...d.data() } as User))
+        .filter((s) => !s.deleted_at);
 
       if (students.length === 0) {
         Alert.alert('', strings.export.noStudents);

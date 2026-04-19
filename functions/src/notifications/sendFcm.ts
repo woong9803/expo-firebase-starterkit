@@ -15,7 +15,7 @@ export interface SendFcmParams {
 }
 
 // ─────────────────────────────────────────────
-// Pro 플랜 체크 (free 플랜이면 FCM 발송 건너뜀)
+// 유료 플랜 체크 (free 플랜이면 FCM 발송 건너뜀 — starter/standard/pro/trial 모두 허용)
 // ─────────────────────────────────────────────
 
 async function checkProPlan(academyId: string): Promise<boolean> {

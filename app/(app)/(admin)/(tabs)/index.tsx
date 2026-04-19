@@ -117,7 +117,7 @@ export default function AdminHomeScreen() {
     if (!user?.academy_id) return;
     const unsub = onSnapshot(
       query(Collections.users(), where('academy_id', '==', user.academy_id), where('role', '==', 'student')),
-      (snap) => setStudentCount(snap.docs.filter(d => d.data().is_active !== false).length)
+      (snap) => setStudentCount(snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length)
     );
     return () => unsub();
   }, [user?.academy_id]);
@@ -127,7 +127,7 @@ export default function AdminHomeScreen() {
     if (!user?.academy_id) return;
     const unsub = onSnapshot(
       query(Collections.users(), where('academy_id', '==', user.academy_id), where('role', '==', 'teacher')),
-      (snap) => setTeacherCount(snap.docs.filter(d => d.data().is_active !== false).length)
+      (snap) => setTeacherCount(snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length)
     );
     return () => unsub();
   }, [user?.academy_id]);
@@ -150,7 +150,7 @@ export default function AdminHomeScreen() {
               where('class_id', '==', cls.id),
               where('role', '==', 'student'),
             ));
-            return { classId: cls.id, count: s.docs.filter(d => d.data().is_active !== false).length };
+            return { classId: cls.id, count: s.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length };
           })
         );
         const cMap: Record<string, number> = {};
@@ -185,8 +185,8 @@ export default function AdminHomeScreen() {
           getDocs(Collections.attendanceRecords(cls.id, todayStr)),
         ]);
 
-        // is_active 필드가 없는 자체 가입 학생도 포함 (false가 아닌 경우 모두 활성)
-        const activeStudents = studentSnap.docs.filter(d => d.data().is_active !== false);
+        // is_active 필드가 없는 자체 가입 학생도 포함 (false가 아닌 경우 모두 활성), 탈퇴 학생 제외
+        const activeStudents = studentSnap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at);
         const studentNameMap: Record<string, string> = {};
         activeStudents.forEach(d => { studentNameMap[d.id] = d.data().name ?? '이름 없음'; });
 
@@ -286,7 +286,8 @@ export default function AdminHomeScreen() {
             where('class_id', '==', cls.id),
             where('role', '==', 'student'),
           ));
-          const activeStudents = studentSnap.docs.filter(d => d.data().is_active !== false);
+          // 비활성화·탈퇴 학생 모두 제외
+          const activeStudents = studentSnap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at);
           const nameMap: Record<string, string> = {};
           activeStudents.forEach(d => { nameMap[d.id] = d.data().name ?? '이름 없음'; });
 
@@ -431,10 +432,14 @@ export default function AdminHomeScreen() {
             <View style={[
               styles.planBadge,
               academy?.plan === 'pro' ? styles.planBadgePro :
+              (academy?.plan === 'standard' || academy?.plan === 'starter') ? styles.planBadgePro :
               academy?.plan === 'trial' ? styles.planBadgeTrial : styles.planBadgeFree,
             ]}>
               <Text style={styles.planBadgeText}>
-                {academy?.plan === 'pro' ? 'Pro' : academy?.plan === 'trial' ? 'Trial' : 'Free'}
+                {academy?.plan === 'pro' ? '프로' :
+                 academy?.plan === 'standard' ? '스탠다드' :
+                 academy?.plan === 'starter' ? '스타터' :
+                 academy?.plan === 'trial' ? '체험판' : 'Free'}
               </Text>
             </View>
             <Text style={styles.statLbl3}>플랜</Text>
