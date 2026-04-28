@@ -156,7 +156,7 @@ export default function TeacherNoticeReadStatusScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <Ionicons name="arrow-back" size={22} color="#0F172A" />
+          <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.notice.readStatus}</Text>
         <View style={styles.headerRight} />

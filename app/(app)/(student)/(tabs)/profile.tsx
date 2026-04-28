@@ -16,22 +16,28 @@ import {
   Share,
   Linking,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { auth, db } from '../../../../lib/firebase';
+import { auth, db, app } from '../../../../lib/firebase';
 import { Collections } from '../../../../lib/firestore';
 import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { updateDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Class, Homework, AttendanceRecord } from '../../../../types';
 import PasswordChangeModal from '../../../../components/PasswordChangeModal';
+import { strings } from '../../../../constants/strings';
+
+const APP_VERSION = '1.0.0';
 
 // AsyncStorage 키 — 알림 ON/OFF 설정 저장
 const NOTIF_HOMEWORK_KEY = 'student_notif_homework';
@@ -46,6 +52,7 @@ interface Stats {
 }
 
 export default function StudentProfileScreen() {
+  const router = useRouter();
   const { top } = useSafeAreaInsets();
   const { user, academy, clearUser } = useAuthStore();
 
@@ -57,6 +64,7 @@ export default function StudentProfileScreen() {
   const [feedbackNotif, setFeedbackNotif] = useState(true);
   const [noticeNotif, setNoticeNotif]     = useState(true);
   const [isPwModalVisible, setIsPwModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // ── 알림 설정 불러오기 ─────────────────────────
   useEffect(() => {
@@ -116,12 +124,14 @@ export default function StudentProfileScreen() {
   }, [user?.uid, homeworkNotif, feedbackNotif, noticeNotif]);
 
   // ── 반 이름 + 통계 데이터 로드 ─────────────────
-  useEffect(() => {
+  // useFocusEffect: 탭 진입할 때마다 재계산 → 선생님이 출결 입력하면 즉시 반영
+  useFocusEffect(useCallback(() => {
     if (!user?.uid || !user?.class_id) {
       setIsStatsLoading(false);
       return;
     }
 
+    setIsStatsLoading(true);
     (async () => {
       try {
         // 1) 소속 반 이름 조회
@@ -199,7 +209,7 @@ export default function StudentProfileScreen() {
         setIsStatsLoading(false);
       }
     })();
-  }, [user?.uid, user?.class_id]);
+  }, [user?.uid, user?.class_id, user?.streak]));
 
   // ── 연동코드 공유 ─────────────────────────────
   const handleShareLinkCode = useCallback(async () => {
@@ -235,16 +245,39 @@ export default function StudentProfileScreen() {
   // ── 비밀번호 변경 모달 열기 ──────────────────
   const handlePasswordChange = () => setIsPwModalVisible(true);
 
-  // ── 문의하기 ──────────────────────────────────
+  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
   const handleInquiry = () => {
+    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: ${APP_VERSION}\n사용자 ID: ${user?.uid ?? ''}`;
+    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
+    Linking.openURL(mailto).catch(() =>
+      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
+    );
+  };
+
+  // ── 탈퇴하기 ──────────────────────────────────
+  const handleDeleteAccount = () => {
     Alert.alert(
-      '문의하기',
-      '이메일로 문의해 주세요.\nsupport@woongking.kr',
+      strings.account.deleteConfirmTitle,
+      strings.account.deleteConfirmMessage,
       [
-        { text: '취소', style: 'cancel' },
+        { text: strings.common.cancel, style: 'cancel' },
         {
-          text: '이메일 보내기',
-          onPress: () => Linking.openURL('mailto:support@woongking.kr'),
+          text: strings.account.deleteButton,
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              const fns = getFunctions(app, 'asia-northeast3');
+              const deleteUserFn = httpsCallable(fns, 'deleteUser');
+              await deleteUserFn({});
+              await signOut(auth);
+              clearUser();
+            } catch {
+              Alert.alert(strings.common.error, strings.account.deleteFailed);
+            } finally {
+              setIsDeleting(false);
+            }
+          },
         },
       ]
     );
@@ -448,11 +481,35 @@ export default function StudentProfileScreen() {
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* 개인정보처리방침 */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/(auth)/privacy' as never)} activeOpacity={0.7}>
+          <View style={styles.menuLeft}>
+            <Ionicons name="document-text-outline" size={20} color="#64748B" style={styles.menuIcon} />
+            <Text style={styles.menuLabel}>{strings.account.privacyPolicy}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+        </TouchableOpacity>
       </View>
 
       {/* ── 로그아웃 버튼 ── */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
         <Text style={styles.logoutText}>로그아웃</Text>
+      </TouchableOpacity>
+
+      {/* ── 탈퇴하기 버튼 ── */}
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={handleDeleteAccount}
+        disabled={isDeleting}
+        activeOpacity={0.7}
+      >
+        {isDeleting
+          ? <ActivityIndicator size="small" color="#EF4444" />
+          : <Text style={styles.deleteText}>{strings.account.deleteAccount}</Text>
+        }
       </TouchableOpacity>
 
       <View style={{ height: 32 }} />
@@ -683,5 +740,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  deleteBtn: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textDecorationLine: 'underline',
   },
 });

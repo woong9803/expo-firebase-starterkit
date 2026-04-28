@@ -156,7 +156,7 @@ export default function TeacherAttendanceScreen() {
       (snap) => {
         const active = snap.docs
           .map((d) => ({ uid: d.id, ...d.data() } as User))
-          .filter((s) => s.is_active !== false);
+          .filter((s) => s.is_active !== false && !s.deleted_at);
         setStudents(active);
         setIsLoadingStudents(false);
       },
@@ -414,6 +414,7 @@ export default function TeacherAttendanceScreen() {
           renderItem={({ item }) => (
             <AttendanceRow
               studentName={item.name}
+              schoolName={item.school_name ?? undefined}
               status={mergedStatuses[item.uid] ?? null}
               reason={records[item.uid]?.reason ?? null}
               onStatusChange={(status) => handleStatusChange(item.uid, status)}

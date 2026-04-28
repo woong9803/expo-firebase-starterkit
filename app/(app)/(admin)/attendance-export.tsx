@@ -160,12 +160,12 @@ export default function AdminAttendanceExportScreen() {
   const selectedClass = classes.find((c) => c.id === selectedClassId);
 
   return (
-    <View style={[styles.container, { paddingTop: 0 }]}>
+    <View style={[styles.container, { paddingTop: top }]}>
 
       {/* ── 헤더 ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
-          <Ionicons name="close" size={24} color="#0F172A" />
+          <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.export.title}</Text>
         <View style={{ width: 40 }} />

@@ -5,7 +5,7 @@
  * 카드 탭 → 검사·피드백 화면, 우상단 버튼 → 숙제 출제 화면
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -77,6 +77,9 @@ export default function TeacherHomeworkScreen() {
   // 제출 현황 맵 (hwId → 제출 수)
   const [submitMap, setSubmitMap] = useState<Record<string, number>>({});
 
+  // 활성 학생 UID 세트 — 탈퇴 학생 제출물 필터링에 사용
+  const activeStudentUidsRef = useRef<Set<string>>(new Set());
+
   // 반 필터
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null); // null = 전체
   const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -95,21 +98,33 @@ export default function TeacherHomeworkScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isPro]);
 
-  // 학원 내 전체 반 목록 1회 로드 (반 이름 맵 + 숙제 구독 기반)
+  // 학원 내 전체 반 목록 + 활성 학생 UID 1회 로드
   useEffect(() => {
     if (!user?.academy_id) return;
     (async () => {
       try {
-        const snap = await getDocs(
-          query(Collections.classes(), where('academy_id', '==', user.academy_id))
-        );
-        const ids = snap.docs.map(d => d.id);
+        const [classSnap, studentSnap] = await Promise.all([
+          getDocs(query(Collections.classes(), where('academy_id', '==', user.academy_id))),
+          getDocs(query(
+            Collections.users(),
+            where('academy_id', '==', user.academy_id),
+            where('role', '==', 'student'),
+          )),
+        ]);
+        const ids = classSnap.docs.map(d => d.id);
         const map: Record<string, string> = {};
-        snap.docs.forEach(d => { map[d.id] = (d.data() as Class).name; });
+        classSnap.docs.forEach(d => { map[d.id] = (d.data() as Class).name; });
         setAllClassIds(ids);
         setClassMap(map);
+
+        // 탈퇴·비활성 학생 제외한 UID 세트 구성
+        activeStudentUidsRef.current = new Set(
+          studentSnap.docs
+            .filter(d => d.data().is_active !== false && !d.data().deleted_at)
+            .map(d => d.id)
+        );
       } catch (e) {
-        console.error('[TeacherHomework] 반 목록 조회 실패:', e);
+        console.error('[TeacherHomework] 반/학생 목록 조회 실패:', e);
       }
     })();
   }, [user?.academy_id]);
@@ -153,7 +168,9 @@ export default function TeacherHomeworkScreen() {
       onSnapshot(
         Collections.submissions(hw.id),
         (snap) => {
-          setSubmitMap(prev => ({ ...prev, [hw.id]: snap.size }));
+          // 탈퇴 학생 제출물 제외 — activeStudentUidsRef로 필터
+          const count = snap.docs.filter(d => activeStudentUidsRef.current.has(d.id)).length;
+          setSubmitMap(prev => ({ ...prev, [hw.id]: count }));
         },
         (e) => console.warn(`[TeacherHomework] 제출 구독 실패(${hw.id}):`, e)
       )

@@ -50,7 +50,10 @@ export default function AdminTeachersScreen() {
             where('is_active', '==', true),
           )
         );
-        const teacherList = teacherSnap.docs.map(d => d.data() as User);
+        // 탈퇴 선생님(deleted_at != null) 제외
+        const teacherList = teacherSnap.docs
+          .filter(d => !d.data().deleted_at)
+          .map(d => d.data() as User);
 
         // 2. 반 목록 조회 (classId → 반 이름 맵 생성)
         const classSnap = await getDocs(
@@ -109,9 +112,9 @@ export default function AdminTeachersScreen() {
   return (
     <View style={styles.container}>
       {/* ── 헤더 ── */}
-      <View style={[styles.header, { paddingTop: top + 12 }]}>
+      <View style={[styles.header, { paddingTop: 16 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={20} color="#0F172A" />
+          <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <View>
           <Text style={styles.headerTitle}>선생님 관리</Text>

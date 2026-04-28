@@ -113,7 +113,7 @@ export default function ClassSelectScreen() {
       <View style={[styles.header, { paddingTop: top + 12 }]}>
         {!isOnboarding && (
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={20} color="#0F172A" />
+            <Ionicons name="chevron-back" size={24} color="#0F172A" />
           </TouchableOpacity>
         )}
         <View style={styles.headerText}>

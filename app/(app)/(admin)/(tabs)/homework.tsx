@@ -29,7 +29,6 @@ import {
   where,
   orderBy,
   getDocs,
-  getCountFromServer,
   updateDoc,
   deleteDoc,
   Timestamp,
@@ -136,11 +135,24 @@ export default function AdminHomeworkScreen() {
       setHomeworks(list);
       setLoading(false);
 
-      // 각 숙제 제출 수 비동기 조회
+      // 각 숙제 제출 수 비동기 조회 — 탈퇴 학생 제출물 제외
       list.forEach(async (hw) => {
         try {
-          const cnt = await getCountFromServer(Collections.submissions(hw.id));
-          setSubmitMap(prev => ({ ...prev, [hw.id]: cnt.data().count }));
+          // 해당 반의 활성 학생 UID 조회
+          const studentSnap = await getDocs(query(
+            Collections.users(),
+            where('academy_id', '==', user!.academy_id),
+            where('class_id', '==', hw.class_id),
+            where('role', '==', 'student'),
+          ));
+          const activeUids = new Set(
+            studentSnap.docs
+              .filter(d => d.data().is_active !== false && !d.data().deleted_at)
+              .map(d => d.id)
+          );
+          const submissionSnap = await getDocs(Collections.submissions(hw.id));
+          const count = submissionSnap.docs.filter(d => activeUids.has(d.id)).length;
+          setSubmitMap(prev => ({ ...prev, [hw.id]: count }));
         } catch { /* 실패 시 무시 */ }
       });
     }, (e) => {

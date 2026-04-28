@@ -106,9 +106,9 @@ export default function AdminAttendanceScreen() {
     ]).then(([classSnap, teacherSnap]) => {
       setClasses(classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class)));
 
-      // 선생님 역매핑: classId → 첫 번째 담당 선생님 이름
+      // 선생님 역매핑: classId → 첫 번째 담당 선생님 이름 (탈퇴 선생님 제외)
       const tMap: Record<string, string> = {};
-      teacherSnap.docs.forEach(d => {
+      teacherSnap.docs.filter(d => !d.data().deleted_at).forEach(d => {
         const teacher = d.data() as User;
         (teacher.assigned_class_ids ?? []).forEach(cid => {
           if (!tMap[cid]) tMap[cid] = teacher.name;
@@ -134,7 +134,7 @@ export default function AdminAttendanceScreen() {
     setIsLoadingStats(true);
     setClassStats({});
 
-    // ① 학생 수는 변동이 적으므로 1회 조회
+    // ① 학생 수 + 활성 UID 목록 1회 조회 (탈퇴 학생 제외)
     Promise.all(
       classes.map(async (cls) => {
         const snap = await getDocs(query(
@@ -143,12 +143,22 @@ export default function AdminAttendanceScreen() {
           where('class_id', '==', cls.id),
           where('role', '==', 'student'),
         ));
-        return { classId: cls.id, totalStudents: snap.docs.filter(d => d.data().is_active !== false).length };
+        const activeDocs = snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at);
+        return {
+          classId: cls.id,
+          totalStudents: activeDocs.length,
+          // 탈퇴 학생 출결 레코드 제외에 사용
+          activeUids: new Set(activeDocs.map(d => d.id)),
+        };
       })
     ).then((studentResults) => {
-      // 학생 수 맵 (클로저로 onSnapshot 콜백에서 참조)
+      // 학생 수·UID 맵 (클로저로 onSnapshot 콜백에서 참조)
       const countMap: Record<string, number> = {};
-      studentResults.forEach(({ classId, totalStudents }) => { countMap[classId] = totalStudents; });
+      const uidMap: Record<string, Set<string>> = {};
+      studentResults.forEach(({ classId, totalStudents, activeUids }) => {
+        countMap[classId] = totalStudents;
+        uidMap[classId]   = activeUids;
+      });
 
       // ② 날짜별 출결 레코드 실시간 구독 — 선생님 입력 즉시 반영
       let initialCount = 0;
@@ -157,8 +167,11 @@ export default function AdminAttendanceScreen() {
           Collections.attendanceRecords(cls.id, selectedDate),
           (snap) => {
             const totalStudents = countMap[cls.id] ?? 0;
+            const activeUids    = uidMap[cls.id] ?? new Set<string>();
             let present = 0, late = 0, absent = 0;
             snap.forEach(d => {
+              // 탈퇴 학생의 출결 레코드는 집계에서 제외
+              if (!activeUids.has(d.id)) return;
               const r = d.data() as AttendanceRecord;
               if (r.status === 'present') present++;
               else if (r.status === 'late')   late++;
@@ -547,7 +560,7 @@ function AttendanceDetailModal({ visible, cls, date, academyId, onClose }: Detai
       (snap) => {
         const active = snap.docs
           .map((d) => ({ uid: d.id, ...d.data() } as User))
-          .filter((s) => s.is_active !== false);
+          .filter((s) => s.is_active !== false && !s.deleted_at);
         setStudents(active);
         setIsLoadingStudents(false);
       },
@@ -687,6 +700,7 @@ function AttendanceDetailModal({ visible, cls, date, academyId, onClose }: Detai
             renderItem={({ item }) => (
               <AttendanceRow
                 studentName={item.name}
+                schoolName={item.school_name ?? undefined}
                 status={mergedStatuses[item.uid] ?? null}
                 reason={records[item.uid]?.reason ?? null}
                 onStatusChange={(status) => handleStatusChange(item.uid, status)}

@@ -1,9 +1,15 @@
-import { useEffect } from 'react';
-import { Slot, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Stack, useRouter } from 'expo-router';
 import { onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
+import { auth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Academy } from '../../types';
+import { checkVersion, VersionCheckResult } from '../../lib/versionCheck';
+import ForceUpdateDialog from '../../components/ForceUpdateDialog';
+
+// app.config.ts의 version 값과 동기화 — 업데이트 시 함께 수정
+const APP_VERSION = '1.0.0';
 
 /**
  * 역할별 화면 분기 — 앱 전체에서 이 파일 단 한 곳에서만 처리
@@ -12,6 +18,20 @@ import { Academy } from '../../types';
 export default function AppLayout() {
   const router = useRouter();
   const { user, academy, pendingExploreGranted, setAcademy } = useAuthStore();
+
+  // 버전 체크 상태
+  const [versionCheck, setVersionCheck] = useState<VersionCheckResult>({
+    needsForceUpdate: false,
+    needsRecommendUpdate: false,
+    storeUrl: '',
+  });
+
+  // 앱 진입 시 1회 버전 체크
+  useEffect(() => {
+    checkVersion(APP_VERSION).then((result) => {
+      setVersionCheck(result);
+    });
+  }, []);
 
   // admin 전용 — 학원 상태 실시간 구독
   // 로그인 중에 Firebase 콘솔에서 status가 바뀌어도 즉시 감지
@@ -32,6 +52,13 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!user) return;
+
+    // 탈퇴 처리된 계정 — 소프트 삭제 직후 서버가 완전 삭제하기 전
+    // 앱에서 즉시 로그아웃 처리하여 접근 차단
+    if (user.deleted_at != null) {
+      import('firebase/auth').then(({ signOut }) => signOut(auth).catch(() => {}));
+      return;
+    }
 
     // phone_verified 없음 → Firestore 문서 미완료 → phone-verify로
     if (!user.phone_verified && !user.role) {
@@ -72,5 +99,39 @@ export default function AppLayout() {
   // 현재 탭을 홈으로 강제 이동하는 버그 발생 — 라우팅 결정에 필요한 필드만 지정
   }, [user?.role, user?.academy_id, user?.phone_verified, academy?.status, pendingExploreGranted]);
 
-  return <Slot />;
+  return (
+    <>
+      {/* (app) 레벨 Stack — 모든 역할 그룹과 common을 같은 스택에 통합
+          → 학생 탭에서 common/notice-detail로 push 시 동일 Stack에 들어가
+            iOS 좌→우 스와이프 백 정상 동작 */}
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
+        }}
+      >
+        <Stack.Screen name="(admin)" />
+        <Stack.Screen name="(teacher)" />
+        <Stack.Screen name="(student)" />
+        <Stack.Screen name="(parent)" />
+        <Stack.Screen name="common" />
+      </Stack>
+      {/* 강제 업데이트 다이얼로그 — 닫기 불가 */}
+      <ForceUpdateDialog
+        visible={versionCheck.needsForceUpdate}
+        isForced={true}
+        storeUrl={versionCheck.storeUrl}
+      />
+      {/* 권장 업데이트 다이얼로그 — 닫기 가능 */}
+      <ForceUpdateDialog
+        visible={versionCheck.needsRecommendUpdate}
+        isForced={false}
+        storeUrl={versionCheck.storeUrl}
+        onDismiss={() =>
+          setVersionCheck((prev) => ({ ...prev, needsRecommendUpdate: false }))
+        }
+      />
+    </>
+  );
 }

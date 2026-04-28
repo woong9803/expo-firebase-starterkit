@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { query, where, onSnapshot, getDoc } from 'firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
@@ -58,55 +58,60 @@ export default function StudentHomeScreen() {
     return () => unsub();
   }, [user?.academy_id, user?.class_id]);
 
-  // 숙제 실시간 구독 — 숙제 추가·수정·피드백이 즉시 반영됨
-  useEffect(() => {
-    if (!user?.class_id) { setIsLoading(false); return; }
+  // 숙제 실시간 구독 — 화면 포커스 시마다 재구독해 제출 여부도 함께 갱신
+  // 이유: homeworks 컬렉션의 onSnapshot 만으로는 submissions 변경(제출 완료)이 감지되지 않음.
+  //       useFocusEffect로 감싸면 학생이 제출 후 홈으로 돌아올 때마다 onSnapshot 첫 이벤트가
+  //       다시 발생해 submissions까지 새로 fetch → "지금 제출하기" 버튼이 즉시 사라짐.
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.class_id || !user?.uid) { setIsLoading(false); return; }
 
-    let cancelled = false;
-    setIsLoading(true);
+      let cancelled = false;
+      setIsLoading(true);
 
-    const unsub = onSnapshot(
-      query(Collections.homeworks(), where('class_id', '==', user.class_id)),
-      (snap) => {
-        (async () => {
-          const hwList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
+      const unsub = onSnapshot(
+        query(Collections.homeworks(), where('class_id', '==', user.class_id)),
+        (snap) => {
+          (async () => {
+            const hwList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
 
-          // 각 숙제의 제출 여부를 병렬로 확인
-          const hwWithSubs = await Promise.all(
-            hwList.map(async (hw) => {
-              const subSnap = await getDoc(Collections.submission(hw.id, user.uid));
-              const sub = subSnap.exists() ? (subSnap.data() as Submission) : null;
-              return {
-                ...hw,
-                submitted: !!sub,
-                needsRetry: sub?.feedback === '💧',
-                feedback: sub?.feedback ?? null,
-                isLate: sub?.is_late ?? false,
-                dDays: calcDDays(hw.due_date),
-              } as HwItem;
-            })
-          );
+            // 각 숙제의 제출 여부를 병렬로 확인
+            const hwWithSubs = await Promise.all(
+              hwList.map(async (hw) => {
+                const subSnap = await getDoc(Collections.submission(hw.id, user.uid));
+                const sub = subSnap.exists() ? (subSnap.data() as Submission) : null;
+                return {
+                  ...hw,
+                  submitted: !!sub,
+                  needsRetry: sub?.feedback === '💧',
+                  feedback: sub?.feedback ?? null,
+                  isLate: sub?.is_late ?? false,
+                  dDays: calcDDays(hw.due_date),
+                } as HwItem;
+              })
+            );
 
-          if (cancelled) return;
+            if (cancelled) return;
 
-          // 제출이 필요한 숙제만 표시 (미제출 + 다시풀기 대상)
-          const pendingHws = hwWithSubs.filter((hw) => !hw.submitted || hw.needsRetry);
-          pendingHws.sort((a, b) => {
-            if (a.needsRetry !== b.needsRetry) return a.needsRetry ? -1 : 1;
-            return a.dDays - b.dDays;
-          });
-          setHomeworks(pendingHws);
-          setIsLoading(false);
-        })();
-      },
-      (e) => {
-        console.error('[StudentHome] 숙제 구독 실패:', e);
-        if (!cancelled) setIsLoading(false);
-      }
-    );
+            // 제출이 필요한 숙제만 표시 (미제출 + 다시풀기 대상)
+            const pendingHws = hwWithSubs.filter((hw) => !hw.submitted || hw.needsRetry);
+            pendingHws.sort((a, b) => {
+              if (a.needsRetry !== b.needsRetry) return a.needsRetry ? -1 : 1;
+              return a.dDays - b.dDays;
+            });
+            setHomeworks(pendingHws);
+            setIsLoading(false);
+          })();
+        },
+        (e) => {
+          console.error('[StudentHome] 숙제 구독 실패:', e);
+          if (!cancelled) setIsLoading(false);
+        }
+      );
 
-    return () => { cancelled = true; unsub(); };
-  }, [user?.uid, user?.class_id]);
+      return () => { cancelled = true; unsub(); };
+    }, [user?.uid, user?.class_id]),
+  );
 
   if (isLoading) {
     return <View style={styles.loading}><ActivityIndicator color="#5B50E8" /></View>;
@@ -367,7 +372,10 @@ export default function StudentHomeScreen() {
                   )}
                   <Text style={styles.noticeTitle}>{n.title}</Text>
                   <Text style={styles.noticeDate}>
-                    {(n.created_at as any).toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                    {/* serverTimestamp() 는 onSnapshot 첫 이벤트에서 null 로 들어올 수 있음 — 가드 필수 */}
+                    {n.created_at
+                      ? (n.created_at as any).toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+                      : ''}
                   </Text>
                 </View>
               </View>

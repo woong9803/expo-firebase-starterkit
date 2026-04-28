@@ -105,7 +105,8 @@ export default function AdminStudentsScreen() {
         where('role', '==', 'student'),
       ),
       (snap) => {
-        setStudents(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
+        // 탈퇴 처리된 학생(deleted_at != null) 제외
+        setStudents(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)).filter(s => !s.deleted_at));
         setIsLoading(false);
       },
       (e) => { console.error('[AdminStudents] 학생 구독 실패:', e); setIsLoading(false); }
@@ -358,8 +359,8 @@ export default function AdminStudentsScreen() {
     );
   }
 
-  // is_active !== false: 자가 가입 학생(undefined) + 선생님 생성 학생(true) 모두 포함
-  const activeCount = students.filter(s => s.is_active !== false).length;
+  // is_active !== false: 자가 가입 학생(undefined) + 선생님 생성 학생(true) 모두 포함, 탈퇴 학생 제외
+  const activeCount = students.filter(s => s.is_active !== false && !s.deleted_at).length;
 
   return (
     <View style={[styles.container, { paddingTop: top }]}>
@@ -458,6 +459,9 @@ export default function AdminStudentsScreen() {
                     <Text style={[styles.name, !isActive && styles.nameInactive]}>
                       {item.name}
                     </Text>
+                    {!!item.school_name && (
+                      <Text style={styles.schoolTag}>{item.school_name}</Text>
+                    )}
                     {!isActive && (
                       <View style={styles.retiredTag}>
                         <Text style={styles.retiredTagText}>퇴원</Text>
@@ -911,8 +915,9 @@ const styles = StyleSheet.create({
 
   // 이름 + 서브
   info:       { flex: 1, gap: 2 },
-  nameRow:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nameRow:    { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   name:       { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  schoolTag:  { fontSize: 11, color: '#94A3B8' },
   nameInactive: { color: '#94A3B8' },
   sub:        { fontSize: 13, color: '#64748B' },
   subInactive: { color: '#94A3B8' },

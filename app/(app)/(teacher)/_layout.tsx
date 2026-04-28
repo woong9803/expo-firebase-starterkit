@@ -8,5 +8,13 @@ import { Stack } from 'expo-router';
  * 이 Stack에 push되어 router.back()이 올바르게 동작한다.
  */
 export default function TeacherRootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        gestureEnabled: true,
+        fullScreenGestureEnabled: true,
+      }}
+    />
+  );
 }

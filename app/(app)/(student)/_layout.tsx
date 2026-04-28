@@ -8,5 +8,15 @@ import { Stack } from 'expo-router';
  * 이 Stack에 push되어 router.back()이 올바르게 동작한다.
  */
 export default function StudentRootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  // gestureEnabled: 좌→우 스와이프로 뒤로가기 활성 (iOS 기본값이지만 명시)
+  // fullScreenGestureEnabled: 화면 가장자리뿐 아니라 화면 어디서든 스와이프 가능
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        gestureEnabled: true,
+        fullScreenGestureEnabled: true,
+      }}
+    />
+  );
 }

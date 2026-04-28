@@ -24,11 +24,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { getDocs, query, where } from 'firebase/firestore';
 
 import { useAuthStore } from '../../../store/useAuthStore';
-import { createNotice } from '../../../lib/notice';
+import { createNotice, uploadNoticeAttachment, type PendingNoticeAttachment } from '../../../lib/notice';
 import { Collections } from '../../../lib/firestore';
 import { strings } from '../../../constants/strings';
 import ClassPickerSheet from '../../../components/ClassPickerSheet';
-import type { Class } from '../../../types';
+import NoticeAttachmentPicker from '../../../components/NoticeAttachmentPicker';
+import type { Class, NoticeAttachment } from '../../../types';
 
 // 수신 역할 옵션
 type TargetRoleOption = 'all' | 'student' | 'parent';
@@ -51,6 +52,9 @@ export default function AdminNoticeCreateScreen() {
 
   // ── 학원 전체 반 목록 ──
   const [classes, setClasses] = useState<Class[]>([]);
+
+  // ── 첨부파일 (업로드 전 로컬 정보) ──
+  const [pendingAttachments, setPendingAttachments] = useState<PendingNoticeAttachment[]>([]);
 
   // 학원 전체 반 로드
   useEffect(() => {
@@ -81,6 +85,16 @@ export default function AdminNoticeCreateScreen() {
 
     setSaving(true);
     try {
+      // 첨부파일 업로드 — Storage 경로용 임시 ID 사전 발급
+      const uploaded: NoticeAttachment[] = [];
+      if (pendingAttachments.length > 0) {
+        const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        for (const f of pendingAttachments) {
+          const meta = await uploadNoticeAttachment(user.academy_id, tempId, f);
+          uploaded.push(meta);
+        }
+      }
+
       await createNotice({
         title: title.trim(),
         content: content.trim(),
@@ -89,6 +103,7 @@ export default function AdminNoticeCreateScreen() {
         createdBy: user.uid,
         targetClassIds: targetAll ? [] : selectedClassIds,
         targetRoles: resolveTargetRoles(),
+        attachments: uploaded,
       });
       // router.back()이 스택이 비어있을 때 에러를 던지는 케이스 방어
       if (router.canGoBack()) {
@@ -214,6 +229,15 @@ export default function AdminNoticeCreateScreen() {
             placeholderTextColor="#94A3B8"
             multiline
             textAlignVertical="top"
+          />
+        </View>
+
+        {/* ── 첨부파일 ── */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>첨부파일</Text>
+          <NoticeAttachmentPicker
+            attachments={pendingAttachments}
+            onChange={setPendingAttachments}
           />
         </View>
 

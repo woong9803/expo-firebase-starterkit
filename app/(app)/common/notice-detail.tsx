@@ -14,6 +14,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
+  Linking,
+  Alert,
+  Modal,
+  Pressable,
+  FlatList,
+  Dimensions,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,7 +31,7 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import { Collections } from '../../../lib/firestore';
 import { markNoticeRead } from '../../../lib/notice';
 import { strings } from '../../../constants/strings';
-import type { Notice } from '../../../types';
+import type { Notice, NoticeAttachment } from '../../../types';
 
 // ─────────────────────────────────────────────────────────────
 // 날짜 포맷 유틸
@@ -48,6 +55,37 @@ export default function NoticeDetailScreen() {
   const [notice, setNotice]     = useState<Notice | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError]       = useState(false);
+
+  // 이미지 첨부 전체보기 모달 상태
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [previewIndex, setPreviewIndex]   = useState(0);
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  // 파일 크기 사람이 읽기 쉬운 단위
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+  };
+
+  // 첨부 탭 처리: 이미지면 전체보기, 파일이면 외부 앱으로 열기
+  const handleAttachmentTap = async (att: NoticeAttachment, allImages: NoticeAttachment[]) => {
+    if (att.kind === 'image') {
+      const urls = allImages.filter(a => a.kind === 'image').map(a => a.url);
+      const idx = urls.indexOf(att.url);
+      setPreviewImages(urls);
+      setPreviewIndex(Math.max(0, idx));
+      setPreviewVisible(true);
+      return;
+    }
+    try {
+      const ok = await Linking.canOpenURL(att.url);
+      if (ok) await Linking.openURL(att.url);
+      else Alert.alert('열기 실패', '이 파일을 열 수 있는 앱이 없어요.');
+    } catch {
+      Alert.alert('열기 실패', '파일을 열지 못했어요.');
+    }
+  };
 
   // 선생님/admin만 읽음 현황 버튼 표시
   const canViewReadStatus =
@@ -151,8 +189,81 @@ export default function NoticeDetailScreen() {
           <Text style={styles.content}>
             {notice.content || strings.notice.noContent}
           </Text>
+
+          {/* 첨부파일 섹션 — 있을 때만 표시 */}
+          {notice.attachments && notice.attachments.length > 0 && (
+            <View style={styles.attachSection}>
+              <Text style={styles.attachSectionLabel}>
+                첨부파일 ({notice.attachments.length})
+              </Text>
+              {notice.attachments.map((a, idx) => (
+                <TouchableOpacity
+                  key={`${a.url}-${idx}`}
+                  style={styles.attachItem}
+                  activeOpacity={0.8}
+                  onPress={() => handleAttachmentTap(a, notice.attachments ?? [])}
+                >
+                  {a.kind === 'image' ? (
+                    <Image source={{ uri: a.url }} style={styles.attachThumb} />
+                  ) : (
+                    <View style={styles.attachFileIcon}>
+                      <Ionicons name="document-text" size={22} color="#5B50E8" />
+                    </View>
+                  )}
+                  <View style={styles.attachInfo}>
+                    <Text style={styles.attachName} numberOfLines={1}>{a.name}</Text>
+                    <Text style={styles.attachSize}>{formatSize(a.size)}</Text>
+                  </View>
+                  <Ionicons
+                    name={a.kind === 'image' ? 'expand-outline' : 'open-outline'}
+                    size={18}
+                    color="#94A3B8"
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </ScrollView>
       )}
+
+      {/* 이미지 첨부 전체보기 모달 */}
+      <Modal
+        visible={previewVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setPreviewVisible(false)}
+      >
+        <View style={styles.previewOverlay}>
+          <TouchableOpacity
+            style={styles.previewCloseBtn}
+            onPress={() => setPreviewVisible(false)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          <FlatList
+            data={previewImages}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={previewIndex}
+            getItemLayout={(_, i) => {
+              const w = Dimensions.get('window').width;
+              return { length: w, offset: w * i, index: i };
+            }}
+            renderItem={({ item }) => (
+              <Pressable
+                style={[styles.previewImageWrapper, { width: Dimensions.get('window').width }]}
+                onPress={() => setPreviewVisible(false)}
+              >
+                <Image source={{ uri: item }} style={styles.previewImage} resizeMode="contain" />
+              </Pressable>
+            )}
+            keyExtractor={(_, i) => String(i)}
+          />
+        </View>
+      </Modal>
 
       {/* ── 하단 버튼 (선생님/admin 전용) ── */}
       {canViewReadStatus && !isLoading && !error && notice && (
@@ -267,6 +378,44 @@ const styles = StyleSheet.create({
     color: '#334155',
     lineHeight: 24,
   },
+
+  // ── 첨부파일 섹션 ──
+  attachSection: { marginTop: 24, gap: 8 },
+  attachSectionLabel: { fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 4 },
+  attachItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+  },
+  attachThumb: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#E2E8F0' },
+  attachFileIcon: {
+    width: 44, height: 44, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#EEEDF9',
+  },
+  attachInfo: { flex: 1, gap: 2 },
+  attachName: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  attachSize: { fontSize: 11, color: '#94A3B8' },
+
+  // ── 이미지 미리보기 모달 ──
+  previewOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center' },
+  previewCloseBtn: {
+    position: 'absolute', top: 56, right: 16,
+    zIndex: 10,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  previewImageWrapper: {
+    height: '100%',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  previewImage: { width: '100%', height: '75%' },
 
   // ── 하단 버튼 영역 ──
   bottomWrapper: {

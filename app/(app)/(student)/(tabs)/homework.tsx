@@ -307,7 +307,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
         <View style={styles.feedbackRow}>
           <Ionicons name="checkmark-circle" size={16} color="#10B981" />
           <Text style={styles.feedbackLabel}>
-            {submission.feedback === '👍' ? '선생님이 잘했어요!' : '검사 완료 · 피드백 대기 중'}
+            {submission.feedback === '👍' ? '잘 했어요!' : '검사 완료 · 피드백 대기 중'}
           </Text>
         </View>
         {/* 선생님 텍스트 코멘트 */}
@@ -333,7 +333,7 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
         <Text style={styles.cardDue}>마감 {dueStr}</Text>
         <View style={styles.feedbackRow}>
           <Ionicons name="refresh-circle" size={16} color="#F59E0B" />
-          <Text style={[styles.feedbackLabel, { color: '#78350F' }]}>선생님이 다시 풀어보래요</Text>
+          <Text style={[styles.feedbackLabel, { color: '#78350F' }]}>다시 풀어봐요</Text>
         </View>
         {/* 선생님 텍스트 코멘트 */}
         {!!submission.feedback_comment && (
@@ -350,15 +350,26 @@ function HomeworkCard({ item, onViewDetail, onSubmit, onResubmit }: HomeworkCard
   }
 
   // ── 검사대기 카드
+  // is_retry === true 이면 다시풀기 후 재제출 → 카드 전체 노란색 + "다시푸는중" 표시
+  // (선생님이 다시 검사할 때까지 유지)
   if (submission?.status === 'submitted') {
     const submittedStr = submission.submitted_at
       ? submission.submitted_at.toDate().toLocaleDateString('ko-KR')
       : '';
+    const isRetryPending = submission.is_retry === true;
     return (
-      <TouchableOpacity style={[styles.card, styles.cardSubmitted]} onPress={onViewDetail} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={[styles.card, isRetryPending ? styles.cardRetry : styles.cardSubmitted]}
+        onPress={onViewDetail}
+        activeOpacity={0.85}
+      >
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle} numberOfLines={1}>{title}</Text>
-          <View style={styles.chipPending}><Text style={styles.chipPendingText}>검사대기</Text></View>
+          <View style={isRetryPending ? styles.chipRetry : styles.chipPending}>
+            <Text style={isRetryPending ? styles.chipRetryText : styles.chipPendingText}>
+              {isRetryPending ? '다시푸는중' : '검사대기'}
+            </Text>
+          </View>
         </View>
         {!!content && <Text style={styles.cardContent} numberOfLines={2}>{content}</Text>}
         <Text style={styles.cardDue}>마감 {dueStr}</Text>
@@ -481,7 +492,7 @@ function SubmissionDetailModal({ item, previewIndex, onIndexChange, onClose, onR
               <Text style={styles.feedbackBannerEmoji}>{submission.feedback}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.feedbackBannerText, isRetry ? { color: '#78350F' } : { color: '#065F46' }]}>
-                  {isRetry ? '선생님이 다시 풀어보래요' : '선생님이 잘했어요!'}
+                  {isRetry ? '다시 풀어봐요' : '잘 했어요!'}
                 </Text>
                 {/* 선생님 텍스트 코멘트 */}
                 {!!submission.feedback_comment && (

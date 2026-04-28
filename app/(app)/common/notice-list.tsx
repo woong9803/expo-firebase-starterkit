@@ -169,7 +169,7 @@ export default function NoticeListScreen({ showCreateButton, onCreatePress, show
         {/* 뒤로가기 버튼 — push로 진입한 경우(학생 등)에만 표시 */}
         {canGoBack && (
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#0F172A" />
+            <Ionicons name="chevron-back" size={24} color="#0F172A" />
           </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>{strings.notice.title}</Text>

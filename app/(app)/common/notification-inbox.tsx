@@ -200,7 +200,7 @@ export default function NotificationInboxScreen() {
       {/* 헤더 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={22} color="#0F172A" />
+          <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.notification.inbox}</Text>
         {/* 미읽음이 있을 때만 '모두 읽음' 버튼 표시 */}

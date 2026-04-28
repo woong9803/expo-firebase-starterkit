@@ -74,7 +74,8 @@ export default function AdminSettingsScreen() {
   // { classId: studentCount }
   const [studentCounts, setStudentCounts]   = useState<Record<string, number>>({});
   // { classId: teacherName } — 선생님 역매핑
-  const [classTeacherMap, setClassTeacherMap] = useState<Record<string, string>>({});
+  // classId → 담당 선생님 이름 배열 — 반당 다수 배정 가능 (이름 오름차순)
+  const [classTeacherMap, setClassTeacherMap] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading]           = useState(true);
   const [isPwModalVisible, setIsPwModalVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -149,13 +150,14 @@ export default function AdminSettingsScreen() {
           .map(d => ({ uid: d.id, ...d.data() } as User));
         setTeachers(teacherList);
 
-        // classId → 첫 번째 담당 선생님 이름 역매핑
-        const tMap: Record<string, string> = {};
+        // classId → 담당 선생님 이름 배열 역매핑 — 반당 다수 배정 가능
+        const tMap: Record<string, string[]> = {};
         [...teacherList]
           .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
           .forEach(t => {
             (t.assigned_class_ids ?? []).forEach(cid => {
-              if (!tMap[cid]) tMap[cid] = t.name;
+              if (!tMap[cid]) tMap[cid] = [];
+              tMap[cid].push(t.name);
             });
           });
         setClassTeacherMap(tMap);
@@ -186,14 +188,7 @@ export default function AdminSettingsScreen() {
         // subject가 비어 있으면 저장하지 않음 (선택 필드)
         ...(subjectTrimmed ? { subject: subjectTrimmed } : {}),
       });
-      const newClass: Class = {
-        id: docRef.id,
-        name: trimmed,
-        academy_id: user.academy_id,
-        invite_code: newCode,
-        ...(subjectTrimmed ? { subject: subjectTrimmed } : {}),
-      };
-      setClasses(prev => [...prev, newClass]);
+      // classes는 onSnapshot이 자동 갱신 — 여기서 setClasses 호출하면 중복 추가됨
       setStudentCounts(prev => ({ ...prev, [docRef.id]: 0 }));
       setIsNewClassModalVisible(false);
       setNewClassName('');
@@ -311,14 +306,14 @@ export default function AdminSettingsScreen() {
       });
       setTeachers(updatedTeachers);
 
-      // classTeacherMap 재계산 (classId → 첫 번째 담당 선생님 이름)
-      // 이름 오름차순 정렬 후 매핑 — 2명 이상 배정 시 표시명이 토글마다 바뀌지 않도록 고정
-      const tMap: Record<string, string> = {};
+      // classTeacherMap 재계산 — 반당 담당 선생님 이름 배열 (오름차순)
+      const tMap: Record<string, string[]> = {};
       [...updatedTeachers]
         .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
         .forEach(t => {
           (t.assigned_class_ids ?? []).forEach(cid => {
-            if (!tMap[cid]) tMap[cid] = t.name;
+            if (!tMap[cid]) tMap[cid] = [];
+            tMap[cid].push(t.name);
           });
         });
       setClassTeacherMap(tMap);
@@ -485,6 +480,22 @@ export default function AdminSettingsScreen() {
             </View>
           </View>
         </View>
+
+        {/* 플랜 업그레이드 CTA — 승인 완료 학원에만 노출 */}
+        {/* (pending 상태는 기능 제한이라 결제 불가) */}
+        {academy?.status === 'active' && (
+          <TouchableOpacity
+            style={styles.planUpgradeBtn}
+            onPress={() => router.push('/(app)/(admin)/plan-upgrade')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="rocket-outline" size={16} color="#5B50E8" />
+            <Text style={styles.planUpgradeBtnText}>
+              {academy.plan === 'free' || !academy.plan ? '플랜 업그레이드' : '플랜 관리'}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color="#5B50E8" />
+          </TouchableOpacity>
+        )}
       </LinearGradient>
 
       {/* ── 반 관리 ── */}
@@ -502,7 +513,9 @@ export default function AdminSettingsScreen() {
                   <View style={styles.classInfo}>
                     <Text style={styles.className}>{cls.name}</Text>
                     <Text style={styles.classSub}>
-                      {classTeacherMap[cls.id] ?? '선생님 미배정'} · {studentCounts[cls.id] ?? 0}명
+                      {(classTeacherMap[cls.id]?.length ?? 0) > 0
+                        ? classTeacherMap[cls.id].join(', ')
+                        : '선생님 미배정'} · {studentCounts[cls.id] ?? 0}명
                       {cls.subject ? `\n교습과목: ${cls.subject}` : ''}
                     </Text>
                     {/* 반 초대코드 + 복사 버튼 */}
@@ -565,11 +578,11 @@ export default function AdminSettingsScreen() {
 
                   {/* 삭제 버튼 */}
                   <TouchableOpacity
-                    style={styles.deleteBtn}
+                    style={styles.teacherDeleteBtn}
                     onPress={() => handleDeleteTeacher(t)}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.deleteBtnText}>삭제</Text>
+                    <Text style={styles.teacherDeleteBtnText}>삭제</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -879,6 +892,23 @@ const styles = StyleSheet.create({
   statusBadgePending: { backgroundColor: '#F59E0B' },
   statusBadgeText:    { fontSize: 13, fontWeight: '700', color: '#fff' },
 
+  // 플랜 업그레이드 CTA (그라데이션 카드 내부)
+  planUpgradeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginTop: 14,
+  },
+  planUpgradeBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#5B50E8',
+  },
+
   // 섹션
   section:      { paddingHorizontal: 16, marginBottom: 20 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: '#475569', marginBottom: 10 },
@@ -941,12 +971,13 @@ const styles = StyleSheet.create({
   teacherInfo:  { flex: 1 },
   teacherName:  { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   teacherSub:   { fontSize: 13, color: '#64748B', marginTop: 2 },
-  deleteBtn: {
+  // 선생님 목록 우측 "삭제" 빨간 박스 버튼 (회원탈퇴 deleteBtn과 이름 충돌 방지)
+  teacherDeleteBtn: {
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 8, borderWidth: 1.5,
     borderColor: '#FECACA', backgroundColor: '#FEF2F2',
   },
-  deleteBtnText: { fontSize: 14, fontWeight: '600', color: '#991B1B' },
+  teacherDeleteBtnText: { fontSize: 14, fontWeight: '600', color: '#991B1B' },
 
   // 선생님 초대코드 카드
   inviteCodeCard: {

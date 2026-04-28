@@ -2,7 +2,7 @@
  * app/(app)/(teacher)/notice-create.tsx — 선생님 공지 작성 화면
  *
  * 제목 / 내용 입력 + 중요 공지 토글 + 공지 대상(전체/반 선택) + 저장 버튼.
- * 선생님은 본인 담당반(assigned_class_ids)만 선택 가능.
+ * 선생님은 학원 전체 반에 공지 가능 (admin과 동일 권한).
  */
 
 import React, { useState, useEffect } from 'react';
@@ -24,11 +24,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { getDocs, query, where } from 'firebase/firestore';
 
 import { useAuthStore } from '../../../store/useAuthStore';
-import { createNotice } from '../../../lib/notice';
+import { createNotice, uploadNoticeAttachment, type PendingNoticeAttachment } from '../../../lib/notice';
 import { Collections } from '../../../lib/firestore';
 import { strings } from '../../../constants/strings';
 import ClassPickerSheet from '../../../components/ClassPickerSheet';
-import type { Class } from '../../../types';
+import NoticeAttachmentPicker from '../../../components/NoticeAttachmentPicker';
+import type { Class, NoticeAttachment } from '../../../types';
 
 // 수신 역할 옵션
 type TargetRoleOption = 'all' | 'student' | 'parent';
@@ -49,19 +50,22 @@ export default function NoticeCreateScreen() {
   // ── 수신 역할 ── ('all' = 학생+학부모 모두)
   const [targetRole, setTargetRole] = useState<TargetRoleOption>('all');
 
-  // ── 담당 반 목록 ──
+  // ── 학원 전체 반 목록 (admin과 동일하게 모든 반에 공지 가능) ──
   const [classes, setClasses] = useState<Class[]>([]);
 
-  // 담당반 로드
+  // ── 첨부파일 (업로드 전 로컬 정보) ──
+  const [pendingAttachments, setPendingAttachments] = useState<PendingNoticeAttachment[]>([]);
+
+  // 학원 전체 반 로드
   useEffect(() => {
-    if (!user?.assigned_class_ids?.length) return;
+    if (!user?.academy_id) return;
 
     getDocs(
-      query(Collections.classes(), where('__name__', 'in', user.assigned_class_ids.slice(0, 10)))
+      query(Collections.classes(), where('academy_id', '==', user.academy_id))
     ).then((snap) => {
       setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
     }).catch((e) => console.warn('[NoticeCreate] 반 로드 오류:', e));
-  }, [user?.assigned_class_ids]);
+  }, [user?.academy_id]);
 
   // 저장 버튼 활성 조건
   const canSave =
@@ -81,6 +85,16 @@ export default function NoticeCreateScreen() {
 
     setSaving(true);
     try {
+      // 첨부파일 업로드 — Storage 경로용 임시 ID 사전 발급
+      const uploaded: NoticeAttachment[] = [];
+      if (pendingAttachments.length > 0) {
+        const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        for (const f of pendingAttachments) {
+          const meta = await uploadNoticeAttachment(user.academy_id, tempId, f);
+          uploaded.push(meta);
+        }
+      }
+
       await createNotice({
         title: title.trim(),
         content: content.trim(),
@@ -89,6 +103,7 @@ export default function NoticeCreateScreen() {
         createdBy: user.uid,
         targetClassIds: targetAll ? [] : selectedClassIds,
         targetRoles: resolveTargetRoles(),
+        attachments: uploaded,
       });
       // router.back()이 스택이 비어있을 때 에러를 던지는 케이스 방어
       if (router.canGoBack()) {
@@ -214,6 +229,15 @@ export default function NoticeCreateScreen() {
             placeholderTextColor="#94A3B8"
             multiline
             textAlignVertical="top"
+          />
+        </View>
+
+        {/* ── 첨부파일 ── */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>첨부파일</Text>
+          <NoticeAttachmentPicker
+            attachments={pendingAttachments}
+            onChange={setPendingAttachments}
           />
         </View>
 

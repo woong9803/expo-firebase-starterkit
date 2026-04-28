@@ -15,6 +15,7 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -25,13 +26,17 @@ import { getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { auth } from '../../../../lib/firebase';
+import { auth, app } from '../../../../lib/firebase';
 import { Collections } from '../../../../lib/firestore';
 import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { updateDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Class, AttendanceRecord } from '../../../../types';
 import PasswordChangeModal from '../../../../components/PasswordChangeModal';
+import { strings } from '../../../../constants/strings';
+
+const APP_VERSION = '1.0.0';
 
 // AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
 const NOTIF_PREF_KEY = 'teacher_push_enabled';
@@ -55,6 +60,7 @@ export default function TeacherProfileScreen() {
   const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [isPwModalVisible, setIsPwModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // ── 푸시 알림 설정 불러오기 ────────────────────
   useEffect(() => {
@@ -135,9 +141,10 @@ export default function TeacherProfileScreen() {
         where('is_active', '==', true),
       ),
       (snap) => {
-        // class_id별 학생 수 집계
+        // class_id별 학생 수 집계 — 탈퇴 학생(deleted_at != null) 제외
         const countByClass: Record<string, number> = {};
         snap.docs.forEach((d) => {
+          if (d.data().deleted_at) return; // 탈퇴 학생 스킵
           const cid = d.data().class_id as string | null;
           if (cid && classIds.includes(cid)) {
             countByClass[cid] = (countByClass[cid] ?? 0) + 1;
@@ -234,16 +241,39 @@ export default function TeacherProfileScreen() {
     ]);
   };
 
-  // ── 문의하기 — 카카오 채널 또는 이메일 ────────
+  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
   const handleInquiry = () => {
+    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: ${APP_VERSION}\n사용자 ID: ${user?.uid ?? ''}`;
+    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
+    Linking.openURL(mailto).catch(() =>
+      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
+    );
+  };
+
+  // ── 탈퇴하기 ──────────────────────────────────
+  const handleDeleteAccount = () => {
     Alert.alert(
-      '문의하기',
-      '이메일로 문의해 주세요.\nsupport@woongking.kr',
+      strings.account.deleteConfirmTitle,
+      strings.account.deleteConfirmMessage,
       [
-        { text: '취소', style: 'cancel' },
+        { text: strings.common.cancel, style: 'cancel' },
         {
-          text: '이메일 보내기',
-          onPress: () => Linking.openURL('mailto:support@woongking.kr'),
+          text: strings.account.deleteButton,
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              const fns = getFunctions(app, 'asia-northeast3');
+              const deleteUserFn = httpsCallable(fns, 'deleteUser');
+              await deleteUserFn({});
+              await signOut(auth);
+              clearUser();
+            } catch {
+              Alert.alert(strings.common.error, strings.account.deleteFailed);
+            } finally {
+              setIsDeleting(false);
+            }
+          },
         },
       ]
     );
@@ -432,11 +462,35 @@ export default function TeacherProfileScreen() {
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* 개인정보처리방침 */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/(auth)/privacy' as never)} activeOpacity={0.7}>
+          <View style={styles.menuLeft}>
+            <Ionicons name="document-text-outline" size={20} color="#64748B" style={styles.menuIcon} />
+            <Text style={styles.menuLabel}>{strings.account.privacyPolicy}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+        </TouchableOpacity>
       </View>
 
       {/* ── 로그아웃 버튼 ── */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
         <Text style={styles.logoutText}>로그아웃</Text>
+      </TouchableOpacity>
+
+      {/* ── 탈퇴하기 버튼 ── */}
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={handleDeleteAccount}
+        disabled={isDeleting}
+        activeOpacity={0.7}
+      >
+        {isDeleting
+          ? <ActivityIndicator size="small" color="#EF4444" />
+          : <Text style={styles.deleteText}>{strings.account.deleteAccount}</Text>
+        }
       </TouchableOpacity>
 
       {/* 하단 여백 */}
@@ -721,5 +775,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  // 탈퇴하기 버튼 (텍스트 스타일, 버튼 구분)
+  deleteBtn: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textDecorationLine: 'underline',
   },
 });

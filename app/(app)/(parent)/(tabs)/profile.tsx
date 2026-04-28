@@ -21,13 +21,15 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOut } from 'firebase/auth';
 import { getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { auth } from '../../../../lib/firebase';
+import { auth, app } from '../../../../lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Collections } from '../../../../lib/firestore';
 import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
@@ -49,6 +51,7 @@ interface ChildInfo {
 }
 
 export default function ParentProfileScreen() {
+  const router = useRouter();
   const { top } = useSafeAreaInsets();
   const { user, academy, setUser, clearUser } = useAuthStore();
 
@@ -64,6 +67,7 @@ export default function ParentProfileScreen() {
 
   // ── 비밀번호 변경 모달 ─────────────────────────────────
   const [isPwModalVisible, setIsPwModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // ── 알림 설정 ──────────────────────────────────────────
   const [homeworkNotif, setHomeworkNotif]     = useState(true);
@@ -222,12 +226,15 @@ export default function ParentProfileScreen() {
     try {
       const code = linkCodeInput.trim().toUpperCase();
 
-      // 학생 uid 조회
-      const studentUid = await validateLinkCode(code);
-      if (!studentUid) {
+      // 연동코드 검증 — Cloud Function(validateOnboardingCode) 경유
+      // 서버 rate limit(10분/5회) + IP 기준 20회 제한 자동 적용
+      const result = await validateLinkCode(code);
+      if (!result) {
         setLinkError(strings.errors.invalidCode);
         return;
       }
+
+      const studentUid = result.student_uid;
 
       // 이미 연동된 자녀인지 확인
       if (user.children?.includes(studentUid)) {
@@ -235,19 +242,12 @@ export default function ParentProfileScreen() {
         return;
       }
 
-      // 학생 문서 조회 (학원 ID + guardian_phone 기록용)
-      const studentSnap = await getDoc(Collections.user(studentUid));
-      if (!studentSnap.exists()) {
-        setLinkError(strings.errors.invalidCode);
-        return;
-      }
-      const studentData = studentSnap.data() as User;
-
       // 학부모 children 배열에 자녀 uid 추가
+      // academy_id는 CF가 반환한 값을 그대로 사용 (추가 조회 불필요)
       await updateDoc(Collections.user(user.uid), {
         children: arrayUnion(studentUid),
         // 첫 자녀 연동 시 academy_id가 없을 경우 자동 설정
-        ...(user.academy_id ? {} : { academy_id: studentData.academy_id }),
+        ...(user.academy_id ? {} : { academy_id: result.academy_id }),
       });
 
       // guardian_phone 기록 — 법정 출석부 보호자 연락처용 (논블로킹)
@@ -263,40 +263,71 @@ export default function ParentProfileScreen() {
       const updatedChildren = [...(user.children ?? []), studentUid];
       setUser({ ...user, children: updatedChildren });
 
-      // 자녀 목록 UI 갱신 (반 이름 포함)
+      // 자녀 목록 UI 갱신 (반 이름 포함 — 반 이름은 CF가 안 주므로 별도 조회)
       let className = strings.profile.noClass;
-      if (studentData.class_id) {
+      const studentSnap = await getDoc(Collections.user(studentUid));
+      const studentData = studentSnap.exists() ? (studentSnap.data() as User) : null;
+      if (studentData?.class_id) {
         const classSnap = await getDoc(Collections.class(studentData.class_id));
         if (classSnap.exists()) className = (classSnap.data() as Class).name;
       }
       setChildren((prev) => [
         ...prev,
-        { uid: studentUid, name: studentData.name, className },
+        { uid: studentUid, name: result.name, className },
       ]);
 
       setAddChildModalVisible(false);
     } catch (e) {
       console.error('[ParentProfile] 자녀 추가 연동 실패:', e);
-      setLinkError(strings.common.error);
+      const err = e as { code?: string; message?: string };
+      // 서버 rate limit 메시지(남은 대기 초 포함)를 그대로 노출
+      if (err.code === 'functions/resource-exhausted' || err.code === 'resource-exhausted') {
+        setLinkError(err.message || strings.common.error);
+      } else {
+        setLinkError(strings.common.error);
+      }
     } finally {
       setIsLinking(false);
     }
   }, [user, linkCodeInput, setUser]);
 
-  // ── 문의하기 ───────────────────────────────────────────
+  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
   const handleInquiry = useCallback(() => {
+    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: 1.0.0\n사용자 ID: ${user?.uid ?? ''}`;
+    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
+    Linking.openURL(mailto).catch(() =>
+      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
+    );
+  }, [user?.uid]);
+
+  // ── 탈퇴하기 ──────────────────────────────────
+  const handleDeleteAccount = useCallback(() => {
     Alert.alert(
-      strings.profile.inquiry,
-      `이메일로 문의해 주세요.\n${strings.profile.inquiryEmail}`,
+      strings.account.deleteConfirmTitle,
+      strings.account.deleteConfirmMessage,
       [
         { text: strings.common.cancel, style: 'cancel' },
         {
-          text: '이메일 보내기',
-          onPress: () => Linking.openURL(`mailto:${strings.profile.inquiryEmail}`),
+          text: strings.account.deleteButton,
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              const fns = getFunctions(app, 'asia-northeast3');
+              const deleteUserFn = httpsCallable(fns, 'deleteUser');
+              await deleteUserFn({});
+              await signOut(auth);
+              clearUser();
+            } catch {
+              Alert.alert(strings.common.error, strings.account.deleteFailed);
+            } finally {
+              setIsDeleting(false);
+            }
+          },
         },
       ]
     );
-  }, []);
+  }, [clearUser]);
 
   // ── 로그아웃 ───────────────────────────────────────────
   const handleLogout = useCallback(() => {
@@ -535,7 +566,18 @@ export default function ParentProfileScreen() {
         <TouchableOpacity style={styles.menuItem} onPress={handleInquiry} activeOpacity={0.7}>
           <View style={styles.menuLeft}>
             <Ionicons name="help-circle-outline" size={20} color="#64748B" style={styles.menuIcon} />
-            <Text style={styles.menuLabel}>{strings.profile.inquiry}</Text>
+            <Text style={styles.menuLabel}>{strings.account.inquiryTitle}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* 개인정보처리방침 */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/(auth)/privacy' as never)} activeOpacity={0.7}>
+          <View style={styles.menuLeft}>
+            <Ionicons name="document-text-outline" size={20} color="#64748B" style={styles.menuIcon} />
+            <Text style={styles.menuLabel}>{strings.account.privacyPolicy}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>
@@ -544,6 +586,19 @@ export default function ParentProfileScreen() {
       {/* ── 로그아웃 버튼 ── */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
         <Text style={styles.logoutText}>{strings.auth.logout}</Text>
+      </TouchableOpacity>
+
+      {/* ── 탈퇴하기 버튼 ── */}
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={handleDeleteAccount}
+        disabled={isDeleting}
+        activeOpacity={0.7}
+      >
+        {isDeleting
+          ? <ActivityIndicator size="small" color="#EF4444" />
+          : <Text style={styles.deleteText}>{strings.account.deleteAccount}</Text>
+        }
       </TouchableOpacity>
 
       {/* 하단 여백 */}
@@ -862,5 +917,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  deleteBtn: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textDecorationLine: 'underline',
   },
 });

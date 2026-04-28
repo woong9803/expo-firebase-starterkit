@@ -58,7 +58,7 @@ export default function ChildrenSwitchScreen() {
           user.children.map((uid) => getDoc(Collections.user(uid)))
         );
         const loaded = snaps
-          .filter((snap) => snap.exists())
+          .filter((snap) => snap.exists() && !snap.data()?.deleted_at)  // 탈퇴 자녀 제외
           .map((snap) => ({ uid: snap.id, ...snap.data() } as User));
 
         // 각 자녀의 반 이름 조회
@@ -106,7 +106,7 @@ export default function ChildrenSwitchScreen() {
       {/* ── 헤더 ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={22} color="#0F172A" />
+          <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{strings.parent.switchChild}</Text>
         <View style={styles.headerRight} />

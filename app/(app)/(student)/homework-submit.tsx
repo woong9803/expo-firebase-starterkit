@@ -209,10 +209,16 @@ export default function HomeworkSubmitScreen() {
   }, [shouldStartCamera, permission, requestPermission, router]);
 
   // ── 사진 촬영 ────────────────────────────────────────────────────────────
+  // quality 0.5 + skipProcessing 으로 카메라가 반환하는 이미지 자체를 작게 받아
+  // 미리보기 ScrollView에 4~5장 동시 렌더해도 실기기에서 OOM 크래시 안 나도록 함.
+  // 최종 압축(200KB 이하)은 제출 직전 compressImage 가 담당.
   const takePhoto = useCallback(async () => {
     if (!cameraRef.current || photos.length >= MAX_PHOTOS) return;
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.5,
+        skipProcessing: true,
+      });
       if (photo?.uri) {
         setPhotos(prev => [...prev, photo.uri]);
       }
@@ -282,14 +288,29 @@ export default function HomeworkSubmitScreen() {
       const dueDate = (homework.due_date as any).toDate() as Date;
       const isLate = now > dueDate;
 
-      // Firestore 저장 (재제출 시 덮어쓰기)
-      await setDoc(Collections.submission(hwId, user.uid), {
-        image_urls: downloadUrls,
-        status: 'submitted',
-        is_late: isLate,
-        feedback: null,
-        submitted_at: serverTimestamp(),
-      });
+      // Firestore 저장
+      // 최초 제출: setDoc 으로 전체 필드 생성
+      // 재제출(다시풀기 후): updateDoc 으로 변경 허용 필드만 — Rules 정책상
+      //   학생은 image_urls/status/submitted_at/is_late/feedback(null로 리셋) 만 변경 가능
+      //   feedback_comment 같은 다른 필드를 같이 보내면 permission denied 발생
+      if (existingSubmission) {
+        await updateDoc(Collections.submission(hwId, user.uid), {
+          image_urls: downloadUrls,
+          status: 'submitted',
+          is_late: isLate,
+          submitted_at: serverTimestamp(),
+          feedback: null,    // 다시풀기 피드백 리셋 — 새 검사 대기 상태로
+          is_retry: true,    // 학생 화면에서 "다시푸는중" 표시 — 선생님 검사 후에도 유지
+        });
+      } else {
+        await setDoc(Collections.submission(hwId, user.uid), {
+          image_urls: downloadUrls,
+          status: 'submitted',
+          is_late: isLate,
+          feedback: null,
+          submitted_at: serverTimestamp(),
+        });
+      }
 
       // ── 스트릭 업데이트 (첫 제출 시에만) ──────────────────────────────
       // 재제출(existingSubmission이 있는 경우)은 스트릭에 영향 없음
@@ -399,7 +420,7 @@ export default function HomeworkSubmitScreen() {
         {/* 헤더 */}
         <View style={[styles.header, { paddingTop: top + 12 }]}>
           <TouchableOpacity onPress={() => setPhase('camera')} style={styles.backBtn} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={22} color="#0F172A" />
+            <Ionicons name="chevron-back" size={24} color="#0F172A" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>미리보기</Text>
@@ -454,65 +475,68 @@ export default function HomeworkSubmitScreen() {
   }
 
   // 카메라 화면
+  // expo-camera v15+ 에서 <CameraView> 는 children 미지원 — 자식으로 넣으면
+  // "does not support children" WARN + 일부 상황에서 크래시 유발.
+  // 따라서 CameraView 와 오버레이를 형제로 두고 absolute positioning 으로 겹치게 함.
   return (
     <View style={styles.cameraContainer}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="back">
-        {/* 상단 오버레이 */}
-        <SafeAreaView style={styles.cameraTop}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.cameraCloseBtn} activeOpacity={0.7}>
-            <Ionicons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.cameraInfo}>
-            <Text style={styles.cameraTitle}>{homework?.title ?? '숙제 제출'}</Text>
-            <Text style={styles.cameraCount}>{photos.length} / {MAX_PHOTOS}장</Text>
-          </View>
-        </SafeAreaView>
+      <CameraView ref={cameraRef} style={styles.camera} facing="back" />
 
-        {/* 촬영한 사진 썸네일 목록 */}
-        {photos.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.thumbnailBar}
-            contentContainerStyle={styles.thumbnailBarContent}
-          >
-            {photos.map((uri, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setPhase('preview')} activeOpacity={0.85}>
-                <Image source={{ uri }} style={styles.thumbImg} />
-                <TouchableOpacity style={styles.thumbDeleteBtn} onPress={() => removePhoto(idx)}>
-                  <Ionicons name="close-circle" size={18} color="#fff" />
-                </TouchableOpacity>
+      {/* 상단 오버레이 */}
+      <SafeAreaView style={styles.cameraTop} pointerEvents="box-none">
+        <TouchableOpacity onPress={() => router.back()} style={styles.cameraCloseBtn} activeOpacity={0.7}>
+          <Ionicons name="close" size={24} color="#fff" />
+        </TouchableOpacity>
+        <View style={styles.cameraInfo}>
+          <Text style={styles.cameraTitle}>{homework?.title ?? '숙제 제출'}</Text>
+          <Text style={styles.cameraCount}>{photos.length} / {MAX_PHOTOS}장</Text>
+        </View>
+      </SafeAreaView>
+
+      {/* 촬영한 사진 썸네일 목록 */}
+      {photos.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.thumbnailBar}
+          contentContainerStyle={styles.thumbnailBarContent}
+        >
+          {photos.map((uri, idx) => (
+            <TouchableOpacity key={idx} onPress={() => setPhase('preview')} activeOpacity={0.85}>
+              <Image source={{ uri }} style={styles.thumbImg} />
+              <TouchableOpacity style={styles.thumbDeleteBtn} onPress={() => removePhoto(idx)}>
+                <Ionicons name="close-circle" size={18} color="#fff" />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* 하단: 촬영 버튼 */}
-        <SafeAreaView style={styles.cameraBottom}>
-          {photos.length > 0 && (
-            <TouchableOpacity
-              style={styles.previewGoBtn}
-              onPress={() => setPhase('preview')}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.previewGoBtnText}>미리보기 →</Text>
             </TouchableOpacity>
-          )}
+          ))}
+        </ScrollView>
+      )}
 
+      {/* 하단: 촬영 버튼 */}
+      <SafeAreaView style={styles.cameraBottom} pointerEvents="box-none">
+        {photos.length > 0 && (
           <TouchableOpacity
-            style={[styles.shutterBtn, photos.length >= MAX_PHOTOS && styles.shutterBtnDisabled]}
-            onPress={takePhoto}
-            disabled={photos.length >= MAX_PHOTOS}
+            style={styles.previewGoBtn}
+            onPress={() => setPhase('preview')}
             activeOpacity={0.85}
           >
-            <View style={styles.shutterInner} />
+            <Text style={styles.previewGoBtnText}>미리보기 →</Text>
           </TouchableOpacity>
+        )}
 
-          <Text style={styles.shutterHint}>
-            {photos.length >= MAX_PHOTOS ? '최대 5장까지 가능해요' : '탭하여 촬영'}
-          </Text>
-        </SafeAreaView>
-      </CameraView>
+        <TouchableOpacity
+          style={[styles.shutterBtn, photos.length >= MAX_PHOTOS && styles.shutterBtnDisabled]}
+          onPress={takePhoto}
+          disabled={photos.length >= MAX_PHOTOS}
+          activeOpacity={0.85}
+        >
+          <View style={styles.shutterInner} />
+        </TouchableOpacity>
+
+        <Text style={styles.shutterHint}>
+          {photos.length >= MAX_PHOTOS ? '최대 5장까지 가능해요' : '탭하여 촬영'}
+        </Text>
+      </SafeAreaView>
     </View>
   );
 }
@@ -636,6 +660,7 @@ const styles = StyleSheet.create({
   cameraContainer: { flex: 1, backgroundColor: '#000' },
   camera: { flex: 1 },
   cameraTop: {
+    position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',

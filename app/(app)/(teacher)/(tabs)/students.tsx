@@ -93,7 +93,7 @@ export default function TeacherStudentsScreen() {
       (snap) => {
         const allStudents = snap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
         setStudents(
-          allStudents.filter(s => s.class_id && assignedIds.includes(s.class_id) && s.is_active !== false)
+          allStudents.filter(s => s.class_id && assignedIds.includes(s.class_id) && s.is_active !== false && !s.deleted_at)
         );
         setIsLoading(false);
       },
@@ -264,7 +264,12 @@ export default function TeacherStudentsScreen() {
 
                 {/* 이름 + 서브 정보 */}
                 <View style={styles.info}>
-                  <Text style={styles.name}>{item.name}</Text>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.name}>{item.name}</Text>
+                    {!!item.school_name && (
+                      <Text style={styles.schoolTag}>{item.school_name}</Text>
+                    )}
+                  </View>
                   <Text style={styles.sub}>{cls ? cls.name : '반 미배정'}</Text>
                   {/* 저장된 피드백 미리보기 */}
                   {hasFeedback && (
@@ -437,7 +442,9 @@ const styles = StyleSheet.create({
 
   // 이름 + 서브
   info: { flex: 1, gap: 2 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   name: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  schoolTag: { fontSize: 11, color: '#94A3B8' },
   sub:  { fontSize: 13, color: '#64748B' },
   feedbackPreview: { fontSize: 12, color: '#5B50E8', marginTop: 2 },
 

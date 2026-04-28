@@ -10,6 +10,7 @@ import { Collections } from '../lib/firestore';
 import { useAuthStore } from '../store/useAuthStore';
 import { initFCM, registerFCMListeners } from '../lib/fcm';
 import { configureGoogleSignIn } from '../lib/auth';
+import { initializeKakaoSDK } from '@react-native-kakao/core';
 import { User, Academy } from '../types';
 import ErrorBoundary from '../components/ErrorBoundary';
 
@@ -34,8 +35,12 @@ function RootLayoutInner() {
 
   const [initialized, setInitialized] = useState(false);
 
-  // GoogleSignin 앱 시작 시 1회 초기화
-  useEffect(() => { configureGoogleSignIn(); }, []);
+  // 소셜 로그인 SDK 앱 시작 시 1회 초기화
+  useEffect(() => {
+    configureGoogleSignIn();
+    const kakaoKey = process.env.EXPO_PUBLIC_KAKAO_APP_KEY;
+    if (kakaoKey) initializeKakaoSDK(kakaoKey).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // 안전망: 어떤 이유로도 8초 안에 초기화 안 되면 강제 탈출

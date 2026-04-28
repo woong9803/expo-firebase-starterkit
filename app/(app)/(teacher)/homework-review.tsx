@@ -45,6 +45,7 @@ import { Homework, Submission, User } from '../../../types';
 interface SubmissionWithStudent extends Submission {
   studentUid: string;
   studentName: string;
+  studentSchool?: string;
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ export default function HomeworkReviewScreen() {
         );
         const studentList = studentSnap.docs
           .map(d => ({ uid: d.id, ...d.data() } as User))
-          .filter(u => u.role === 'student' && u.is_active);
+          .filter(u => u.role === 'student' && u.is_active && !u.deleted_at);
         setStudents(studentList);
 
         // 학생이 없으면 로딩 즉시 해제
@@ -115,14 +116,19 @@ export default function HomeworkReviewScreen() {
   useEffect(() => {
     if (!hwId || students.length === 0) return;
 
-    // 학생 이름 맵 (uid → name) 미리 생성
+    // 학생 이름·학교 맵 (uid → name/school) 미리 생성
     const nameMap: Record<string, string> = {};
-    students.forEach(s => { nameMap[s.uid] = s.name; });
+    const schoolMap: Record<string, string> = {};
+    students.forEach(s => {
+      nameMap[s.uid] = s.name;
+      if (s.school_name) schoolMap[s.uid] = s.school_name;
+    });
 
     const unsub = onSnapshot(Collections.submissions(hwId), (snap) => {
       const list = snap.docs.map(d => ({
         studentUid: d.id,
         studentName: nameMap[d.id] ?? '알 수 없음',
+        studentSchool: schoolMap[d.id],
         ...d.data(),
       } as SubmissionWithStudent));
 
@@ -212,7 +218,7 @@ export default function HomeworkReviewScreen() {
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="arrow-back" size={22} color="#0F172A" />
+          <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle} numberOfLines={1}>
@@ -295,7 +301,12 @@ export default function HomeworkReviewScreen() {
                       <View style={styles.nonSubmitAvatar}>
                         <Text style={styles.nonSubmitAvatarText}>{s.name.charAt(0)}</Text>
                       </View>
-                      <Text style={styles.nonSubmitName}>{s.name}</Text>
+                      <View style={styles.nonSubmitNameBlock}>
+                        <Text style={styles.nonSubmitName}>{s.name}</Text>
+                        {!!s.school_name && (
+                          <Text style={styles.nonSubmitSchool}>{s.school_name}</Text>
+                        )}
+                      </View>
                       {/* 알림 보내기 버튼 */}
                       <TouchableOpacity
                         style={[
@@ -357,7 +368,7 @@ interface SubmissionCardProps {
 }
 
 function SubmissionCard({ submission, onFeedback, onSaveComment, onImagePress }: SubmissionCardProps) {
-  const { studentName, image_urls, is_late, feedback, feedback_comment, submitted_at } = submission;
+  const { studentName, studentSchool, image_urls, is_late, feedback, feedback_comment, submitted_at, is_retry } = submission;
 
   // 💧 코멘트 입력 상태 — 현재 저장된 코멘트로 초기화
   const [commentText, setCommentText] = useState(feedback_comment ?? '');
@@ -386,7 +397,22 @@ function SubmissionCard({ submission, onFeedback, onSaveComment, onImagePress }:
   const isCommentChanged = commentText.trim() !== (feedback_comment ?? '').trim();
 
   return (
-    <View style={[styles.submissionCard, submission.status === 'checked' && styles.submissionCardChecked]}>
+    <View
+      style={[
+        styles.submissionCard,
+        submission.status === 'checked' && styles.submissionCardChecked,
+        // 다시 제출 + 검사 전 → 카드 전체 노란색 강조 (선생님이 한눈에 식별)
+        is_retry && submission.status === 'submitted' && styles.submissionCardRetry,
+      ]}
+    >
+      {/* 다시제출 강조 배너 — 검사 전인 재제출만 표시 */}
+      {is_retry && submission.status === 'submitted' && (
+        <View style={styles.retryBanner}>
+          <Ionicons name="refresh" size={14} color="#92400E" />
+          <Text style={styles.retryBannerText}>다시 제출했어요 — 새로 검사해주세요</Text>
+        </View>
+      )}
+
       {/* 상단: 학생 정보 */}
       <View style={styles.submissionTop}>
         <View style={styles.submissionAvatar}>
@@ -395,9 +421,18 @@ function SubmissionCard({ submission, onFeedback, onSaveComment, onImagePress }:
         <View style={styles.submissionInfo}>
           <View style={styles.submissionNameRow}>
             <Text style={styles.submissionName}>{studentName}</Text>
+            {!!studentSchool && (
+              <Text style={styles.submissionSchool}>{studentSchool}</Text>
+            )}
             {is_late && (
               <View style={styles.lateChip}>
                 <Text style={styles.lateChipText}>지각</Text>
+              </View>
+            )}
+            {/* 다시 제출 칩 — 검사 전이든 후든 학생이 한 번이라도 재제출 했으면 표시 */}
+            {is_retry && (
+              <View style={styles.retryChip}>
+                <Text style={styles.retryChipText}>다시제출</Text>
               </View>
             )}
             {submission.status === 'checked' && (
@@ -628,6 +663,32 @@ const styles = StyleSheet.create({
     borderColor: '#A7F3D0',
     backgroundColor: '#F0FDF4',
   },
+  // 다시 제출 + 검사 전 → 노란색 강조
+  submissionCardRetry: {
+    borderColor: '#FCD34D',
+    borderWidth: 2,
+    backgroundColor: '#FFFBEB',
+  },
+  // 다시 제출 안내 배너 (카드 최상단)
+  retryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  retryBannerText: { fontSize: 13, fontWeight: '700', color: '#92400E' },
+  // 다시제출 칩 (이름 옆)
+  retryChip: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  retryChipText: { fontSize: 11, fontWeight: '700', color: '#92400E' },
   submissionTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   submissionAvatar: {
     width: 38, height: 38, borderRadius: 19,
@@ -638,6 +699,7 @@ const styles = StyleSheet.create({
   submissionInfo: { flex: 1, gap: 3 },
   submissionNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   submissionName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  submissionSchool: { fontSize: 11, color: '#94A3B8' },
   submittedAt: { fontSize: 12, color: '#94A3B8' },
 
   // 지각 칩
@@ -749,7 +811,9 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   nonSubmitAvatarText: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  nonSubmitName: { flex: 1, fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  nonSubmitNameBlock: { flex: 1, gap: 1 },
+  nonSubmitName: { fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  nonSubmitSchool: { fontSize: 11, color: '#94A3B8' },
   nonSubmitChip: {
     backgroundColor: '#F1F5F9',
     borderRadius: 6,

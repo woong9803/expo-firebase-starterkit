@@ -656,7 +656,9 @@ export default function ParentHomeScreen() {
                       )}
                       <Text style={styles.noticeTitle} numberOfLines={2}>{notice.title}</Text>
                       <Text style={styles.noticeDate}>
-                        {notice.created_at.toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                        {notice.created_at
+                          ? notice.created_at.toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+                          : ''}
                       </Text>
                     </View>
                   </View>

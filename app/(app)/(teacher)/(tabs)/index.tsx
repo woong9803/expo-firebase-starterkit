@@ -115,7 +115,7 @@ export default function TeacherHomeScreen() {
           where('class_id', '==', cls.id),
           where('role', '==', 'student'),
         ));
-        const studentCount = studentSnap.docs.filter(d => d.data().is_active !== false).length;
+        const studentCount = studentSnap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length;
         return { classId: cls.id, studentCount };
       })
     ).then((statsResults) => {
@@ -242,7 +242,7 @@ export default function TeacherHomeScreen() {
           where('class_id', '==', classId),
           where('role', '==', 'student'),
         ));
-        return { classId, count: snap.docs.filter(d => d.data().is_active !== false).length };
+        return { classId, count: snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length };
       })
     ).then((results) => {
       const map: Record<string, number> = {};
@@ -546,7 +546,9 @@ export default function TeacherHomeScreen() {
                   )}
                   <Text style={styles.noticeTitle}>{n.title}</Text>
                   <Text style={styles.noticeDate}>
-                    {(n.created_at as any).toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                    {n.created_at
+                      ? (n.created_at as any).toDate().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+                      : ''}
                   </Text>
                 </View>
               </View>
