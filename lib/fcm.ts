@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { updateDoc } from 'firebase/firestore';
+import Constants from 'expo-constants';
 import { Collections } from './firestore';
 
 // ─────────────────────────────────────────────
@@ -13,13 +14,15 @@ const FCM_DENIED_AT_KEY = 'fcm_permission_denied_at';
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 // ─────────────────────────────────────────────
-// FCM 초기화 — 로그인 완료 후 호출
+// 푸시 토큰 초기화 — 로그인 완료 후 호출
 // ─────────────────────────────────────────────
 
 /**
- * FCM 토큰 발급 및 Firestore 저장
+ * Expo Push 토큰 발급 및 Firestore 저장
+ * - Expo Push Service가 APNs(iOS)/FCM(Android)로 자동 라우팅해줌
  * - 권한 거부 시: AsyncStorage에 거부 시각 저장, 3일 후 재요청
  * - 토큰 발급 성공 시: users/{uid}.fcm_token 업데이트
+ *   (DB 필드명은 호환을 위해 fcm_token 유지, 실제 값은 ExponentPushToken[xxx])
  */
 export async function initFCM(uid: string): Promise<void> {
   try {
@@ -54,22 +57,29 @@ export async function initFCM(uid: string): Promise<void> {
 
     if (finalStatus !== 'granted') return;
 
-    // FCM 토큰 발급 (디바이스 푸시 토큰)
-    const tokenData = await Notifications.getDevicePushTokenAsync();
-    const fcmToken = tokenData.data as string;
+    // EAS projectId — getExpoPushTokenAsync에 명시적으로 전달해야 SDK 49+에서 정상 동작
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
 
-    if (!fcmToken) return;
+    // Expo Push Token 발급 — ExponentPushToken[xxxxxx] 형태
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    const expoPushToken = tokenData.data;
 
-    // Firestore users/{uid}.fcm_token 저장
-    await updateDoc(Collections.user(uid), { fcm_token: fcmToken });
+    if (!expoPushToken) return;
+
+    // Firestore users/{uid}.fcm_token 저장 (필드명은 호환 유지, 값은 Expo Push Token)
+    await updateDoc(Collections.user(uid), { fcm_token: expoPushToken });
   } catch (err) {
     // 토큰 발급 실패 시 앱 동작에 영향 없도록 로그만 남김
-    console.warn('[initFCM] FCM 초기화 실패:', err);
+    console.warn('[initFCM] 푸시 토큰 초기화 실패:', err);
   }
 }
 
 // ─────────────────────────────────────────────
-// FCM 리스너 등록 — 앱 레이아웃에서 한 번만 호출
+// 알림 리스너 등록 — 앱 레이아웃에서 한 번만 호출
 // ─────────────────────────────────────────────
 
 /**
@@ -104,7 +114,8 @@ export function registerFCMListeners(uid: string): () => void {
     }
   );
 
-  // 토큰 갱신 리스너 — 토큰이 바뀌면 Firestore 자동 업데이트
+  // 토큰 갱신 리스너 — Expo Push Token이 바뀌면 Firestore 자동 업데이트
+  // (앱 재설치·OS 푸시 권한 토글 등으로 토큰이 변경될 수 있음)
   const tokenListener = Notifications.addPushTokenListener(async (tokenData) => {
     const newToken = tokenData.data as string;
     if (newToken && uid) {

@@ -18,8 +18,10 @@ import {
   serverTimestamp,
   arrayUnion,
 } from 'firebase/firestore';
+import { getIdToken } from 'firebase/auth';
+import { auth } from './firebase';
 import { Collections } from './firestore';
-import type { Notice, User } from '../types/index';
+import type { Notice, NoticeAttachment, User } from '../types/index';
 
 // ─────────────────────────────────────────────────────────────
 // 타입
@@ -34,6 +36,16 @@ export interface CreateNoticeParams {
   createdBy: string;         // 작성자 uid
   targetClassIds: string[];  // 빈 배열 = 전체 반
   targetRoles: string[];     // 빈 배열 = 모두. 예: ['student'] | ['parent'] | []
+  attachments?: NoticeAttachment[]; // 업로드 완료된 첨부파일 메타
+}
+
+// 업로드 전 로컬 파일 정보 (호출자가 채워서 uploadNoticeAttachment에 전달)
+export interface PendingNoticeAttachment {
+  uri: string;       // 로컬 파일 URI (file://...)
+  name: string;      // 원본 파일명
+  kind: 'image' | 'file';
+  size: number;      // 바이트
+  mime: string;      // MIME 타입
 }
 
 /** getNoticeReadUsers 반환 타입 */
@@ -51,7 +63,7 @@ export interface NoticeReadStatus {
  * @returns 생성된 문서 ID
  */
 export async function createNotice(params: CreateNoticeParams): Promise<string> {
-  const { title, content, isImportant, academyId, createdBy, targetClassIds, targetRoles } = params;
+  const { title, content, isImportant, academyId, createdBy, targetClassIds, targetRoles, attachments } = params;
 
   const docRef = await addDoc(Collections.notices(), {
     title,
@@ -62,10 +74,69 @@ export async function createNotice(params: CreateNoticeParams): Promise<string> 
     read_by: [],
     target_class_ids: targetClassIds,  // 빈 배열 = 전체 반
     target_roles: targetRoles,         // 빈 배열 = 모두 (학생+학부모)
+    attachments: attachments ?? [],    // 첨부파일 메타 (없으면 빈 배열)
     created_at: serverTimestamp(),
   });
 
   return docRef.id;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 첨부파일 업로드 (Storage REST API + FormData)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 공지 첨부파일을 Firebase Storage에 업로드한다.
+ * Hermes 엔진의 Blob 호환성 이슈 회피를 위해 REST API + FormData 사용.
+ *
+ * @param academyId  학원 ID — Storage 경로 + 보안 규칙에 사용
+ * @param noticeTempId  사전 발급한 임시 noticeId (uuid 또는 timestamp)
+ * @param file       업로드할 파일 정보
+ * @returns          업로드된 파일 메타 (저장용 URL 포함)
+ */
+export async function uploadNoticeAttachment(
+  academyId: string,
+  noticeTempId: string,
+  file: PendingNoticeAttachment,
+): Promise<NoticeAttachment> {
+  const token = auth.currentUser ? await getIdToken(auth.currentUser) : null;
+  if (!token) throw new Error('인증 토큰 없음');
+
+  const bucket = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  // 동일 파일명 충돌 방지 — 타임스탬프 prefix
+  const safeName = `${Date.now()}_${file.name.replace(/[^\w.\-]/g, '_')}`;
+  const storagePath = `notices/${academyId}/${noticeTempId}/${safeName}`;
+  const encodedPath = encodeURIComponent(storagePath);
+  const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodedPath}`;
+
+  const formData = new FormData();
+  formData.append('file', {
+    uri: file.uri,
+    type: file.mime,
+    name: safeName,
+  } as any);
+
+  const res = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`첨부파일 업로드 실패 (${res.status}): ${errText}`);
+  }
+
+  const json = await res.json();
+  const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${json.downloadTokens}`;
+
+  return {
+    url: downloadUrl,
+    name: file.name,
+    kind: file.kind,
+    size: file.size,
+    mime: file.mime,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -202,7 +273,10 @@ export function subscribeNoticeReadUsers(
   ).then((usersSnap) => {
     if (isCancelled) return;
 
-    const allUsers = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() } as User));
+    // 탈퇴 학생·학부모(deleted_at != null) 제외
+    const allUsers = usersSnap.docs
+      .map((d) => ({ uid: d.id, ...d.data() } as User))
+      .filter((u) => !u.deleted_at);
 
     // 2) 공지 문서 실시간 구독 — read_by 변경 시마다 호출됨
     unsubNotice = onSnapshot(Collections.notice(noticeId), (snap) => {
