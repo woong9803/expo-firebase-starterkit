@@ -17,6 +17,7 @@ import { strings } from '../constants/strings';
 
 interface Props {
   studentName: string;
+  schoolName?: string;
   status: AttendanceStatus | null;
   reason: string | null;
   onStatusChange: (status: AttendanceStatus) => void;
@@ -49,6 +50,7 @@ const NEEDS_REASON: AttendanceStatus[] = ['late', 'absent'];
 
 export default function AttendanceRow({
   studentName,
+  schoolName,
   status,
   reason,
   onStatusChange,
@@ -91,8 +93,13 @@ export default function AttendanceRow({
           <Text style={styles.avatarText}>{studentName.slice(0, 1)}</Text>
         </View>
 
-        {/* 이름 */}
-        <Text style={styles.name} numberOfLines={1}>{studentName}</Text>
+        {/* 이름 + 학교 */}
+        <View style={styles.nameBlock}>
+          <Text style={styles.name} numberOfLines={1}>{studentName}</Text>
+          {!!schoolName && (
+            <Text style={styles.school} numberOfLines={1}>{schoolName}</Text>
+          )}
+        </View>
 
         {/* ○△× 토글 버튼 */}
         <View style={styles.buttonGroup}>
@@ -181,12 +188,19 @@ const styles = StyleSheet.create({
     color: '#334155',
   },
 
-  // 이름
-  name: {
+  // 이름 + 학교 묶음
+  nameBlock: {
     flex: 1,
+  },
+  name: {
     fontSize: 16,
     fontWeight: '600',
     color: '#0F172A',
+  },
+  school: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 1,
   },
 
   // 버튼 그룹

@@ -2,7 +2,11 @@
  * components/ProUpgradeSheet.tsx — Pro 플랜 전환 바텀시트
  *
  * 무료 플랜 사용자가 Pro 전용 기능 진입 시 표시.
- * Phase 9에서 실제 결제 연동 예정 — 지금은 UI만 구현.
+ *
+ * 역할별 동작 분기 (학원 설정은 admin만 변경 가능 — security.md 기준):
+ * - admin:  "플랜 업그레이드 →" → /plan-upgrade 화면으로 이동
+ * - teacher: "원장님께 요청 →" → 시트만 닫고 요청 가이드 유지
+ * - 기타:    시트만 닫음 (학부모/학생은 이 시트를 보게 될 일이 거의 없음)
  */
 
 import React from 'react';
@@ -14,6 +18,9 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
+import { router } from 'expo-router';
+
+import { useAuthStore } from '../store/useAuthStore';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +45,23 @@ const PRO_BENEFITS = [
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
 
 export default function ProUpgradeSheet({ visible, onClose, featureName }: Props) {
+  const { user } = useAuthStore();
+  const role = user?.role;
+  const isAdmin = role === 'admin';
+
+  // admin: 결제 화면으로 이동 / 그 외: 시트만 닫음 (원장님께 요청 안내)
+  const handleUpgradePress = () => {
+    if (isAdmin) {
+      onClose();
+      router.push('/(app)/(admin)/plan-upgrade');
+    } else {
+      onClose();
+    }
+  };
+
+  // 역할별 버튼 라벨
+  const ctaLabel = isAdmin ? '플랜 업그레이드 →' : '원장님께 요청하기';
+
   return (
     <Modal
       visible={visible}
@@ -74,13 +98,21 @@ export default function ProUpgradeSheet({ visible, onClose, featureName }: Props
           ))}
         </View>
 
-        {/* 업그레이드 버튼 (Phase 9에서 결제 연동) */}
+        {/* 비원장 역할에게는 안내 텍스트 추가 노출 */}
+        {!isAdmin && (
+          <Text style={styles.roleNotice}>
+            플랜 변경은 학원 원장님만 가능해요.{'\n'}
+            원장님께 업그레이드를 요청해주세요.
+          </Text>
+        )}
+
+        {/* 업그레이드 버튼 (역할별 분기) */}
         <TouchableOpacity
           style={styles.upgradeBtn}
-          onPress={onClose}   // TODO: Phase 9 — 결제 화면으로 이동
+          onPress={handleUpgradePress}
           activeOpacity={0.85}
         >
-          <Text style={styles.upgradeBtnText}>플랜 업그레이드 →</Text>
+          <Text style={styles.upgradeBtnText}>{ctaLabel}</Text>
         </TouchableOpacity>
 
         {/* 취소 */}
@@ -168,6 +200,15 @@ const styles = StyleSheet.create({
   benefitText: {
     fontSize: 14,
     color: '#334155',
+  },
+
+  // 비원장 역할 안내
+  roleNotice: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 16,
   },
 
   // 버튼
