@@ -5,11 +5,13 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize, FontWeight } from '../../constants/theme';
+import { LEGAL_URLS } from '../../constants/urls';
 
 // 특징 리스트 — Ionicons 벡터 아이콘으로 통일
 const FEATURES: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
@@ -80,10 +82,22 @@ export default function StartScreen() {
           <Text style={styles.btnOutlineText}>이미 계정이 있어요</Text>
         </TouchableOpacity>
 
-        {/* 약관 텍스트 */}
+        {/* 약관 텍스트 — 두 링크 각각 외부 브라우저로 노션 페이지 열기 */}
         <Text style={styles.termsText}>
           계속 진행하면{' '}
-          <Text style={styles.termsLink}>이용약관</Text>
+          <Text
+            style={styles.termsLink}
+            onPress={() => Linking.openURL(LEGAL_URLS.termsOfService)}
+          >
+            이용약관
+          </Text>
+          {' '}및{' '}
+          <Text
+            style={styles.termsLink}
+            onPress={() => Linking.openURL(LEGAL_URLS.privacyPolicy)}
+          >
+            개인정보처리방침
+          </Text>
           에 동의합니다
         </Text>
       </View>

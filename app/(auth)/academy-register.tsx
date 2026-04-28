@@ -16,7 +16,7 @@ import {
 const ACCESSORY_ID = 'academyRegister';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
+import { addDoc, serverTimestamp, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { generateLinkCode } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
@@ -70,17 +70,24 @@ export default function AcademyRegisterScreen() {
       // 선생님 가입용 학원코드 자동 생성 (6자리 영숫자)
       const academyCode = generateLinkCode();
 
+      // 14일 무료 체험 만료일 계산 (domain-terms.md: trial 플랜 14일)
+      // ⚠️ 클라이언트 시계 기반 — P2-12 완료 시 Rules에서 plan 필드 잠그면
+      //    이후 plan 변경은 CF(verifyTossPayment)를 통해서만 가능
+      const trialEndsAt = Timestamp.fromMillis(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
       // Firestore academies 컬렉션에 신규 문서 생성 (status: pending)
+      // owner_uid — P1-5: Rules에서 owner_uid == request.auth.uid 검증 + isOnboarding() 게이트로 uid당 1개 제한
       const academyRef = await addDoc(Collections.academies(), {
         name: academyName.trim(),
         academy_code: academyCode,
         academy_type: academyType,
+        owner_uid: currentUser.uid,
         owner_name: ownerName.trim(),
         owner_phone: ownerPhone.trim(),
         address: address.trim(),
         status: 'pending',       // 승인 대기 상태
-        plan: 'pro',  // 파일럿 기간: 전체 pro 허용 — 플랜 활성화 시 'free'로 변경
-        trial_ends_at: null,
+        plan: 'trial',           // 14일 무료 체험 시작 (만료 시 free로 강등 — 추후 CF 구현 필요)
+        trial_ends_at: trialEndsAt,
         approved_at: null,
         reject_reason: null,
         submitted_at: serverTimestamp(),
@@ -88,13 +95,14 @@ export default function AcademyRegisterScreen() {
       });
 
       // users 문서에 role: 'admin', academy_id 저장 (문서 없을 경우 생성)
+      // ⚠️ phone_verified는 여기서 건드리지 않음 — phone-verify.tsx에서 이미 true로 저장됨
+      //    (merge: true 이므로 필드를 생략하면 기존 값 유지)
       await setDoc(Collections.user(currentUser.uid), {
         role: 'admin',
         academy_id: academyRef.id,
         uid: currentUser.uid,
         email: currentUser.email ?? '',
         name: '',
-        phone_verified: false,
         is_active: true,
         created_at: serverTimestamp(),
       }, { merge: true });
@@ -112,12 +120,13 @@ export default function AcademyRegisterScreen() {
         name: academyName.trim(),
         academy_code: academyCode,
         academy_type: academyType!,
+        owner_uid: currentUser.uid,
         owner_name: ownerName.trim(),
         owner_phone: ownerPhone.trim(),
         address: address.trim(),
         status: 'pending',
-        plan: 'pro',  // 파일럿 기간: 전체 pro 허용 — 플랜 활성화 시 'free'로 변경
-        trial_ends_at: null,
+        plan: 'trial',           // 14일 무료 체험 시작
+        trial_ends_at: trialEndsAt,
         approved_at: null,
         reject_reason: null,
       } as Academy);
