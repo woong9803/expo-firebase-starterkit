@@ -3,6 +3,35 @@ service firebase.storage {
   match /b/{bucket}/o {
 
     // ─────────────────────────────────────────────
+    // 공통 헬퍼 — 요청자의 academy_id 조회
+    // Storage Rules는 Firestore 쪽 users/{uid} 문서를 교차 조회해 학원 격리 판단
+    // ─────────────────────────────────────────────
+    function userAcademyId() {
+      return firestore.get(
+        /databases/(default)/documents/users/$(request.auth.uid)
+      ).data.academy_id;
+    }
+
+    // homework 의 소속 학원 ID 조회 (homework → class → academy_id)
+    // homework 문서에는 academy_id 필드가 없어 classes 를 한 번 더 경유
+    function homeworkAcademyId(homeworkId) {
+      let homework = firestore.get(
+        /databases/(default)/documents/homeworks/$(homeworkId)
+      ).data;
+      let classDoc = firestore.get(
+        /databases/(default)/documents/classes/$(homework.class_id)
+      ).data;
+      return classDoc.academy_id;
+    }
+
+    // profile 의 소속 학원 ID 조회
+    function profileAcademyId(uid) {
+      return firestore.get(
+        /databases/(default)/documents/users/$(uid)
+      ).data.academy_id;
+    }
+
+    // ─────────────────────────────────────────────
     // 공통: 로그인하지 않은 사용자는 전체 접근 금지
     // ─────────────────────────────────────────────
     match /{allPaths=**} {
@@ -12,10 +41,14 @@ service firebase.storage {
     // ─────────────────────────────────────────────
     // 숙제 제출 이미지
     // 경로: homeworks/{homeworkId}/{studentUid}/{filename}
+    // P1-1 (2026-04-23): 같은 학원 소속만 읽기 허용 — 크로스 학원 접근 차단
     // ─────────────────────────────────────────────
     match /homeworks/{homeworkId}/{studentUid}/{filename} {
-      // 본인 또는 로그인한 사용자(선생님·원장님)는 읽기 가능
-      allow read: if request.auth != null;
+      // 본인 제출물은 본인이 항상 읽기 가능 (경로로 즉시 판단, firestore 조회 불필요)
+      // 본인이 아니면 요청자의 academy_id 와 homework 의 academy_id 가 일치해야 함
+      allow read: if request.auth != null
+                   && (request.auth.uid == studentUid
+                       || userAcademyId() == homeworkAcademyId(homeworkId));
       // 본인 uid 경로에만 업로드 가능 (학생 본인 제출물만)
       allow write: if request.auth != null
                    && request.auth.uid == studentUid
@@ -25,12 +58,34 @@ service firebase.storage {
     }
 
     // ─────────────────────────────────────────────
+    // 공지 첨부파일 (이미지·문서)
+    // 경로: notices/{academyId}/{noticeId}/{filename}
+    // 작성: 같은 학원의 admin/teacher만
+    // 읽기: 같은 학원 소속 모두 (학생·학부모 포함)
+    // 제한: 개당 10MB
+    // ─────────────────────────────────────────────
+    match /notices/{academyId}/{noticeId}/{filename} {
+      allow read: if request.auth != null
+                   && userAcademyId() == academyId;
+      allow write: if request.auth != null
+                   && userAcademyId() == academyId
+                   && firestore.get(
+                        /databases/(default)/documents/users/$(request.auth.uid)
+                      ).data.role in ['admin', 'teacher']
+                   && request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    // ─────────────────────────────────────────────
     // 프로필 이미지
     // 경로: profiles/{uid}/{filename}
+    // P2-9 동반 적용 (2026-04-23): 같은 학원 소속만 읽기 허용
     // ─────────────────────────────────────────────
     match /profiles/{uid}/{filename} {
-      // 로그인한 사용자라면 누구든 읽기 가능 (공개 프로필)
-      allow read: if request.auth != null;
+      // 본인 프로필은 본인이 항상 읽기 가능
+      // 타인 프로필은 같은 학원 소속일 때만 허용
+      allow read: if request.auth != null
+                   && (request.auth.uid == uid
+                       || userAcademyId() == profileAcademyId(uid));
       // 본인 uid 경로에만 업로드 가능
       allow write: if request.auth != null
                    && request.auth.uid == uid

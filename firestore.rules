@@ -44,6 +44,13 @@ service cloud.firestore {
       return getUserRole() == 'admin';
     }
 
+    // 탈퇴 처리(소프트 삭제)된 유저인지 확인
+    // deleted_at 필드가 null이거나 없어야 정상 유저
+    // Cloud Function이 deleted_at을 기록한 직후 클라이언트 signOut 전까지의 접근을 Rules 레벨에서 차단
+    function isNotDeleted() {
+      return getUserData().get('deleted_at', null) == null;
+    }
+
     // 학원 승인 상태가 active인지 확인
     // 선생님 초대 등 active 상태에서만 허용되는 기능에 사용
     function isAcademyActive(academyId) {
@@ -62,6 +69,26 @@ service cloud.firestore {
       return isAcademyPendingOrActive(getUserData().academy_id);
     }
 
+    // 유료 플랜 여부 확인 (starter/standard/pro/trial 모두 유료)
+    // domain-terms.md: plan != 'free' 를 유료로 간주
+    // 만료 체크 (이중 방어선):
+    //  - starter/standard/pro: plan_expires_at (verifyTossPayment에서 설정)
+    //  - trial: trial_ends_at (학원 생성 시 +14일)
+    function isPaidPlan(academyId) {
+      let academy = get(/databases/$(database)/documents/academies/$(academyId)).data;
+      return academy.plan != 'free'
+        && (academy.plan != 'trial'
+            || academy.get('trial_ends_at', null) == null
+            || academy.trial_ends_at > request.time)
+        && (academy.get('plan_expires_at', null) == null
+            || academy.plan_expires_at > request.time);
+    }
+
+    // 현재 사용자 학원이 유료 플랜인지 확인
+    function isMyAcademyPaid() {
+      return isPaidPlan(getUserData().academy_id);
+    }
+
     // ─────────────────────────────────────────────
     // academies/{academyId} — 학원
     // ─────────────────────────────────────────────
@@ -70,13 +97,27 @@ service cloud.firestore {
       // 온보딩 중 선생님이 academy_code로 학원 조회 시 필요
       allow read: if isAuthenticated()
                   && (isAcademyMember(academyId) || isOnboarding());
-      // admin만 학원 정보 수정 가능 (active 상태에서만)
+      // admin만 학원 정보 수정 가능 (active 상태에서만) — 탈퇴 유저 차단
+      // P2-12 (2026-04-23): 과금·승인 관련 필드는 CF 전용으로 분리
+      //   허용 필드(화이트리스트): name, academy_type, owner_name, owner_phone, address
+      //   차단 필드: plan, plan_expires_at, trial_ends_at, status, approved_at,
+      //             reject_reason, owner_uid, academy_code, submitted_at, created_at
       allow update: if isAuthenticated()
+                    && isNotDeleted()
                     && isAcademyMember(academyId)
                     && isAdmin()
-                    && isAcademyActive(academyId);
-      // 신규 학원 생성은 누구든 가능 (가입 온보딩 흐름 — pending 상태로 생성)
-      allow create: if isAuthenticated();
+                    && isAcademyActive(academyId)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['name', 'academy_type', 'owner_name', 'owner_phone', 'address']);
+      // 신규 학원 생성 — P1-5 (2026-04-23): 무제한 생성 방지
+      //   · 온보딩 상태(users.academy_id 없음)에서만 허용 → uid당 학원 1개 제한
+      //   · owner_uid 본인 확인 → 타인 소유 위조 차단
+      //   · plan/status 값 강제 → 클라이언트가 'pro'나 'active'로 시작 불가
+      allow create: if isAuthenticated()
+                    && isOnboarding()
+                    && request.resource.data.owner_uid == request.auth.uid
+                    && request.resource.data.plan == 'trial'
+                    && request.resource.data.status == 'pending';
       // 삭제는 불가 (탈퇴 처리는 Cloud Functions에서)
       allow delete: if false;
     }
@@ -88,15 +129,22 @@ service cloud.firestore {
       // 본인, 같은 학원 소속, 온보딩 중, 또는 학부모가 학생 문서 조회 시 읽기 가능
       // 온보딩 중 학부모: link_code로 자녀 계정 조회 필요
       // 이미 온보딩된 학부모: 추가 자녀 연동 시 link_code 조회 필요 — role=='student' 문서만 허용
+      // 탈퇴 처리된 유저(deleted_at != null)는 본인 문서 외 접근 차단
+      // (본인 문서는 읽어야 deleted_at 확인 후 signOut 처리 가능)
       allow read: if isAuthenticated()
                   && (request.auth.uid == uid
-                      || isAcademyMember(resource.data.academy_id)
-                      || isOnboarding()
-                      || (getUserRole() == 'parent'
-                          && resource.data.get('role', '') == 'student'));
+                      || (isNotDeleted()
+                          && (isAcademyMember(resource.data.academy_id)
+                              || isOnboarding()
+                              || (getUserRole() == 'parent'
+                                  && resource.data.get('role', '') == 'student'))));
       // 본인 문서만 수정 가능
       // - role: 미설정 상태에서만 한 번 허용 (온보딩), 이후 변경 불가
       // - is_active: 최초 역할 설정(온보딩) 시에만 true 허용, 이후 변경 불가 (Cloud Functions 전용)
+      // - 불변/CF 전용 필드(블랙리스트): 본인 write 금지
+      //   · deleted_at — 탈퇴 처리는 deleteUser CF 전용, 본인이 되돌릴 수 없음
+      //   · teacher_feedback — staff가 학생에게 남기는 메모, 본인 자가조작 차단
+      //   · created_by — 생성자 감사 기록, 불변
       allow update: if isAuthenticated()
                     && request.auth.uid == uid
                     && (
@@ -110,7 +158,9 @@ service cloud.firestore {
                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
                       || !resource.data.keys().hasAny(['role'])
                       || resource.data.get('role', '') == ''
-                    );
+                    )
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                       .hasAny(['deleted_at', 'teacher_feedback', 'created_by']);
       // admin/teacher: 같은 학원 학생의 반 이동(class_id), 비활성화(is_active),
       //               학생 피드백(teacher_feedback) 처리 가능
       // role·academy_id 등 핵심 필드는 변경 불가
@@ -169,24 +219,35 @@ service cloud.firestore {
     // homeworks/{homeworkId} — 숙제
     // ─────────────────────────────────────────────
     match /homeworks/{homeworkId} {
-      // 같은 반 소속이면 읽기 가능
+      // 같은 반 소속이면 읽기 가능 — 탈퇴 유저 차단
       // 학부모: 해당 반이 자신과 같은 학원 소속이면 읽기 가능 (자녀 숙제 현황 확인용)
       allow read: if isAuthenticated()
+                  && isNotDeleted()
                   && (getUserData().class_id == resource.data.class_id
                       || isStaff()
                       || (getUserRole() == 'parent'
                           && get(/databases/$(database)/documents/classes/$(resource.data.class_id)).data.academy_id
                              == getUserData().academy_id));
       // teacher 또는 admin만 숙제 출제 가능
-      // rejected 학원은 쓰기 차단
+      // rejected 학원은 쓰기 차단, 탈퇴 유저 차단
       allow update, delete: if isAuthenticated()
+                             && isNotDeleted()
                              && isStaff()
                              && isMyAcademyPendingOrActive();
       allow create: if isAuthenticated()
+                    && isNotDeleted()
                     && isStaff()
                     && isMyAcademyPendingOrActive();
 
       // homeworks/{homeworkId}/submissions/{studentUid} — 제출물
+      // 필드 쓰기 권한 정책:
+      //  - 학생 create: 전체 필드 (최초 제출)
+      //  - 학생 update: image_urls, status, submitted_at, is_late 만 허용 (재제출)
+      //                 feedback 계열은 변경 금지
+      //  - is_late는 학생이 임의 값 저장 가능하나 Cloud Function(verifySubmissionLate)이
+      //    서버 시간 기준으로 즉시 교정 → 조작해도 스트릭 초기화까지 자동 처리됨
+      //  - teacher/admin update: feedback, feedback_comment, status 만 허용
+      //  - 삭제 금지
       match /submissions/{studentUid} {
         // 본인(학생), teacher, admin, 자녀의 학부모 읽기 가능
         allow read: if isAuthenticated()
@@ -194,19 +255,29 @@ service cloud.firestore {
                         || isStaff()
                         || (getUserRole() == 'parent'
                             && studentUid in getUserData().children));
-        // 학생 본인만 제출(create/write) 가능 (rejected 학원은 제출 차단)
-        allow write: if isAuthenticated()
-                     && request.auth.uid == studentUid
-                     && getUserRole() == 'student'
-                     && isMyAcademyPendingOrActive();
+        // 학생 본인 최초 제출 (rejected 학원은 제출 차단)
         allow create: if isAuthenticated()
                       && request.auth.uid == studentUid
                       && getUserRole() == 'student'
                       && isMyAcademyPendingOrActive();
-        // teacher, admin은 피드백(feedback, status 필드) 업데이트만 가능
+        // 학생 본인 재제출 — 제출 관련 필드만 변경 허용
+        // feedback 은 다시풀기 후 재제출 시 null 로 리셋만 허용 (임의 값 변경 차단)
+        // is_retry 는 다시풀기 후 재제출 시 true 로 set — 학생 화면에서 "다시푸는중" 표시
+        allow update: if isAuthenticated()
+                      && request.auth.uid == studentUid
+                      && getUserRole() == 'student'
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['image_urls', 'status', 'submitted_at', 'is_late', 'feedback', 'is_retry'])
+                      && request.resource.data.feedback == null
+                      && isMyAcademyPendingOrActive();
+        // teacher·admin 피드백 업데이트 — feedback 계열 필드만 허용
         allow update: if isAuthenticated()
                       && isStaff()
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['feedback', 'feedback_comment', 'status'])
                       && isMyAcademyPendingOrActive();
+        // 삭제 불가
+        allow delete: if false;
       }
     }
 
@@ -268,21 +339,24 @@ service cloud.firestore {
     // notices/{noticeId} — 공지사항
     // ─────────────────────────────────────────────
     match /notices/{noticeId} {
-      // 같은 학원 소속이면 읽기 가능
+      // 같은 학원 소속이면 읽기 가능 — 탈퇴 유저 차단
       allow read: if isAuthenticated()
+                  && isNotDeleted()
                   && isAcademyMember(resource.data.academy_id);
       // teacher, admin만 공지 내용 수정·삭제 가능
-      // rejected 학원은 쓰기 차단
+      // rejected 학원은 쓰기 차단, 탈퇴 유저 차단
       allow update, delete: if isAuthenticated()
+                             && isNotDeleted()
                              && isAcademyMember(resource.data.academy_id)
                              && isStaff()
                              && isAcademyPendingOrActive(resource.data.academy_id);
-      // 학생·학부모: read_by 필드만 업데이트 가능 (공지 읽음 처리 전용)
-      // 다른 필드는 수정 불가 — hasOnly(['read_by'])로 제한
+      // 학생·학부모: read_by 필드만 업데이트 가능 (공지 읽음 처리 전용) — 탈퇴 유저 차단
       allow update: if isAuthenticated()
+                    && isNotDeleted()
                     && isAcademyMember(resource.data.academy_id)
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read_by']);
       allow create: if isAuthenticated()
+                    && isNotDeleted()
                     && isStaff()
                     && isMyAcademyPendingOrActive();
     }
@@ -306,34 +380,91 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────
-    // videos/{videoId} — 수업 영상
+    // videos/{videoId} — 수업 영상 (유료 플랜 전용 쓰기)
     // ─────────────────────────────────────────────
+    // 정책:
+    // - 읽기: 기존 기능 유지 (이미 등록된 영상은 무료 전환 후에도 학생이 볼 수 있음)
+    // - 쓰기(등록·수정·삭제): 유료 플랜 학원만 허용 (isPaidPlan 체크)
+    //   → 무료 학원이 DevTools 등으로 Rules 우회해 영상 등록하는 시나리오 차단
     match /videos/{videoId} {
       // teacher·admin: 자기 학원 소속이면 읽기 가능 (담당 반 무관하게 접근)
       // student: 본인 반 영상만 읽기 가능
-      // resource.data 기반 체크 대신 요청자의 역할·소속으로 판단
-      // → list 쿼리에서도 안정적으로 동작하도록 homeworks 패턴 적용
       allow read: if isAuthenticated()
                   && isMyAcademyPendingOrActive()
                   && (isStaff()
                       || getUserData().class_id == resource.data.class_id);
-      // teacher 또는 admin만 영상 등록 가능, rejected 학원은 차단
+      // teacher 또는 admin만 영상 등록 가능, rejected 학원은 차단, 유료 플랜 필수
       allow create: if isAuthenticated()
                     && isStaff()
-                    && isMyAcademyPendingOrActive();
-      // 같은 학원 소속 teacher·admin만 수정·삭제 가능
+                    && isMyAcademyPendingOrActive()
+                    && isMyAcademyPaid();
+      // 같은 학원 소속 teacher·admin만 수정·삭제 가능, 유료 플랜 필수
       allow update, delete: if isAuthenticated()
                             && isStaff()
                             && isAcademyMember(resource.data.academy_id)
-                            && isAcademyPendingOrActive(resource.data.academy_id);
+                            && isAcademyPendingOrActive(resource.data.academy_id)
+                            && isPaidPlan(resource.data.academy_id);
     }
 
     // ─────────────────────────────────────────────
-    // appConfig/v1 — 앱 버전 설정 (읽기 전용)
+    // app_config/{docId} — 앱 설정 (버전 정보 등, 읽기 전용)
+    // lib/versionCheck.ts에서 app_config/version 문서를 조회
     // ─────────────────────────────────────────────
+    match /app_config/{docId} {
+      // 로그인 여부와 무관하게 읽기 허용 — 버전 체크는 앱 진입 초기에 수행
+      allow read: if true;
+      allow write: if false; // 콘솔/Functions에서만 관리
+    }
+
+    // 구버전 호환용 (이전에 잘못 생성된 컬렉션명 대응)
     match /appConfig/{docId} {
       allow read: if isAuthenticated();
-      allow write: if false; // 콘솔/Functions에서만 관리
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    // phone_lookups/{phone} — 휴대폰 번호 → uid 매핑 (중복 가입 방지용)
+    // ─────────────────────────────────────────────
+    // 문서 ID: E.164 형식 휴대폰 번호 (예: +821012345678)
+    // 본문: { uid: string, created_at: Timestamp }
+    //
+    // 정책:
+    // - 로그인 사용자는 본인 phone_lookups 문서를 직접 get 으로 조회 가능 (존재 여부만 확인)
+    // - users 컬렉션 list 권한 없이도 중복 체크 가능 — list 권한 노출 위험 차단
+    // - 쓰기는 본인 uid 가 일치하는 경우에만 (기존 매핑 덮어쓰기 차단)
+    match /phone_lookups/{phone} {
+      // 존재 여부만 확인하므로 인증된 사용자라면 누구나 get 허용
+      // (전화번호로 다른 유저 정보 역추적은 불가 — 이 문서는 uid만 가짐)
+      allow get: if isAuthenticated();
+      // list 는 차단 — phone 전체 enumeration 방지
+      allow list: if false;
+      // 본인 uid 기록만 허용 — 타인 매핑 위조 차단
+      allow create: if isAuthenticated()
+                    && request.resource.data.uid == request.auth.uid;
+      // 기존 매핑은 변경/삭제 불가 — Cloud Functions 에서만 정리
+      allow update, delete: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    // rateLimits/{key} — 온보딩 코드 재시도 제한
+    // validateOnboardingCode Cloud Function에서만 읽기·쓰기 (Admin SDK)
+    // 클라이언트 직접 접근 금지 — 카운터 조작·초기화 공격 차단
+    // ─────────────────────────────────────────────
+    match /rateLimits/{key} {
+      allow read, write: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    // payments/{paymentId} — 결제 내역
+    // verifyTossPayment Cloud Function에서만 생성, admin만 조회
+    // ─────────────────────────────────────────────
+    match /payments/{paymentId} {
+      // 같은 학원 admin만 본인 학원 결제 내역 조회 가능
+      allow read: if isAuthenticated()
+                  && isAdmin()
+                  && isAcademyMember(resource.data.academy_id);
+      // 쓰기는 Cloud Function(Admin SDK)에서만 처리
+      allow write: if false;
     }
   }
 }
