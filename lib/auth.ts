@@ -11,20 +11,20 @@ import {
   createUserWithEmailAndPassword,
   signInWithCredential,
   signInWithCustomToken,
-  signInWithPhoneNumber,
   GoogleAuthProvider,
   OAuthProvider,
-  ConfirmationResult,
   UserCredential,
-  ApplicationVerifier,
   fetchSignInMethodsForEmail,
 } from 'firebase/auth';
+// 휴대폰 OTP 는 React Native Firebase 네이티브 SDK 사용
+// — Web SDK 의 signInWithPhoneNumber 는 RN 환경에서 reCAPTCHA verifier 가 동작하지 않아 auth/argument-error 발생
+// — RN Firebase 는 iOS APNs Silent Push, Android SafetyNet 으로 verifier 자동 처리
+import rnAuth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import {
   setDoc,
   updateDoc,
-  getDocs,
-  query,
-  where,
+  getDoc,
+  doc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -39,15 +39,19 @@ const { GoogleSignin } = (() => {
   }
 })();
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { Collections } from './firestore';
 import { User } from '../types';
 
+// @react-native-kakao/user — 지연 로드 (네이티브 모듈 없으면 크래시 방지)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const KakaoLogin = require('react-native-kakao-login').default as {
-  login: () => Promise<{ accessToken: string }>;
-  logout: () => Promise<void>;
-};
+const KakaoUser = (() => {
+  try {
+    return require('@react-native-kakao/user');
+  } catch {
+    return null;
+  }
+})();
 
 // ─── 이메일/비밀번호 인증 ───────────────────────────────────────────
 
@@ -92,6 +96,8 @@ export const configureGoogleSignIn = () => {
   if (!GoogleSignin) return;
   GoogleSignin.configure({
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    // GoogleService-Info.plist가 Xcode 프로젝트에 등록되지 않은 경우 직접 지정
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
   });
 };
 
@@ -102,7 +108,10 @@ export const configureGoogleSignIn = () => {
  */
 export const signInWithGoogle = async (): Promise<UserCredential> => {
   if (!GoogleSignin) {
-    throw new Error('Google 로그인을 사용하려면 앱을 빌드해야 합니다.');
+    throw new Error(
+      'Google 로그인 모듈이 없습니다.\n' +
+      'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID 환경변수를 설정하고 npx expo run:ios 로 리빌드해주세요.'
+    );
   }
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
@@ -144,52 +153,86 @@ export const signInWithApple = async (): Promise<UserCredential> => {
  * ⚠️ 카카오 Admin Key는 Cloud Function 환경변수에만 있음 — 클라이언트 코드 포함 절대 금지
  */
 export const signInWithKakao = async (): Promise<UserCredential> => {
-  const kakaoToken = await KakaoLogin.login();
+  // 네이티브 모듈 null 체크 — npx expo run:ios 리빌드 전에는 null
+  if (!KakaoUser) {
+    throw new Error(
+      '카카오 로그인 모듈이 없습니다.\n' +
+      'EXPO_PUBLIC_KAKAO_APP_KEY 환경변수를 설정하고 npx expo run:ios 로 리빌드해주세요.'
+    );
+  }
+  // @react-native-kakao/user의 login() — accessToken 포함 토큰 반환
+  const kakaoToken = await KakaoUser.login();
   const functions = getFunctions();
   const kakaoLoginFn = httpsCallable<
     { accessToken: string },
-    { customToken: string }
+    { customToken: string; kakaoUser?: { name?: string; email?: string } }
   >(functions, 'kakaoLogin');
   const result = await kakaoLoginFn({ accessToken: kakaoToken.accessToken });
-  return signInWithCustomToken(auth, result.data.customToken);
+  const credential = await signInWithCustomToken(auth, result.data.customToken);
+
+  // 카카오 Custom Token 로그인은 Firebase Auth 의 displayName/email 을 자동으로 채우지 않음
+  // → CF 응답으로 받은 카카오 닉네임·이메일을 직접 Firestore users 문서로 저장해야
+  //   "내 정보" 화면 등에서 이름이 표시됨
+  const kakaoInfo = result.data.kakaoUser;
+  if (kakaoInfo?.name || kakaoInfo?.email) {
+    const exists = await checkUserDocExists(credential.user.uid);
+    if (!exists) {
+      // 신규 카카오 유저 — users 문서 즉시 생성 (role 미설정 — 온보딩에서 결정)
+      await createUserDoc(credential.user.uid, {
+        name: kakaoInfo?.name ?? '',
+        email: kakaoInfo?.email ?? '',
+      });
+    }
+  }
+
+  return credential;
 };
 
 // ─── 휴대폰 OTP 인증 ───────────────────────────────────────────────
+//
+// React Native Firebase 사용 이유: Web SDK 는 RN 환경에서 reCAPTCHA verifier 미동작
+// 인증 흐름:
+//   1) RN Firebase 로 OTP 발송·검증 (APNs/SafetyNet 으로 verifier 자동)
+//   2) 검증 성공 후 RN Firebase 세션은 즉시 signOut — Web SDK 의 currentUser(소셜 로그인) 와 충돌 방지
+//   3) phone_verified 플래그만 Firestore users 문서에 저장 (phone-verify.tsx 에서 처리)
+
+// RN Firebase ConfirmationResult 타입을 외부에서도 쓰도록 re-export
+export type PhoneConfirmationResult = FirebaseAuthTypes.ConfirmationResult;
 
 /**
- * 휴대폰 OTP 발송
+ * 휴대폰 OTP 발송 (RN Firebase 네이티브 SDK)
  * - 중복 번호 체크 선행 (이미 가입된 번호면 'DUPLICATE_PHONE' 에러 throw)
- * - appVerifier: expo-firebase-recaptcha의 FirebaseRecaptchaVerifierModal ref 전달
- * - 반환된 ConfirmationResult를 verifyPhoneOtp에 그대로 전달할 것
+ * - 반환된 ConfirmationResult 를 verifyPhoneOtp 에 그대로 전달할 것
  */
 export const sendPhoneOtp = async (
-  phoneNumber: string,
-  appVerifier?: ApplicationVerifier
-): Promise<ConfirmationResult> => {
+  phoneNumber: string
+): Promise<PhoneConfirmationResult> => {
   // 이미 가입된 번호인지 먼저 확인
   const isDuplicate = await checkPhoneDuplicate(phoneNumber);
   if (isDuplicate) {
-    // phone-verify.tsx에서 strings.errors.duplicatePhone으로 표시
+    // phone-verify.tsx 에서 strings.errors.duplicatePhone 으로 표시
     throw new Error('DUPLICATE_PHONE');
   }
 
   // E.164 국제 전화번호 형식으로 변환 (+82)
   const formattedPhone = formatPhoneNumber(phoneNumber);
-  // 네이티브 앱(iOS/Android)에서는 APNs/Silent push로 자동 검증 가능.
-  // 웹 빌드나 에뮬레이터 환경에서는 expo-firebase-recaptcha의
-  // FirebaseRecaptchaVerifierModal을 appVerifier로 전달해야 함.
-  return signInWithPhoneNumber(auth, formattedPhone, appVerifier as ApplicationVerifier);
+  // RN Firebase: iOS APNs Silent Push / Android SafetyNet 으로 verifier 자동 처리
+  return rnAuth().signInWithPhoneNumber(formattedPhone);
 };
 
 /**
  * OTP 코드 검증
- * sendPhoneOtp에서 반환된 ConfirmationResult와 사용자 입력 6자리 코드를 전달
+ * - confirm() 으로 코드 일치 여부만 판정
+ * - 검증 성공 후 RN Firebase 세션은 signOut — Web SDK 의 소셜 로그인 세션을 보존
+ *   (두 SDK 의 auth state 는 별개 — 동시 로그인 시 Firestore Rules 체크에서 충돌 가능)
  */
 export const verifyPhoneOtp = async (
-  confirmationResult: ConfirmationResult,
+  confirmationResult: PhoneConfirmationResult,
   code: string
-): Promise<UserCredential> => {
-  return confirmationResult.confirm(code);
+): Promise<void> => {
+  await confirmationResult.confirm(code);
+  // 즉시 RN Firebase 세션 정리 — Web SDK 의 currentUser 만 유지되도록
+  await rnAuth().signOut();
 };
 
 // ─── 소셜 로그인 신규 유저 처리 ──────────────────────────────────────
@@ -234,63 +277,86 @@ export const updateUserDoc = async (
 };
 
 // ─── 코드 검증 ─────────────────────────────────────────────────────
+//
+// 모든 온보딩 코드(학원·반·연동) 검증은 validateOnboardingCode Cloud Function을
+// 거친다. 클라이언트 직접 쿼리는 무차별 대입 공격(6자리 영숫자 = 36^6)에 취약하므로,
+// 서버 rate limit(uid 10분/5회 + IP 10분/20회) 뒤에서만 수행한다.
+//
+// 반환 규칙:
+// - 성공: 서버가 돌려주는 리치 데이터(name/status 등) 그대로 반환
+// - 존재하지 않는 코드(not-found): null — 기존 호출부 호환 유지
+// - Rate limit(resource-exhausted) 및 기타 오류: 에러 그대로 throw
+//   → 화면 레벨에서 e.code === 'functions/resource-exhausted' 로 분기해 안내
+
+export interface AcademyCodeResult {
+  academy_id: string;
+  name: string;
+  status: 'pending' | 'active' | 'rejected';
+}
+
+export interface InviteCodeResult {
+  class_id: string;
+  academy_id: string;
+  name: string;
+}
+
+export interface LinkCodeResult {
+  student_uid: string;
+  name: string;
+  academy_id: string;
+}
+
+/**
+ * validateOnboardingCode Cloud Function 공통 호출
+ * not-found 는 null 로 변환, rate limit 등 나머지는 throw
+ */
+async function callValidateCode<T>(
+  code: string,
+  type: 'academy' | 'invite' | 'link'
+): Promise<T | null> {
+  try {
+    const fn = httpsCallable<{ code: string; type: string }, T>(
+      getFunctions(),
+      'validateOnboardingCode'
+    );
+    const result = await fn({ code: code.toUpperCase(), type });
+    return result.data;
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    // v9 모듈러 SDK: 'functions/not-found', 일부 버전: 'not-found'
+    if (err.code === 'functions/not-found' || err.code === 'not-found') {
+      return null;
+    }
+    throw e;
+  }
+}
 
 /**
  * 학원코드 검증 (선생님 가입 시)
- * academies 컬렉션에서 academy_code 필드로 검색
- * @returns 유효하면 academyId, 없으면 null
+ * @returns 유효하면 { academy_id, name, status }, 없으면 null
  */
-export const validateAcademyCode = async (
+export const validateAcademyCode = (
   code: string
-): Promise<string | null> => {
-  const q = query(
-    Collections.academies(),
-    where('academy_code', '==', code.toUpperCase())
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return snap.docs[0].id; // academyId
-};
+): Promise<AcademyCodeResult | null> =>
+  callValidateCode<AcademyCodeResult>(code, 'academy');
 
 /**
  * 반 초대코드 검증 (학생 가입 시)
- * classes 컬렉션에서 invite_code 필드로 검색
- * @returns 유효하면 { classId, academyId }, 없으면 null
+ * @returns 유효하면 { class_id, academy_id, name }, 없으면 null
  */
-export const validateInviteCode = async (
+export const validateInviteCode = (
   code: string
-): Promise<{ classId: string; academyId: string } | null> => {
-  const q = query(
-    Collections.classes(),
-    where('invite_code', '==', code.toUpperCase())
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-
-  const classDoc = snap.docs[0];
-  return {
-    classId: classDoc.id,
-    academyId: classDoc.data().academy_id as string,
-  };
-};
+): Promise<InviteCodeResult | null> =>
+  callValidateCode<InviteCodeResult>(code, 'invite');
 
 /**
  * 자녀 연동코드 검증 (학부모 가입 시)
- * users 컬렉션에서 link_code + role === 'student' 조건으로 검색
- * @returns 유효하면 studentUid, 없으면 null
+ * @returns 유효하면 { student_uid, name, academy_id }, 없으면 null
  */
-export const validateLinkCode = async (
+export const validateLinkCode = (
   code: string
-): Promise<string | null> => {
-  const q = query(
-    Collections.users(),
-    where('link_code', '==', code.toUpperCase()),
-    where('role', '==', 'student')
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return snap.docs[0].id; // studentUid
-};
+): Promise<LinkCodeResult | null> =>
+  callValidateCode<LinkCodeResult>(code, 'link');
 
 // ─── 유틸리티 ───────────────────────────────────────────────────────
 
@@ -309,18 +375,36 @@ export const generateLinkCode = (): string => {
 
 /**
  * 휴대폰 번호 중복 여부 확인
- * users 컬렉션에서 phone_number 필드로 검색
+ *
+ * phone_lookups/{phone} 문서 존재 여부로 판정.
+ * 과거에는 users 컬렉션을 where('phone_number', ...) 로 검색했으나
+ * Firestore Rules 가 익명 사용자에게 users 컬렉션 list 권한을 주지 않아
+ * "Missing or insufficient permissions" 에러가 발생.
+ *
+ * → 휴대폰 번호 자체를 문서 ID 로 쓰는 별도 컬렉션을 두고, 단건 get 으로 확인.
+ *   (phone_lookups Rules: get 만 허용, list 는 차단)
  */
 export const checkPhoneDuplicate = async (
   phoneNumber: string
 ): Promise<boolean> => {
   const formattedPhone = formatPhoneNumber(phoneNumber);
-  const q = query(
-    Collections.users(),
-    where('phone_number', '==', formattedPhone)
-  );
-  const snap = await getDocs(q);
-  return !snap.empty;
+  const snap = await getDoc(doc(db, 'phone_lookups', formattedPhone));
+  return snap.exists();
+};
+
+/**
+ * phone_lookups/{phone} 매핑 문서 생성
+ * OTP 검증 성공 직후 호출 — 다음 가입 시 중복 체크에 사용됨
+ */
+export const recordPhoneLookup = async (
+  phoneNumber: string,
+  uid: string
+): Promise<void> => {
+  const formattedPhone = formatPhoneNumber(phoneNumber);
+  await setDoc(doc(db, 'phone_lookups', formattedPhone), {
+    uid,
+    created_at: serverTimestamp(),
+  });
 };
 
 // ─── 내부 유틸리티 (export 불필요) ──────────────────────────────────

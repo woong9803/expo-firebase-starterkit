@@ -16,7 +16,7 @@
       "command": "node",
       "args": ["/Users/lyh3254/desktop/project/mcp-shrimp-task-manager/dist/index.js"],
       "env": {
-        "DATA_DIR": "/Users/lyh3254/Desktop/project/dev-app-first/shirmp_data",
+        "DATA_DIR": "/Users/lyh3254/Desktop/project/woongking/shirmp_data",
         "TEMPLATES_USE": "en",
         "ENABLE_GUI": "true"
       }

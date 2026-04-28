@@ -28,6 +28,16 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { UserRole, User } from '../../types';
 import { strings } from '../../constants/strings';
 
+// Cloud Function rate limit(resource-exhausted) 에러 판별
+// validateOnboardingCode가 10분/5회 초과 시 이 코드를 반환
+const isRateLimitError = (e: unknown): e is { message?: string } => {
+  const err = e as { code?: string };
+  return (
+    err?.code === 'functions/resource-exhausted' ||
+    err?.code === 'resource-exhausted'
+  );
+};
+
 // 브루트포스 방지 설정
 const MAX_ATTEMPTS = 5;
 const LOCK_SECONDS = 30;
@@ -42,8 +52,9 @@ export default function CodeInputScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 학생 전용 — 생년월일 입력
+  // 학생 전용 — 생년월일 / 학교 입력
   const [birthDate, setBirthDate] = useState('');
+  const [schoolName, setSchoolName] = useState('');
 
   // ─── 미리보기 (선생님: 학원명, 학생: 반명) ──────────────────────────
   const [preview, setPreview] = useState<{ name: string; info: string } | null>(null);
@@ -79,46 +90,62 @@ export default function CodeInputScreen() {
     }, 1000);
   };
 
-  // ─── 6자리 입력 시 자동 미리보기 (선생님: 학원명) ──────────────────
+  // ─── 6자리 입력 시 자동 미리보기 (선생님: 학원명 / 학생: 반 이름) ──────
+  // 서버 rate limit(uid 10분/5회) 때문에 한 번 조회한 코드는 다시 쏘지 않음.
+  // 검증된 원본 응답을 (code, role) 기준으로 캐시하면 handleConfirm에서 재사용 가능.
+  type ValidatedResult =
+    | { role: 'teacher'; data: Awaited<ReturnType<typeof validateAcademyCode>> }
+    | { role: 'student'; data: Awaited<ReturnType<typeof validateInviteCode>> }
+    | { role: 'parent'; data: Awaited<ReturnType<typeof validateLinkCode>> };
+
+  const lastPreviewRef = useRef<{ code: string; preview: typeof preview } | null>(null);
+  const lastValidatedRef = useRef<{ code: string; result: ValidatedResult } | null>(null);
   useEffect(() => {
     if (code.length !== 6) { setPreview(null); return; }
+
+    // 방금 조회한 코드와 같다면 캐시 재사용 (rate limit 카운트 절약)
+    if (lastPreviewRef.current?.code === code) {
+      setPreview(lastPreviewRef.current.preview);
+      return;
+    }
 
     let cancelled = false;
     setIsLooking(true);
 
     (async () => {
       try {
+        let next: typeof preview = null;
+        let validated: ValidatedResult | null = null;
+
         if (role === 'teacher') {
-          const academyId = await validateAcademyCode(code);
+          const result = await validateAcademyCode(code);
           if (cancelled) return;
-          if (academyId) {
-            const snap = await getDoc(Collections.academy(academyId));
-            if (!cancelled && snap.exists()) {
-              const d = snap.data();
-              // 승인 대기 중인 학원은 미리보기에서 가입 불가 안내
-              if (d.status === 'pending') {
-                setPreview({ name: d.name as string, info: '승인 대기 중인 학원 (가입 불가)' });
-              } else {
-                setPreview({ name: d.name as string, info: '학원' });
-              }
-            }
-          } else {
-            setPreview(null);
+          validated = { role: 'teacher', data: result };
+          if (result) {
+            // 승인 대기 중인 학원은 미리보기에서 가입 불가 안내
+            next = result.status === 'pending'
+              ? { name: result.name, info: '승인 대기 중인 학원 (가입 불가)' }
+              : { name: result.name, info: '학원' };
           }
         } else if (role === 'student') {
           const result = await validateInviteCode(code);
           if (cancelled) return;
-          if (result) {
-            const snap = await getDoc(Collections.class(result.classId));
-            if (!cancelled && snap.exists()) {
-              const d = snap.data();
-              setPreview({ name: d.name as string, info: '반' });
-            }
-          } else {
-            setPreview(null);
-          }
+          validated = { role: 'student', data: result };
+          if (result) next = { name: result.name, info: '반' };
+        } else if (role === 'parent') {
+          const result = await validateLinkCode(code);
+          if (cancelled) return;
+          validated = { role: 'parent', data: result };
+          if (result) next = { name: result.name, info: '자녀' };
         }
-      } catch {
+
+        if (!cancelled) {
+          setPreview(next);
+          lastPreviewRef.current = { code, preview: next };
+          if (validated) lastValidatedRef.current = { code, result: validated };
+        }
+      } catch (e) {
+        // Rate limit은 handleConfirm 쪽에서 메시지 띄움 — 여기선 조용히 실패
         if (!cancelled) setPreview(null);
       } finally {
         if (!cancelled) setIsLooking(false);
@@ -161,50 +188,82 @@ export default function CodeInputScreen() {
     setError(null);
 
     try {
-      if (role === 'teacher') {
-        const academyId = await validateAcademyCode(code.trim());
-        if (!academyId) { handleFailure(strings.errors.invalidCode); return; }
+      const trimmedCode = code.trim();
+      // 미리보기에서 이미 같은 코드를 검증했다면 CF 재호출 없이 캐시 재사용
+      // (rate limit 카운터 중복 소진 방지)
+      const cached = lastValidatedRef.current?.code === trimmedCode
+        ? lastValidatedRef.current.result
+        : null;
 
-        // 승인 대기 중인 학원에는 선생님 가입 불가
-        const academySnap = await getDoc(Collections.academy(academyId));
-        if (academySnap.exists() && academySnap.data().status === 'pending') {
+      if (role === 'teacher') {
+        const result = cached?.role === 'teacher'
+          ? cached.data
+          : await validateAcademyCode(trimmedCode);
+        if (!result) { handleFailure(strings.errors.invalidCode); return; }
+
+        // 승인 대기 중인 학원에는 선생님 가입 불가 (서버가 status를 직접 반환)
+        if (result.status === 'pending') {
           handleFailure('아직 승인되지 않은 학원이에요.\n학원 승인 후 다시 시도해주세요.');
           return;
         }
 
         await updateDoc(Collections.user(user.uid), {
           role: 'teacher' as UserRole,
-          academy_id: academyId,
+          academy_id: result.academy_id,
           is_active: true,
         });
 
       } else if (role === 'student') {
-        const result = await validateInviteCode(code.trim());
+        const result = cached?.role === 'student'
+          ? cached.data
+          : await validateInviteCode(trimmedCode);
         if (!result) { handleFailure(strings.errors.invalidCode); return; }
         const linkCode = generateLinkCode();
-        // 생년월일이 입력된 경우에만 birth_date 저장 (선택 항목)
-        await updateDoc(Collections.user(user.uid), {
-          role: 'student' as UserRole,
-          class_id: result.classId,
-          academy_id: result.academyId,
-          link_code: linkCode,
-          is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
-          enrollment_date: serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
-          ...(birthDate.trim() ? { birth_date: birthDate.trim() } : {}),
-        });
+
+        // ── 진단용: 현재 user 문서 상태 확인 ─────────────────
+        // role 이 이미 설정돼 있거나 academy_id 가 채워져 있으면 Rules 가 차단
+        const currentSnap = await getDoc(Collections.user(user.uid));
+        if (!currentSnap.exists()) {
+          setError('[진단] 본인 user 문서가 없어요. 카카오 로그인 직후 user 문서 생성이 안 됐어요.');
+          return;
+        }
+        const currentData = currentSnap.data();
+        const currentRole = currentData.role ?? '(없음)';
+        const currentAcademyId = currentData.academy_id ?? '(없음)';
+        console.log('[code-input 진단]', { role: currentRole, academy_id: currentAcademyId });
+
+        try {
+          // 생년월일이 입력된 경우에만 birth_date 저장 (선택 항목)
+          await updateDoc(Collections.user(user.uid), {
+            role: 'student' as UserRole,
+            class_id: result.class_id,
+            academy_id: result.academy_id,
+            link_code: linkCode,
+            is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
+            enrollment_date: serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
+            ...(birthDate.trim() ? { birth_date: birthDate.trim() } : {}),
+            ...(schoolName.trim() ? { school_name: schoolName.trim() } : {}),
+          });
+        } catch (updateErr: unknown) {
+          const err = updateErr as { code?: string; message?: string };
+          if (err.code === 'permission-denied' || err.message?.includes('Missing or insufficient permissions')) {
+            setError(`[진단] 권한 거부됨. 현재 role="${currentRole}", academy_id="${currentAcademyId}". 둘 다 비어있어야 가입 가능.`);
+            return;
+          }
+          throw updateErr;
+        }
 
       } else if (role === 'parent') {
-        const studentUid = await validateLinkCode(code.trim());
-        if (!studentUid) { handleFailure(strings.errors.invalidCode); return; }
+        const result = cached?.role === 'parent'
+          ? cached.data
+          : await validateLinkCode(trimmedCode);
+        if (!result) { handleFailure(strings.errors.invalidCode); return; }
 
-        const [studentSnap, parentSnap] = await Promise.all([
-          getDoc(Collections.user(studentUid)),
-          getDoc(Collections.user(user.uid)),
-        ]);
+        const studentUid = result.student_uid;
+        const studentAcademyId = result.academy_id;
 
-        const studentAcademyId = studentSnap.exists()
-          ? (studentSnap.data().academy_id as string)
-          : '';
+        // 학부모 자신의 phone_number는 guardian_phone 자동 기록에 필요 (1회 조회)
+        const parentSnap = await getDoc(Collections.user(user.uid));
 
         // 학부모 문서 업데이트
         await updateDoc(Collections.user(user.uid), {
@@ -244,7 +303,13 @@ export default function CodeInputScreen() {
       }
 
     } catch (e: unknown) {
-      handleFailure((e as Error).message || strings.common.error);
+      // 서버 rate limit은 메시지에 남은 대기 시간이 포함돼 있어 그대로 노출
+      // (클라이언트 5회 잠금 카운트는 건드리지 않음 — 이중 잠금 방지)
+      if (isRateLimitError(e)) {
+        setError((e as { message?: string }).message || strings.common.error);
+      } else {
+        handleFailure((e as Error).message || strings.common.error);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -344,9 +409,29 @@ export default function CodeInputScreen() {
           </View>
         )}
 
-        {/* ── 학생 전용: 생년월일 입력 ── */}
+        {/* ── 학생 전용: 학교 / 생년월일 입력 ── */}
         {role === 'student' && (
           <View style={styles.birthDateSection}>
+            {/* 학교 */}
+            <Text style={styles.birthDateLabel}>
+              학교 <Text style={styles.birthDateOptional}>(선택)</Text>
+            </Text>
+            <TextInput
+              style={styles.birthDateInput}
+              placeholder="예: OO중학교"
+              placeholderTextColor="#94A3B8"
+              value={schoolName}
+              onChangeText={setSchoolName}
+              autoCorrect={false}
+              inputAccessoryViewID={ACCESSORY_ID}
+              editable={!isLoading}
+              returnKeyType="next"
+            />
+            <Text style={[styles.birthDateHint, { marginBottom: 12 }]}>
+              출석부 및 학원 관리에 사용돼요.
+            </Text>
+
+            {/* 생년월일 */}
             <Text style={styles.birthDateLabel}>
               생년월일 <Text style={styles.birthDateOptional}>(선택)</Text>
             </Text>
