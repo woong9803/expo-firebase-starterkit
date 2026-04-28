@@ -13,6 +13,7 @@
 import * as admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import axios from 'axios';
+import { checkRateLimit } from '../lib/rateLimit';
 
 // 결제 금액 → 플랜 등급 맵 (변조 방지용 서버 검증)
 const VALID_AMOUNTS: Record<number, string> = {
@@ -28,6 +29,19 @@ export const verifyTossPayment = onCall(async (request) => {
   }
 
   const uid = request.auth.uid;
+
+  // ── Rate Limit (uid 기반) ─────────────────────
+  // P2-7 (2026-04-23): 결제 시도 반복 호출 방어
+  //   10분 윈도우에 10회 — 정상 재시도(네트워크 실패/결제 취소 후 재결제) 커버 +
+  //   토스 API 남용·비용 폭주 차단. orderId 중복 방지(P2-6) 와 이중 방어선
+  await checkRateLimit({
+    key: `verifyTossPayment_uid_${uid}`,
+    windowMs: 10 * 60 * 1000,
+    maxAttempts: 10,
+    label: 'verifyTossPayment.uid',
+    message: '결제 시도 횟수를 초과했습니다. 잠시 후 다시 시도해주세요.',
+  });
+
   const { paymentKey, orderId, amount } = request.data as {
     paymentKey: string;
     orderId: string;
@@ -108,6 +122,17 @@ export const verifyTossPayment = onCall(async (request) => {
   const planExpiresAt = new Date(now.toMillis() + 30 * 24 * 60 * 60 * 1000); // 30일 후
 
   await db.runTransaction(async (tx) => {
+    // P2-6 (2026-04-23): orderId 중복 처리 방지
+    //   토스 자체는 멱등이지만 재시도·경합 시 Firestore 쪽에 중복 payments 문서 +
+    //   이중 plan_expires_at 연장이 발생할 수 있음. 트랜잭션 내 read 로 동시성 차단
+    //   (쿼리 read 는 트랜잭션 내 write 이전에 배치해야 Firestore 제약 준수)
+    const dupeSnap = await tx.get(
+      db.collection('payments').where('order_id', '==', orderId).limit(1)
+    );
+    if (!dupeSnap.empty) {
+      throw new HttpsError('already-exists', '이미 처리된 주문입니다.');
+    }
+
     const academyRef = db.collection('academies').doc(academyId);
     const paymentRef = db.collection('payments').doc();
 

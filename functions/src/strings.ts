@@ -2,6 +2,14 @@
 // 앱과 별도로 관리 (서버/클라이언트 분리)
 
 export const NOTIFICATION_MESSAGES = {
+  // 숙제 신규 등록 알림 — 학생·학부모 공용 (양식 B: 제목 단일, 본문에 반·제목·마감일)
+  homeworkCreated: {
+    title: '새 숙제가 등록됐어요',
+    // 예: "수학반 · 기출문제 1단원 · 8/30(금)까지"
+    body: (className: string, homeworkTitle: string, dueLabel: string) =>
+      `${className} · ${homeworkTitle} · ${dueLabel}까지`,
+  },
+
   // 마감 전날 알림
   homeworkDueReminder: {
     title: (homeworkTitle: string) => `📚 내일 마감: ${homeworkTitle}`,
