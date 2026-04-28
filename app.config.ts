@@ -1,16 +1,38 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
+import { withInfoPlist } from '@expo/config-plugins';
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+// Google Sign-In 콜백 URL 스킴 — @react-native-google-signin 플러그인이 처리하지 않아 직접 추가
+const withGoogleUrlScheme = (config: ExpoConfig): ExpoConfig => {
+  // REVERSED_CLIENT_ID: 611902629604-xxx.apps.googleusercontent.com → com.googleusercontent.apps.611902629604-xxx
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
+  const googleReversedClientId = iosClientId
+    ? `com.googleusercontent.apps.${iosClientId.replace('.apps.googleusercontent.com', '')}`
+    : '';
+
+  if (!googleReversedClientId) return config;
+
+  return withInfoPlist(config, (mod) => {
+    const urlTypes: { CFBundleURLSchemes: string[] }[] = mod.modResults['CFBundleURLTypes'] ?? [];
+    if (!urlTypes.some((t) => t.CFBundleURLSchemes?.includes(googleReversedClientId))) {
+      urlTypes.push({ CFBundleURLSchemes: [googleReversedClientId] });
+    }
+    mod.modResults['CFBundleURLTypes'] = urlTypes;
+    return mod;
+  });
+};
+
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const base: ExpoConfig = {
   ...config,
   name: '웅깅',
   slug: 'woongking',
   version: '1.0.0',
   orientation: 'portrait',
-  icon: './assets/app_icon.png',
+  icon: './assets/app_icon_3.png',
   userInterfaceStyle: 'light',
   scheme: 'woongking', // 딥링크·푸시 알림 이동을 위한 앱 스킴
   splash: {
-    image: './assets/app_icon.png',
+    image: './assets/app_icon_3.png',
     resizeMode: 'contain',
     backgroundColor: '#ffffff',
   },
@@ -27,9 +49,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: 'com.woongking.app',
     adaptiveIcon: {
-      foregroundImage: './assets/app_icon.png',
+      foregroundImage: './assets/app_icon_3.png',
       backgroundColor: '#ffffff',
     },
+    // Expo SDK 52+ 런타임 지원 필드지만 expo/config 타입 정의에 아직 미반영
+    // 타입 업데이트 되면 이 주석과 ts-expect-error 제거 (자동으로 컴파일 에러로 알려줌)
+    // @ts-expect-error edgeToEdgeEnabled 는 SDK 런타임만 지원
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     // FCM 수신을 위한 Android 추가 권한
@@ -41,10 +66,27 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     'expo-router',
-    '@react-native-google-signin/google-signin', // Google 로그인
+    // React Native Firebase — phone auth 정상 동작을 위해 필수
+    // GoogleService-Info.plist + google-services.json 으로 자동 초기화됨
+    '@react-native-firebase/app',
+    // Firebase iOS Pod 들이 Swift static library 통합을 요구하므로 useFrameworks: 'static' 필수
+    // 미설정 시 pod install 단계에서 "FirebaseAuth depends upon ... which do not define modules" 에러
     [
-      'react-native-kakao-login',
-      { kakaoAppKey: process.env.EXPO_PUBLIC_KAKAO_APP_KEY ?? '' },
+      'expo-build-properties',
+      {
+        ios: { useFrameworks: 'static' },
+      },
+    ],
+    // Podfile post_install에 CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES=YES 자동 주입 (RNFB pod 한정)
+    './plugins/withPodfileNonModularHeaders',
+    '@react-native-google-signin/google-signin',
+    [
+      '@react-native-kakao/core',
+      {
+        nativeAppKey: process.env.EXPO_PUBLIC_KAKAO_APP_KEY,
+        ios: { handleKakaoOpenUrl: true },
+        android: { handleKakaoOpenUrl: true },
+      },
     ],
     [
       'expo-camera',
@@ -72,4 +114,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
     firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
   },
-});
+  };
+  return withGoogleUrlScheme(base);
+};
