@@ -17,11 +17,12 @@ export interface User {
   children: string[];             // 학부모 전용 — 자녀 uid 배열
   is_active: boolean;
   birth_date: string | null;      // 법정 출석부 대응 (YYYY-MM-DD)
+  school_name: string | null;    // 학생 전용 — 재학 중인 학교명
   guardian_phone: string | null;  // 법정 출석부 대응
   enrollment_date: Timestamp | null; // 법정 출석부 대응
   phone_number: string;
   phone_verified: boolean;
-  fcm_token?: string;               // 푸시 알림용 FCM 토큰 (없으면 알림 발송 안 함)
+  fcm_token?: string;               // Expo Push 토큰 (필드명은 호환 유지) — 없으면 알림 발송 안 함
   notif_prefs?: {                   // 알림 종류별 수신 설정 (없으면 전체 ON)
     homework?: boolean;             // 숙제 마감·미제출 알림 (학생·학부모)
     feedback?: boolean;             // 피드백 알림 (학생·학부모)
@@ -42,6 +43,7 @@ export interface Academy {
   id: string;
   name: string;
   academy_code: string;       // 선생님 가입 시 입력하는 학원코드 (6자리 영숫자)
+  owner_uid: string;          // 학원 생성자 uid — Rules에서 생성 주체 검증 + uid당 1개 제한
   plan: AcademyPlan;
   trial_ends_at: Timestamp | null;
   plan_expires_at?: Timestamp | null;  // pro 플랜 만료일 (verifyTossPayment에서 설정)
@@ -84,6 +86,7 @@ export interface Submission {
   feedback: '👍' | '💧' | null;         // 선생님 원터치 피드백
   feedback_comment?: string;             // 💧 선택 시 선생님이 남기는 텍스트 코멘트
   submitted_at: Timestamp;
+  is_retry?: boolean;                    // 다시풀기 후 재제출 여부 — 학생이 💧 받고 재제출하면 true, 새 검사 전까지 유지
 }
 
 // attendances/{classId_date}/records/{studentUid}
@@ -92,6 +95,15 @@ export type AttendanceStatus = 'present' | 'late' | 'absent' | 'onLeave';
 export interface AttendanceRecord {
   status: AttendanceStatus;
   reason: string | null; // 학부모가 입력한 결석 사유
+}
+
+// 공지 첨부파일 — 이미지·일반 파일 공통 메타
+export interface NoticeAttachment {
+  url: string;                   // Firebase Storage 다운로드 URL
+  name: string;                  // 원본 파일명 (예: "수업안내.pdf")
+  kind: 'image' | 'file';        // UI 분기용 (이미지면 썸네일, 파일이면 아이콘)
+  size: number;                  // 바이트 단위
+  mime: string;                  // MIME 타입 (예: 'application/pdf')
 }
 
 export interface Notice {
@@ -103,6 +115,7 @@ export interface Notice {
   read_by: string[];            // 읽은 uid 배열
   target_class_ids: string[];   // 공지 대상 반 ID 배열. 빈 배열 = 전체 반
   target_roles: string[];       // 공지 수신 역할 배열. 빈 배열 = 모두 ['student','parent']
+  attachments?: NoticeAttachment[]; // 첨부파일 목록 (없으면 빈 배열 또는 미저장)
   created_at: Timestamp;
   created_by: string;           // 작성자 uid
 }

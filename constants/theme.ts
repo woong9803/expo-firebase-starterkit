@@ -15,13 +15,15 @@
 // 색상 (Colors)
 // ─────────────────────────────────────────────
 export const Colors = {
-  // ── 블루 계열 (포인트 — 활성 탭, 링크, 프로그레스바) ──
-  blue800: '#0C447C',
-  blue700: '#185FA5',
-  blue500: '#2176C7',  // 주 포인트 색상
-  blue400: '#378ADD',  // 프로그레스바 fill
-  blue100: '#B5D4F4',
-  blue50:  '#E6F1FB',  // 블루 배경
+  // ── 퍼플 계열 (Primary 포인트 — 버튼, 활성 탭, 링크, 프로그레스바) ──
+  // ui-screens.md 기준: Primary = #5B50E8 (보라)
+  // 그라데이션: #7C3AED → #5B50E8 (헤더 카드)
+  blue800: '#3730A3',  // 어두운 보라 (OTP 입력 텍스트)
+  blue700: '#7C3AED',  // 그라데이션 상단
+  blue500: '#5B50E8',  // Primary 주 포인트 색상
+  blue400: '#7C6FF0',  // 프로그레스바 fill (밝은 보라)
+  blue100: '#D4D0FA',
+  blue50:  '#EEEDF9',  // 보라 배경 (선택된 카드, OTP 칸 fill)
 
   // ── 그레이 계열 (텍스트, 배경, 보더) ──
   gray900: '#0F172A',  // 주요 텍스트, Primary 버튼 배경
@@ -223,7 +225,8 @@ export const ChipStyle = {
 // ─────────────────────────────────────────────
 export const ButtonStyle = {
   primary: {
-    backgroundColor: Colors.gray900,  // ⚠️ Primary는 항상 거의 검정
+    // ui-screens.md Primary 규칙: #5B50E8 (보라) — blue500 토큰 사용
+    backgroundColor: Colors.blue500,
     color: Colors.white,
   },
   secondary: {

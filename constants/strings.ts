@@ -297,4 +297,51 @@ export const strings = {
     uploadFailed: '업로드에 실패했어요. 다시 시도해주세요',
     permissionDenied: '권한이 없어요',
   },
+  // 개인정보처리방침 (Phase 12)
+  privacy: {
+    title: '개인정보처리방침',
+    lastUpdated: '최종 수정일: 2026년 4월 17일',
+    intro: '웅깅(이하 "서비스")은 이용자의 개인정보를 소중히 여기며, 「개인정보 보호법」 및 관련 법령을 준수합니다.',
+    section1Title: '1. 수집하는 개인정보 항목',
+    section1Body: '• 필수 항목: 이름, 이메일 주소, 휴대폰 번호, 역할(원장·선생님·학생·학부모)\n• 학생 추가 항목: 생년월일, 보호자 연락처, 수강 시작일\n• 자동 수집: 기기 정보(OS, 버전), 앱 사용 기록, FCM 토큰(푸시 알림용)',
+    section2Title: '2. 개인정보 수집 및 이용 목적',
+    section2Body: '• 학원 운영 관리(출결·숙제·공지 서비스 제공)\n• 본인 확인 및 서비스 가입\n• 법정 출석부 작성 지원\n• 서비스 개선 및 통계 분석\n• 공지사항 및 푸시 알림 발송',
+    section3Title: '3. 개인정보 보유 및 이용 기간',
+    section3Body: '• 서비스 이용 기간 동안 보유\n• 탈퇴 요청 시: 요청일로부터 30일 후 완전 삭제\n• 법령에 따른 보존 의무가 있는 경우 해당 기간 동안 별도 보관',
+    section4Title: '4. 개인정보의 제3자 제공',
+    section4Body: '• 원칙적으로 이용자의 개인정보를 제3자에게 제공하지 않습니다.\n• 법령에 따라 수사기관의 요청이 있거나 이용자가 사전에 동의한 경우에 한해 제공합니다.',
+    section5Title: '5. 개인정보 파기 절차 및 방법',
+    section5Body: '• 파기 절차: 탈퇴 또는 보유 기간 만료 후 내부 방침에 따라 삭제\n• 파기 방법: 전자적 파일 형태는 복구 불가능한 방법으로 영구 삭제\n• 탈퇴 후 30일간 소프트 삭제 상태 유지 후 완전 삭제',
+    section6Title: '6. 문의처',
+    section6Body: '개인정보 관련 문의, 열람·정정·삭제·처리정지 요청은 아래로 연락해주세요.\n\n• 이메일: support@woongking.kr\n• 서비스명: 웅깅(Woongking)',
+  },
+  // 강제/권장 업데이트 (Phase 12)
+  update: {
+    forceTitle: '업데이트가 필요해요',
+    forceMessage: '서비스 이용을 위해 최신 버전으로 업데이트해주세요.',
+    updateButton: '업데이트',
+    recommendTitle: '새 버전이 출시됐어요',
+    recommendMessage: '더 나은 기능을 위해 업데이트를 권장해요.',
+    laterButton: '나중에',
+  },
+  // 계정 관리 — 탈퇴·문의·개인정보 (Phase 12)
+  account: {
+    deleteAccount: '탈퇴하기',
+    deleteConfirmTitle: '정말 탈퇴할까요?',
+    deleteConfirmMessage: '탈퇴하면 모든 데이터가 30일 후 완전히 삭제되며 복구할 수 없어요.',
+    deleteButton: '탈퇴',
+    deleteSuccess: '탈퇴가 완료됐어요.',
+    deleteFailed: '탈퇴 처리 중 오류가 발생했어요. 다시 시도해주세요.',
+    inquiryTitle: '문의하기',
+    inquiryEmail: 'support@woongking.kr',
+    inquirySubject: '[웅깅] 문의합니다',
+    privacyPolicy: '개인정보처리방침',
+    appVersion: '앱 버전',
+  },
+  // 앱 크래시 / 에러 바운더리 (Phase 12)
+  error: {
+    crashTitle: '앱에 문제가 발생했어요',
+    crashMessage: '불편을 드려 죄송합니다. 아래 버튼을 눌러 앱을 다시 시작해주세요.',
+    restartButton: '앱 다시 시작',
+  },
 };
