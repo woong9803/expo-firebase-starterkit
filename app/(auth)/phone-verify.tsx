@@ -30,6 +30,7 @@ export default function PhoneVerifyScreen() {
   const { top } = useSafeAreaInsets();
   const { phone } = useLocalSearchParams<{ phone?: string }>();
   const { user } = useAuthStore();
+  const setPendingPhoneAuthNumber = useAuthStore((s) => s.setPendingPhoneAuthNumber);
 
   const [confirmationResult, setConfirmationResult] = useState<PhoneConfirmationResult | null>(null);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
@@ -177,6 +178,8 @@ export default function PhoneVerifyScreen() {
       }
     }
 
+    // 인증 완료 — 진행 중 번호 플래그 초기화
+    setPendingPhoneAuthNumber(null);
     setIsVerifying(false);
     router.push('/(auth)/role-select');
   };

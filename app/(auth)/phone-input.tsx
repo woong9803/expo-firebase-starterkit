@@ -18,10 +18,12 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { checkPhoneDuplicate } from '../../lib/auth';
 import { strings } from '../../constants/strings';
+import { useAuthStore } from '../../store/useAuthStore';
 
 export default function PhoneInputScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
+  const setPendingPhoneAuthNumber = useAuthStore((s) => s.setPendingPhoneAuthNumber);
   const [phone, setPhone] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,9 @@ export default function PhoneInputScreen() {
         setError(strings.errors.duplicatePhone);
         return;
       }
+      // reCAPTCHA fallback 으로 앱이 외부에서 복귀했을 때 +not-found 가
+      // phone-verify 로 다시 데려가기 위해 진행 중인 번호를 store 에 보관
+      setPendingPhoneAuthNumber(phone.trim());
       router.push({ pathname: '/(auth)/phone-verify', params: { phone: phone.trim() } });
     } catch (e: unknown) {
       const err = e as { message?: string; code?: string };
