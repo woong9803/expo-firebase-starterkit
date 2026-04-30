@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 
 // ─────────────────────────────────────────────
 // 타입 정의
@@ -67,7 +68,7 @@ async function sendExpoPush(messages: ExpoPushMessage[]): Promise<void> {
   // 잘못된 토큰 형식 필터링 — Expo는 ExponentPushToken[...] 형태만 받음
   const valid = messages.filter((m) => m.to.startsWith('ExponentPushToken['));
   if (valid.length === 0) {
-    console.warn('[sendExpoPush] 유효한 Expo Push 토큰이 없음');
+    logger.warn('[sendExpoPush] 유효한 Expo Push 토큰이 없음');
     return;
   }
 
@@ -87,24 +88,33 @@ async function sendExpoPush(messages: ExpoPushMessage[]): Promise<void> {
       });
 
       if (!res.ok) {
-        console.error(`[sendExpoPush] HTTP ${res.status}:`, await res.text());
+        logger.error('[sendExpoPush] HTTP 오류', {
+          status: res.status,
+          body: await res.text(),
+        });
         continue;
       }
 
       const json = (await res.json()) as ExpoPushResponse;
 
       // 티켓별 에러 로깅 — DeviceNotRegistered 등 토큰 무효 케이스 식별
+      // 토큰 자체는 PII 가능성 — 식별자 일부만 로깅 (첫/끝 문자만 노출)
       const tickets = Array.isArray(json.data) ? json.data : [json.data];
       tickets.forEach((ticket, idx) => {
         if (ticket.status === 'error') {
           const errCode = ticket.details?.error ?? 'unknown';
-          console.error(
-            `[sendExpoPush] 티켓 에러 (token: ${chunk[idx]?.to}): ${errCode} - ${ticket.message}`,
-          );
+          logger.error('[sendExpoPush] 티켓 에러', {
+            errCode,
+            message: ticket.message,
+            tokenPrefix: chunk[idx]?.to.slice(0, 25),
+          });
         }
       });
     } catch (err) {
-      console.error(`[sendExpoPush] fetch 실패 (chunk ${i}~${i + chunk.length})`, err);
+      logger.error('[sendExpoPush] fetch 실패', {
+        chunkRange: `${i}~${i + chunk.length}`,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

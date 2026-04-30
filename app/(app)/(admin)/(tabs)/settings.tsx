@@ -20,6 +20,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import * as Clipboard from 'expo-clipboard';
+// 암호학적으로 안전한 난수 — 반 초대코드 생성에 사용 (Math.random 대체)
+import * as Crypto from 'expo-crypto';
 import {
   query, where, getDocs, onSnapshot, addDoc, updateDoc, deleteDoc, getCountFromServer,
   arrayUnion, arrayRemove,
@@ -37,9 +39,18 @@ import { User, Class } from '../../../../types';
 // ─────────────────────────────────────────────────────────────
 
 // 6자리 랜덤 영숫자 초대코드 생성
+// 보안: expo-crypto CSPRNG 사용 (Math.random 은 예측 가능 PRNG → 코드 추측 위험)
+// 모듈 편향 회피: 256 % 32 = 0 (32 의 배수) → 바이트 그대로 매핑 가능
 function generateCode(length = 6): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32자
+  const charsLen = chars.length;
+  // 32 는 256 의 약수라 modulo bias 없음 — 바이트 % 32 그대로 사용 가능
+  const bytes = Crypto.getRandomBytes(length);
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(bytes[i] % charsLen);
+  }
+  return result;
 }
 
 // Timestamp → MM/DD 형식 날짜 문자열

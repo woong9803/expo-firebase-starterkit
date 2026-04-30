@@ -1,7 +1,9 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { sendFcmNotification } from './sendFcm';
 import { NOTIFICATION_MESSAGES } from '../strings';
+import { hashForLog } from '../lib/hash';
 
 /**
  * 숙제 피드백 알림 트리거
@@ -73,7 +75,11 @@ export const onHomeworkFeedback = onDocumentUpdated(
       });
     }
 
-    console.log(`[homeworkFeedback] hwId=${hwId}, studentUid=${studentUid}, feedback=${after.feedback}`);
+    logger.info('[homeworkFeedback] 피드백 알림 발송 완료', {
+      hwId,
+      studentUidHash: hashForLog(studentUid),
+      feedback: after.feedback,
+    });
   }
 );
 

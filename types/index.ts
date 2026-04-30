@@ -124,7 +124,12 @@ export interface Notice {
 export interface AppNotification {
   id: string;
   target_uid: string;
-  type: 'homework_feedback' | 'homework_due' | 'attendance' | 'notice';
+  type:
+    | 'homework_created'   // 신규 숙제 출제 — 학생/학부모 푸시
+    | 'homework_feedback'  // 선생님 검사 결과 (👍/💧)
+    | 'homework_due'       // 마감 임박 미제출 알림
+    | 'attendance'         // 출결 변경
+    | 'notice';            // 공지사항
   title: string;
   body: string;
   is_read: boolean;

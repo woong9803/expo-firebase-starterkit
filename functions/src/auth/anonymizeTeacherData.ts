@@ -1,4 +1,6 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
+import { hashForLog } from '../lib/hash';
 
 /**
  * 탈퇴한 선생님의 작성 데이터를 익명 처리한다
@@ -16,7 +18,9 @@ export async function anonymizeTeacherData(
 ): Promise<void> {
   await anonymizeCollection(db, 'homeworks', uid);
   await anonymizeCollection(db, 'notices', uid);
-  console.log(`[anonymizeTeacherData] 선생님 ${uid} 데이터 익명화 완료`);
+  logger.info('[anonymizeTeacherData] 선생님 데이터 익명화 완료', {
+    uidHash: hashForLog(uid),
+  });
 }
 
 /**

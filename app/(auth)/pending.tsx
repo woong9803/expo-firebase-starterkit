@@ -16,6 +16,7 @@ import { onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Academy } from '../../types';
+import { SUPPORT_URLS } from '../../constants/urls';
 
 // 신청일 Timestamp → "YYYY.MM.DD" 포맷
 function formatDate(ts: { toDate: () => Date } | null | undefined): string {
@@ -74,14 +75,22 @@ export default function PendingScreen() {
     return () => unsub();
   }, [user?.academy_id]);
 
-  // 카카오톡 문의 (채널 URL 연결, 없으면 안내)
+  // 카카오톡 문의 (채널 URL 연결, 미설정 시 안내)
+  // SUPPORT_URLS.kakaoChannel 이 빈 값이면 채널 미발급 — 사용자에게 안내 후 종료
   const handleKakaoContact = async () => {
-    const url = 'https://pf.kakao.com/_placeholder'; // TODO: 실제 채널 URL 입력
+    const url = SUPPORT_URLS.kakaoChannel;
+    if (!url) {
+      Alert.alert(
+        '문의 안내',
+        '카카오톡 채널 준비 중이에요.\n잠시만 기다려주세요.'
+      );
+      return;
+    }
     const canOpen = await Linking.canOpenURL(url);
     if (canOpen) {
       Linking.openURL(url);
     } else {
-      Alert.alert('문의', '카카오톡 채널 URL을 설정해주세요.');
+      Alert.alert('문의 안내', '카카오톡 앱을 열 수 없어요.');
     }
   };
 

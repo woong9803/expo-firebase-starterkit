@@ -31,6 +31,10 @@ export const strings = {
     emailInvalid: '올바른 이메일 형식을 입력해주세요',
     passwordTooShort: '비밀번호는 8자 이상이어야 해요',
     passwordMismatch: '비밀번호가 일치하지 않아요',
+    termsRequiredTitle: '약관 동의 필요',
+    termsRequiredMessage: '이용약관 및 개인정보처리방침에 동의해주세요.',
+    emailAlreadyInUse: '이미 사용 중인 이메일이에요. 로그인해주세요.',
+    loginLink: '로그인하기',
   },
   common: {
     confirm: '확인',

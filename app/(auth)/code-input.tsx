@@ -220,38 +220,17 @@ export default function CodeInputScreen() {
         if (!result) { handleFailure(strings.errors.invalidCode); return; }
         const linkCode = generateLinkCode();
 
-        // ── 진단용: 현재 user 문서 상태 확인 ─────────────────
-        // role 이 이미 설정돼 있거나 academy_id 가 채워져 있으면 Rules 가 차단
-        const currentSnap = await getDoc(Collections.user(user.uid));
-        if (!currentSnap.exists()) {
-          setError('[진단] 본인 user 문서가 없어요. 카카오 로그인 직후 user 문서 생성이 안 됐어요.');
-          return;
-        }
-        const currentData = currentSnap.data();
-        const currentRole = currentData.role ?? '(없음)';
-        const currentAcademyId = currentData.academy_id ?? '(없음)';
-        console.log('[code-input 진단]', { role: currentRole, academy_id: currentAcademyId });
-
-        try {
-          // 생년월일이 입력된 경우에만 birth_date 저장 (선택 항목)
-          await updateDoc(Collections.user(user.uid), {
-            role: 'student' as UserRole,
-            class_id: result.class_id,
-            academy_id: result.academy_id,
-            link_code: linkCode,
-            is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
-            enrollment_date: serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
-            ...(birthDate.trim() ? { birth_date: birthDate.trim() } : {}),
-            ...(schoolName.trim() ? { school_name: schoolName.trim() } : {}),
-          });
-        } catch (updateErr: unknown) {
-          const err = updateErr as { code?: string; message?: string };
-          if (err.code === 'permission-denied' || err.message?.includes('Missing or insufficient permissions')) {
-            setError(`[진단] 권한 거부됨. 현재 role="${currentRole}", academy_id="${currentAcademyId}". 둘 다 비어있어야 가입 가능.`);
-            return;
-          }
-          throw updateErr;
-        }
+        // 생년월일이 입력된 경우에만 birth_date 저장 (선택 항목)
+        await updateDoc(Collections.user(user.uid), {
+          role: 'student' as UserRole,
+          class_id: result.class_id,
+          academy_id: result.academy_id,
+          link_code: linkCode,
+          is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
+          enrollment_date: serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
+          ...(birthDate.trim() ? { birth_date: birthDate.trim() } : {}),
+          ...(schoolName.trim() ? { school_name: schoolName.trim() } : {}),
+        });
 
       } else if (role === 'parent') {
         const result = cached?.role === 'parent'

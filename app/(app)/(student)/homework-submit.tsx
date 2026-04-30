@@ -104,7 +104,7 @@ export default function HomeworkSubmitScreen() {
     skipAlert?: string;
     restorePending?: string; // 'true' 이면 AsyncStorage에서 사진 복원
   }>();
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -283,11 +283,11 @@ export default function HomeworkSubmitScreen() {
         setUploadProgress((i + 1) / photos.length);
       }
 
-      // 마감 초과 여부 판단
-      const now = new Date();
-      const dueDate = (homework.due_date as any).toDate() as Date;
-      const isLate = now > dueDate;
-
+      // is_late 와 streak 는 서버에서 결정한다.
+      //   · is_late: onSubmissionCreated 트리거가 서버 시간 vs due_date 로 교정
+      //   · streak: 동 트리거가 마감 전 신규 제출에 +1, 지각이면 0 으로 초기화
+      // 클라이언트 시계 조작(기기 시간 변경)으로 지각을 회피하거나 스트릭을
+      // 부풀리는 공격을 차단하기 위함. 일단 false 로 보내도 서버가 즉시 교정.
       // Firestore 저장
       // 최초 제출: setDoc 으로 전체 필드 생성
       // 재제출(다시풀기 후): updateDoc 으로 변경 허용 필드만 — Rules 정책상
@@ -297,7 +297,7 @@ export default function HomeworkSubmitScreen() {
         await updateDoc(Collections.submission(hwId, user.uid), {
           image_urls: downloadUrls,
           status: 'submitted',
-          is_late: isLate,
+          is_late: false,    // 서버 트리거가 즉시 교정 — 클라 시계 신뢰 안 함
           submitted_at: serverTimestamp(),
           feedback: null,    // 다시풀기 피드백 리셋 — 새 검사 대기 상태로
           is_retry: true,    // 학생 화면에서 "다시푸는중" 표시 — 선생님 검사 후에도 유지
@@ -306,22 +306,14 @@ export default function HomeworkSubmitScreen() {
         await setDoc(Collections.submission(hwId, user.uid), {
           image_urls: downloadUrls,
           status: 'submitted',
-          is_late: isLate,
+          is_late: false,    // 서버 트리거가 즉시 교정
           feedback: null,
           submitted_at: serverTimestamp(),
         });
       }
 
-      // ── 스트릭 업데이트 (첫 제출 시에만) ──────────────────────────────
-      // 재제출(existingSubmission이 있는 경우)은 스트릭에 영향 없음
-      if (!existingSubmission) {
-        const currentStreak = user.streak ?? 0;
-        // 마감 전 제출: +1 / 마감 후 제출(지각): 0으로 초기화
-        const newStreak = isLate ? 0 : currentStreak + 1;
-        await updateDoc(Collections.user(user.uid), { streak: newStreak });
-        // 로컬 store에도 즉시 반영 (화면 새로고침 없이 홈 스트릭 카드에 반영)
-        setUser({ ...user, streak: newStreak });
-      }
+      // 스트릭은 onSubmissionCreated 트리거에서 처리 — 클라이언트는 user.streak 에 쓰지 않음
+      // (사용자 화면 새로고침 시 서버에서 갱신된 값이 반영됨)
 
       // 업로드 성공 → 임시저장본 삭제, 실패 카운터 초기화
       await AsyncStorage.removeItem(PENDING_KEY);

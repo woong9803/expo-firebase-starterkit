@@ -28,6 +28,9 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+// 암호학적으로 안전한 난수 — 학원/연동/초대 코드 생성에 사용
+// (Math.random() 은 예측 가능 PRNG → 코드 추측 공격 위험)
+import * as Crypto from 'expo-crypto';
 // GoogleSignin 지연 로드 — 최상단 import 시 네이티브 모듈 없으면 번들 전체 크래시
 // Xcode로 빌드된 바이너리에 네이티브 모듈이 포함된 경우에만 정상 작동
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -361,14 +364,33 @@ export const validateLinkCode = (
 // ─── 유틸리티 ───────────────────────────────────────────────────────
 
 /**
- * 6자리 영숫자 랜덤 코드 생성
- * 학생 연동코드(link_code), 반 초대코드(invite_code) 발급에 사용
+ * 6자리 영숫자 랜덤 코드 생성 — 학생 연동코드(link_code),
+ * 학원코드(academy_code), 반 초대코드(invite_code) 발급에 사용
+ *
+ * 보안 고려:
+ *  - Math.random() 은 V8 PRNG 라 충분한 출력 샘플로 다음 값 예측 가능 →
+ *    6자리(36진수)는 약 22억 경우의 수지만 예측 가능 RNG 라면 공격 범위가 좁아진다
+ *  - expo-crypto.getRandomBytes() 는 OS 의 CSPRNG 를 호출 (iOS SecRandom, Android SecureRandom)
+ *  - 모듈 편향(modulo bias) 회피: 256 % 36 = 4 → 36의 배수 미만 바이트만 채택
+ *
+ * Cloud Functions 의 createStudentAccount 는 별도로 crypto.randomInt 를 사용한다
+ * (Node.js 표준 crypto). 이 함수는 클라이언트 경로 전용.
  */
 export const generateLinkCode = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const charsLen = chars.length; // 36
+  // modulo bias 방지를 위해 36 의 배수 미만 바이트만 사용
+  // 256 / 36 = 7.111… → 252(36*7) 미만이면 균등, 그 이상이면 재추첨
+  const maxValid = Math.floor(256 / charsLen) * charsLen; // 252
   let result = '';
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  while (result.length < 6) {
+    // 한 번에 여유분 16바이트 추첨 → 평균 1회 호출로 6자리 완성
+    const bytes = Crypto.getRandomBytes(16);
+    for (let i = 0; i < bytes.length && result.length < 6; i++) {
+      const byte = bytes[i];
+      if (byte >= maxValid) continue; // bias 회피 — 재추첨
+      result += chars.charAt(byte % charsLen);
+    }
   }
   return result;
 };

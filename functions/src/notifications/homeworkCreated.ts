@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { sendFcmBatch, SendFcmParams } from './sendFcm';
 import { NOTIFICATION_MESSAGES } from '../strings';
@@ -23,7 +24,7 @@ export const onHomeworkCreated = onDocumentCreated(
     const dueDate: admin.firestore.Timestamp | undefined = homework.due_date;
 
     if (!classId || !dueDate) {
-      console.warn(`[homeworkCreated] class_id 또는 due_date 누락 (homeworkId=${homeworkId})`);
+      logger.warn('[homeworkCreated] class_id 또는 due_date 누락', { homeworkId });
       return;
     }
 
@@ -32,7 +33,7 @@ export const onHomeworkCreated = onDocumentCreated(
     // ─── 1) 반(class) 문서 조회 — academy_id + 반 이름 획득 ───────────────
     const classSnap = await db.collection('classes').doc(classId).get();
     if (!classSnap.exists) {
-      console.warn(`[homeworkCreated] class 문서 없음 (classId=${classId})`);
+      logger.warn('[homeworkCreated] class 문서 없음', { classId });
       return;
     }
     const classData = classSnap.data()!;
@@ -125,10 +126,12 @@ export const onHomeworkCreated = onDocumentCreated(
       await sendFcmBatch(batch);
     }
 
-    console.log(
-      `[homeworkCreated] homeworkId=${homeworkId}, classId=${classId}, ` +
-      `학생 ${studentsSnap.size}명 · 알림 ${batch.length}건 처리 완료`
-    );
+    logger.info('[homeworkCreated] 알림 처리 완료', {
+      homeworkId,
+      classId,
+      studentCount: studentsSnap.size,
+      notificationCount: batch.length,
+    });
   }
 );
 

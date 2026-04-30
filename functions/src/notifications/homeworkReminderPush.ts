@@ -1,7 +1,9 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { sendFcmNotification } from './sendFcm';
 import { NOTIFICATION_MESSAGES } from '../strings';
+import { hashForLog } from '../lib/hash';
 
 /**
  * 선생님이 미제출 학생에게 수동으로 숙제 알림을 보내는 callable 함수
@@ -96,6 +98,9 @@ export const sendHomeworkReminderPush = onCall(async (request) => {
     });
   }
 
-  console.log(`[homeworkReminderPush] hwId=${hwId}, studentUid=${studentUid}`);
+  logger.info('[homeworkReminderPush] 알림 발송 완료', {
+    hwId,
+    studentUidHash: hashForLog(studentUid),
+  });
   return { success: true };
 });

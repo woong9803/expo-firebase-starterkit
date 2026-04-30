@@ -27,7 +27,9 @@ export { deleteUser } from './auth/deleteUser';
 export { cleanupDeletedUsers } from './auth/cleanupDeletedUsers';
 export { syncUserRoleClaim, refreshMyClaim } from './auth/syncUserRoleClaim';
 export { validateOnboardingCode } from './auth/validateOnboardingCode';
-export { backfillPhoneLookups } from './auth/backfillPhoneLookups';
+// backfillPhoneLookups: 1회성 마이그레이션 함수 — 운영 환경 공격 표면 축소를 위해 export 제외
+// 재실행이 필요하면 임시로 export 후 배포, 완료 후 다시 제거할 것
+// export { backfillPhoneLookups } from './auth/backfillPhoneLookups';
 
 // 숙제 관련 함수 export
 export { onSubmissionCreated } from './homework/verifySubmissionLate';
@@ -43,6 +45,7 @@ export { sendAttendanceAlertPush } from './notifications/attendanceAlertPush';
 // 학원 관리 함수 export
 export { deactivateExpiredAcademies } from './academy/deactivateExpiredAcademies';
 export { verifyTossPayment } from './academy/verifyTossPayment';
+export { enforceClassLimitForPending } from './academy/enforceClassLimit';
 
 // Storage 관련 함수 export
 export { verifyUploadMimeType } from './storage/verifyUploadMimeType';

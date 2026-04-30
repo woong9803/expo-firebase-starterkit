@@ -1,5 +1,7 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { hashForLog } from '../lib/hash';
 
 /**
  * 탈퇴 유저 완전 삭제 스케줄러 (매일 03:00 KST 실행)
@@ -29,11 +31,11 @@ export const cleanupDeletedUsers = onSchedule(
       .get();
 
     if (deletedUsersSnap.empty) {
-      console.log('[cleanupDeletedUsers] 삭제 대상 유저 없음');
+      logger.info('[cleanupDeletedUsers] 삭제 대상 유저 없음');
       return;
     }
 
-    console.log(`[cleanupDeletedUsers] ${deletedUsersSnap.size}명 완전 삭제 시작`);
+    logger.info('[cleanupDeletedUsers] 완전 삭제 시작', { count: deletedUsersSnap.size });
 
     for (const userDoc of deletedUsersSnap.docs) {
       const uid = userDoc.id;
@@ -63,10 +65,16 @@ export const cleanupDeletedUsers = onSchedule(
         // 4. Firestore users/{uid} 문서 삭제
         await db.collection('users').doc(uid).delete();
 
-        console.log(`[cleanupDeletedUsers] 유저 ${uid} (role: ${userData.role}) 완전 삭제 완료`);
+        logger.info('[cleanupDeletedUsers] 유저 완전 삭제 완료', {
+          uidHash: hashForLog(uid),
+          role: userData.role,
+        });
       } catch (e) {
         // 개별 유저 삭제 실패 시 다음 유저로 계속 진행 (전체 실패 방지)
-        console.error(`[cleanupDeletedUsers] 유저 ${uid} 삭제 실패:`, e);
+        logger.error('[cleanupDeletedUsers] 유저 삭제 실패', {
+          uidHash: hashForLog(uid),
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
   }
@@ -85,10 +93,16 @@ async function deleteUserStorageFiles(uid: string): Promise<void> {
     if (files.length === 0) return;
 
     await Promise.all(files.map((file) => file.delete().catch(() => {})));
-    console.log(`[cleanupDeletedUsers] Storage 파일 ${files.length}개 삭제 완료 (uid: ${uid})`);
+    logger.info('[cleanupDeletedUsers] Storage 파일 삭제 완료', {
+      uidHash: hashForLog(uid),
+      count: files.length,
+    });
   } catch (e) {
     // Storage 삭제 실패는 치명적이지 않음 — 로깅 후 계속 진행
-    console.warn(`[cleanupDeletedUsers] Storage 파일 삭제 실패 (uid: ${uid}):`, e);
+    logger.warn('[cleanupDeletedUsers] Storage 파일 삭제 실패', {
+      uidHash: hashForLog(uid),
+      error: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 
@@ -104,7 +118,8 @@ async function deleteStudentSubmissions(
   const hwSnap = await db.collection('homeworks').get();
   if (hwSnap.empty) return;
 
-  const batch = db.batch();
+  // batch 인스턴스는 commit 후 재사용 불가 — 중간 커밋 시 새 인스턴스로 재할당
+  let batch = db.batch();
   let batchCount = 0;
   const BATCH_SIZE = 500;
 
@@ -121,9 +136,11 @@ async function deleteStudentSubmissions(
     batch.delete(submissionRef);
     batchCount++;
 
-    // batch 500개 제한 초과 시 중간 커밋
+    // batch 500개 제한 초과 시 중간 커밋 후 새 batch 인스턴스 할당
+    // (커밋된 batch는 재사용 시 INVALID_ARGUMENT 발생)
     if (batchCount >= BATCH_SIZE) {
       await batch.commit();
+      batch = db.batch();
       batchCount = 0;
     }
   }

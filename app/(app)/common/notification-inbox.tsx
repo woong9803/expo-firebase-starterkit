@@ -40,6 +40,7 @@ import type { AppNotification } from '../../../types';
 // 알림 타입별 Ionicons 이름 + 색상 매핑
 // ─────────────────────────────────────────────────────────────
 const NOTIFICATION_ICONS: Record<AppNotification['type'], { name: React.ComponentProps<typeof Ionicons>['name']; color: string }> = {
+  homework_created:  { name: 'document-outline',      color: '#5B50E8' },
   homework_feedback: { name: 'document-text-outline', color: '#5B50E8' },
   homework_due:      { name: 'time-outline',          color: '#EF4444' },
   attendance:        { name: 'clipboard-outline',     color: '#10B981' },

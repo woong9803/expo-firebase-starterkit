@@ -11,6 +11,7 @@
  */
 
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import axios from 'axios';
 import { checkRateLimit } from '../lib/rateLimit';
@@ -58,13 +59,23 @@ export const verifyTossPayment = onCall(async (request) => {
     throw new HttpsError('invalid-argument', '허용되지 않은 결제 금액입니다.');
   }
 
-  // ── 호출자의 academy_id 조회
+  // ── 호출자의 academy_id 조회 + admin 권한 검증
+  // admin 만 학원 결제·플랜 변경 가능 (security.md 역할별 권한표)
+  // teacher/student 가 자기 학원 academy_id 로 결제를 트리거해 admin 동의 없이
+  // 플랜을 업그레이드하는 권한 상승 경로 차단
   const db = admin.firestore();
   const userDoc = await db.collection('users').doc(uid).get();
   if (!userDoc.exists) {
     throw new HttpsError('not-found', '사용자 정보를 찾을 수 없습니다.');
   }
-  const academyId = userDoc.data()?.academy_id as string | undefined;
+  const userData = userDoc.data() ?? {};
+  if (userData.role !== 'admin') {
+    throw new HttpsError(
+      'permission-denied',
+      '학원 결제는 원장님(admin) 계정만 진행할 수 있습니다.'
+    );
+  }
+  const academyId = userData.academy_id as string | undefined;
   if (!academyId) {
     throw new HttpsError('failed-precondition', '학원 정보가 없습니다.');
   }
@@ -73,7 +84,7 @@ export const verifyTossPayment = onCall(async (request) => {
   // 시크릿 키는 반드시 functions/.env 에서만 관리 (클라이언트 절대 금지)
   const secretKey = process.env.TOSS_SECRET_KEY ?? '';
   if (!secretKey) {
-    console.error('[verifyTossPayment] TOSS_SECRET_KEY 환경변수 미설정');
+    logger.error('[verifyTossPayment] TOSS_SECRET_KEY 환경변수 미설정');
     throw new HttpsError('internal', '결제 검증 설정 오류입니다.');
   }
 
@@ -104,7 +115,7 @@ export const verifyTossPayment = onCall(async (request) => {
     const msg = axios.isAxiosError(e)
       ? e.response?.data?.message ?? e.message
       : '알 수 없는 오류';
-    console.error('[verifyTossPayment] 토스페이먼츠 검증 실패:', msg);
+    logger.error('[verifyTossPayment] 토스페이먼츠 검증 실패', { error: msg });
     throw new HttpsError('aborted', `결제 검증 실패: ${msg}`);
   }
 
@@ -157,6 +168,9 @@ export const verifyTossPayment = onCall(async (request) => {
     });
   });
 
-  console.log(`[verifyTossPayment] 학원 ${academyId} ${VALID_AMOUNTS[amount]} 플랜 활성화 완료`);
+  logger.info('[verifyTossPayment] 학원 플랜 활성화 완료', {
+    academyId,
+    plan: VALID_AMOUNTS[amount],
+  });
   return { success: true, planExpiresAt: planExpiresAt.toISOString() };
 });

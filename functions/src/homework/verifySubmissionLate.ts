@@ -3,20 +3,24 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import * as logger from 'firebase-functions/logger';
 
 /**
- * 숙제 제출·재제출 시 서버 시간 기준으로 is_late 재검증
+ * 숙제 제출·재제출 시 서버 시간 기준으로 is_late 재검증 + 스트릭 갱신
  *
  * 방어 시나리오:
  * 1. 학생이 앱을 리버싱해 is_late: false로 강제 저장
  * 2. 학생이 재제출로 is_late를 false로 덮어쓰기 시도 (onCreate만으로는 방어 불가)
  * 3. 클라이언트 기기 시간 조작 — submitted_at은 serverTimestamp지만 is_late는 클라이언트 계산
+ * 4. 학생이 직접 users/{uid}.streak 필드를 임의 값으로 갱신 시도
  *
  * 동작:
- * - 서버 시간(request time)과 homework.due_date를 비교해 is_late 재계산
+ * - 서버 시간(submitted_at)과 homework.due_date를 비교해 is_late 재계산
  * - 저장된 값이 다르면 교정
- * - is_late가 false → true 로 교정된 경우: users/{studentUid}.streak = 0
+ * - 신규 제출(create) 시 streak 갱신:
+ *     · 마감 전(is_late false) → users/{studentUid}.streak += 1
+ *     · 지각(is_late true)     → users/{studentUid}.streak  = 0
+ * - 재제출(update)은 streak 변경 없음 — 첫 제출에만 영향
  *
  * onDocumentWritten은 create·update 모두 트리거 — 재제출 조작까지 방어
- * 무한 루프 방지: 이미 교정값과 같으면 조기 return
+ * 무한 루프 방지: is_late 값이 이미 같으면 update 생략, streak 갱신은 create 한정
  */
 export const onSubmissionCreated = onDocumentWritten(
   'homeworks/{hwId}/submissions/{studentUid}',
@@ -26,6 +30,9 @@ export const onSubmissionCreated = onDocumentWritten(
     // 삭제 이벤트는 무시 (after가 없음)
     const after = event.data?.after.data();
     if (!after) return;
+
+    // create 이벤트 판별: before가 없으면 신규 제출
+    const isCreate = !event.data?.before.exists;
 
     const db = admin.firestore();
 
@@ -53,24 +60,42 @@ export const onSubmissionCreated = onDocumentWritten(
     const referenceTime = submittedAt ?? admin.firestore.Timestamp.now();
     const isLateServer = referenceTime.toMillis() > dueDate.toMillis();
 
-    // 이미 교정값과 같으면 추가 쓰기 없이 종료 (무한 루프 방지)
-    if (after.is_late === isLateServer) return;
+    // is_late 교정 (값이 다를 때만)
+    if (after.is_late !== isLateServer) {
+      logger.info('[verifySubmissionLate] is_late 교정', {
+        hwId,
+        studentUid,
+        before: after.is_late,
+        after: isLateServer,
+      });
+      await event.data!.after.ref.update({ is_late: isLateServer });
+    }
 
-    logger.info('[verifySubmissionLate] is_late 교정', {
-      hwId,
-      studentUid,
-      before: after.is_late,
-      after: isLateServer,
-    });
-
-    // 서버 시간 기준으로 교정
-    await event.data!.after.ref.update({ is_late: isLateServer });
-
-    // is_late가 true로 교정된 경우: 클라이언트에서 올린 스트릭을 0으로 초기화
-    // (마감 전 제출로 속여 스트릭을 올린 것을 되돌림)
-    if (isLateServer) {
+    // 스트릭 갱신: 신규 제출(create) 시에만 — 재제출은 영향 없음
+    // 클라이언트에서 streak 를 직접 쓰지 않으므로 서버에서 단일 진실 공급원
+    if (isCreate) {
+      const userRef = db.collection('users').doc(studentUid);
+      if (isLateServer) {
+        // 지각 제출 → 스트릭 초기화
+        await userRef.update({ streak: 0 });
+        logger.info('[verifySubmissionLate] 스트릭 초기화 (지각)', { studentUid });
+      } else {
+        // 마감 전 제출 → 스트릭 +1 (트랜잭션으로 동시 제출 경합 방지)
+        await db.runTransaction(async (tx) => {
+          const userSnap = await tx.get(userRef);
+          if (!userSnap.exists) return;
+          const current = (userSnap.data()?.streak as number | undefined) ?? 0;
+          tx.update(userRef, { streak: current + 1 });
+        });
+        logger.info('[verifySubmissionLate] 스트릭 +1', { studentUid });
+      }
+    } else if (isLateServer && after.is_late !== isLateServer) {
+      // 재제출인데 클라이언트가 false로 위조했다 서버가 true로 교정한 경우 →
+      // 직전 create 시 +1 됐을 가능성 있는 streak 를 0 으로 되돌림 (회귀 방어)
       await db.collection('users').doc(studentUid).update({ streak: 0 });
-      logger.info('[verifySubmissionLate] 스트릭 초기화', { studentUid });
+      logger.info('[verifySubmissionLate] 재제출 위조 감지 — 스트릭 초기화', {
+        studentUid,
+      });
     }
   }
 );

@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 /**
@@ -35,7 +36,9 @@ export const deactivateExpiredAcademies = onSchedule(
         });
       });
       await deactivateBatch.commit();
-      console.log(`[deactivateExpiredAcademies] ${pendingSnap.size}개 학원 비활성화 완료`);
+      logger.info('[deactivateExpiredAcademies] 학원 비활성화 완료', {
+        count: pendingSnap.size,
+      });
     }
 
     // ── 2단계: 7일 초과 deactivated 학원 완전 삭제 ─────────────────────────
@@ -55,10 +58,13 @@ export const deactivateExpiredAcademies = onSchedule(
 
       try {
         await deleteAcademyData(db, academyId);
-        console.log(`[deactivateExpiredAcademies] 학원 ${academyId} 완전 삭제 완료`);
+        logger.info('[deactivateExpiredAcademies] 학원 완전 삭제 완료', { academyId });
       } catch (e) {
         // 개별 학원 삭제 실패 시 다음 학원으로 계속 진행 (전체 실패 방지)
-        console.error(`[deactivateExpiredAcademies] 학원 ${academyId} 삭제 실패:`, e);
+        logger.error('[deactivateExpiredAcademies] 학원 삭제 실패', {
+          academyId,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
     }
   }

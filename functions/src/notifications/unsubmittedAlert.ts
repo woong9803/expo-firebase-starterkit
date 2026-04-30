@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { sendFcmBatch, SendFcmParams } from './sendFcm';
 import { NOTIFICATION_MESSAGES } from '../strings';
@@ -107,7 +108,7 @@ export const sendUnsubmittedAlert = onSchedule(
       await ref.update({ unsubmitted_alert_sent_date: todayStr });
     }
 
-    console.log(`[unsubmittedAlert] ${batch.length}건 알림 처리 완료`);
+    logger.info('[unsubmittedAlert] 알림 처리 완료', { notificationCount: batch.length });
   }
 );
 

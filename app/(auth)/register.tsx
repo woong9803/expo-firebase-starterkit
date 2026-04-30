@@ -135,7 +135,7 @@ export default function RegisterScreen() {
   const handleNext = async () => {
     // 약관 동의 미체크 시 진행 차단
     if (!termsAgreed) {
-      Alert.alert('약관 동의 필요', '이용약관 및 개인정보처리방침에 동의해주세요.');
+      Alert.alert(strings.auth.termsRequiredTitle, strings.auth.termsRequiredMessage);
       return;
     }
     const validationError = validate();
@@ -161,7 +161,7 @@ export default function RegisterScreen() {
     } catch (e: unknown) {
       const err = e as { code?: string; message?: string };
       if (err.code === 'auth/email-already-in-use') {
-        setError('이미 사용 중인 이메일이에요. 로그인해주세요.');
+        setError(strings.auth.emailAlreadyInUse);
       } else {
         setError(err.message || strings.common.error);
       }
@@ -328,9 +328,9 @@ export default function RegisterScreen() {
 
         {/* ── 로그인 링크 ── */}
         <View style={styles.loginRow}>
-          <Text style={styles.loginPrompt}>이미 계정이 있으신가요? </Text>
+          <Text style={styles.loginPrompt}>{strings.auth.hasAccount} </Text>
           <TouchableOpacity onPress={() => router.push('/(auth)/login')} disabled={isLoading}>
-            <Text style={styles.loginLink}>로그인하기</Text>
+            <Text style={styles.loginLink}>{strings.auth.loginLink}</Text>
           </TouchableOpacity>
         </View>
 

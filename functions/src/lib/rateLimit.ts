@@ -92,15 +92,29 @@ export async function checkRateLimit(opts: RateLimitOptions): Promise<void> {
 
 /**
  * onCall 요청에서 클라이언트 IP 추출
- * - request.rawRequest.ip (Express가 파싱한 값)
- * - x-forwarded-for (프록시 경유 시 원본 IP)
- * - 둘 다 없으면 'unknown' (IP 기반 제한 생략 신호)
+ *
+ * Cloud Run/Firebase Functions 환경에서는 Google Front End(GFE)가
+ * X-Forwarded-For 헤더의 **마지막** 값에 실제 클라이언트 IP를 추가한다.
+ * 첫 번째 값은 클라이언트가 임의로 조작 가능하므로 신뢰하면 안 됨.
+ *
+ * 우선순위:
+ *  1. X-Forwarded-For 의 마지막 항목 (GFE 가 추가한 신뢰 가능 IP)
+ *  2. rawRequest.ip (Express 가 파싱한 값 — fallback)
+ *  3. 'unknown' (IP 기반 제한 생략 신호)
+ *
+ * 잘못된 첫 번째 값을 쓰면 공격자가 매 요청마다 다른 IP 헤더를 주입해
+ * IP 기반 rate limit 을 완전히 우회할 수 있다.
  */
 export function getClientIp(rawRequest: {
   ip?: string;
   headers?: Record<string, string | string[] | undefined>;
 }): string {
   const forwarded = rawRequest.headers?.['x-forwarded-for'];
-  const forwardedStr = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  return rawRequest.ip ?? forwardedStr ?? 'unknown';
+  const forwardedRaw = Array.isArray(forwarded) ? forwarded.join(',') : forwarded;
+  const trustedIp = forwardedRaw
+    ?.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .pop();
+  return trustedIp ?? rawRequest.ip ?? 'unknown';
 }

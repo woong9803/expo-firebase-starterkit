@@ -1,6 +1,8 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { anonymizeTeacherData } from './anonymizeTeacherData';
+import { hashForLog } from '../lib/hash';
 
 /**
  * 사용자 탈퇴 처리 — 소프트 삭제 (onCall)
@@ -45,10 +47,16 @@ export const deleteUser = onCall({ region: 'asia-northeast3' }, async (request) 
       await anonymizeTeacherData(db, uid);
     } catch (e) {
       // 익명화 실패는 탈퇴 자체를 막지 않음 — 오류 로깅 후 계속 진행
-      console.error('[deleteUser] 선생님 데이터 익명화 실패:', e);
+      logger.error('[deleteUser] 선생님 데이터 익명화 실패', {
+        uidHash: hashForLog(uid),
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
-  console.log(`[deleteUser] 사용자 ${uid} (role: ${userData.role}) 소프트 삭제 완료`);
+  logger.info('[deleteUser] 사용자 소프트 삭제 완료', {
+    uidHash: hashForLog(uid),
+    role: userData.role,
+  });
   return { success: true };
 });

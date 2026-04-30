@@ -156,15 +156,10 @@ export default function PhoneVerifyScreen() {
           academy_id: '',
         });
       } catch (e: unknown) {
-        const err = e as { code?: string; message?: string };
-        // 디버그용 — 어느 단계에서 막혔는지 명확히 표시
-        if (err.code === 'permission-denied' || err.message?.includes('Missing or insufficient permissions')) {
-          setError('[단계2-users] 권한 오류. uid=' + user.uid);
-        } else if (err.code === 'not-found') {
-          setError('[단계2-users] 본인 사용자 문서가 없어요. (kakaoLogin이 users 문서 생성을 안 한 듯)');
-        } else {
-          setError('[단계2-users] ' + (err.code || err.message || '오류'));
-        }
+        // 사용자에게는 일반적인 안내만 노출 (uid 등 내부 식별자 노출 금지)
+        // 상세 코드는 콘솔에만 기록 — 화면 녹화·스크린샷 노출 차단
+        console.error('[phone-verify] users 문서 업데이트 실패:', e);
+        setError('인증 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
         setIsVerifying(false);
         return;
       }
@@ -174,12 +169,8 @@ export default function PhoneVerifyScreen() {
         try {
           await recordPhoneLookup(phone, user.uid);
         } catch (e: unknown) {
-          const err = e as { code?: string; message?: string };
-          if (err.code === 'permission-denied' || err.message?.includes('Missing or insufficient permissions')) {
-            setError('[단계3-phone_lookups] 권한 오류. uid=' + user.uid);
-          } else {
-            setError('[단계3-phone_lookups] ' + (err.code || err.message || '오류'));
-          }
+          console.error('[phone-verify] phone_lookups 기록 실패:', e);
+          setError('인증 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
           setIsVerifying(false);
           return;
         }

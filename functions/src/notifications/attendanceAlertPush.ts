@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { sendFcmNotification } from './sendFcm';
 import { NOTIFICATION_MESSAGES } from '../strings';
@@ -77,6 +78,9 @@ export const sendAttendanceAlertPush = onCall(async (request) => {
     }
   }
 
-  console.log(`[attendanceAlertPush] academyId=${academyId}, targets=${targets.length}명`);
+  logger.info('[attendanceAlertPush] 알림 발송 완료', {
+    academyId,
+    targetCount: targets.length,
+  });
   return { success: true };
 });

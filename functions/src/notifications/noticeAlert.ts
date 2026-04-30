@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import * as logger from 'firebase-functions/logger';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { sendFcmBatch, SendFcmParams } from './sendFcm';
 import { NOTIFICATION_MESSAGES } from '../strings';
@@ -73,6 +74,9 @@ export const onNoticeCreated = onDocumentCreated(
       await sendFcmBatch(batch);
     }
 
-    console.log(`[noticeAlert] noticeId=${noticeId}, ${batch.length}건 알림 처리 완료`);
+    logger.info('[noticeAlert] 알림 처리 완료', {
+      noticeId,
+      notificationCount: batch.length,
+    });
   }
 );
