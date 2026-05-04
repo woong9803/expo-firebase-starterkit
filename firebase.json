@@ -52,5 +52,10 @@
       "enabled": true
     },
     "singleProjectMode": true
+  },
+  "react-native": {
+    "messaging_ios_auto_register_for_remote_messages": true,
+    "messaging_auto_init_enabled": true,
+    "app_check_token_auto_refresh_enabled": false
   }
 }

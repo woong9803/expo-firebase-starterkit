@@ -20,6 +20,17 @@ import {
 // — Web SDK 의 signInWithPhoneNumber 는 RN 환경에서 reCAPTCHA verifier 가 동작하지 않아 auth/argument-error 발생
 // — RN Firebase 는 iOS APNs Silent Push, Android SafetyNet 으로 verifier 자동 처리
 import rnAuth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { Platform } from 'react-native';
+// @react-native-firebase/messaging — APNs 토큰을 Firebase Auth 가 자동으로 받아오도록 트리거
+// 미설치/네이티브 모듈 미포함 시 require 가 throw → null fallback (회원가입 화면 크래시 방지)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const rnMessaging = (() => {
+  try {
+    return require('@react-native-firebase/messaging').default;
+  } catch {
+    return null;
+  }
+})();
 import {
   setDoc,
   updateDoc,
@@ -219,6 +230,31 @@ export const sendPhoneOtp = async (
 
   // E.164 국제 전화번호 형식으로 변환 (+82)
   const formattedPhone = formatPhoneNumber(phoneNumber);
+
+  // ─── iOS APNs 토큰 사전 등록 (reCAPTCHA fallback 회피) ─────────────
+  // RN Firebase 24.x 는 phone auth 호출 시 APNs 토큰이 등록되어 있어야 silent push verifier 사용
+  // 미등록 시 SDK 가 reCAPTCHA 로 자동 fallback → "Verifying you're not a robot..." 무한 루프
+  // expo-notifications 는 권한 다이얼로그 띄우기 전엔 토큰 등록 안 함
+  // → messaging().registerDeviceForRemoteMessages() 로 권한 요청 없이 APNs 등록만 수행
+  if (Platform.OS === 'ios' && rnMessaging) {
+    try {
+      const messaging = rnMessaging();
+      // 이미 등록되어 있으면 즉시 반환 (idempotent)
+      if (!messaging.isDeviceRegisteredForRemoteMessages) {
+        await messaging.registerDeviceForRemoteMessages();
+      }
+      // APNs 토큰 수신 대기 (최대 3초) — 토큰을 받아야 RN Firebase Auth 가 silent push 사용
+      const apnsToken = await messaging.getAPNSToken();
+      if (!apnsToken) {
+        // 토큰 못 받으면 reCAPTCHA 로 fallback 됨 (운영 환경에선 발생하면 안 됨)
+        console.warn('[sendPhoneOtp] APNs 토큰 미수신 — reCAPTCHA fallback 가능성');
+      }
+    } catch (e) {
+      // 등록 실패해도 OTP 발송 자체는 시도 (reCAPTCHA 로 fallback)
+      console.warn('[sendPhoneOtp] APNs 등록 실패:', e);
+    }
+  }
+
   // RN Firebase: iOS APNs Silent Push / Android SafetyNet 으로 verifier 자동 처리
   return rnAuth().signInWithPhoneNumber(formattedPhone);
 };

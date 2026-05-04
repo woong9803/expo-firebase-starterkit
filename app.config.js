@@ -47,6 +47,13 @@ module.exports = ({ config }) => {
       infoPlist: {
         NSUserNotificationsUsageDescription:
           '숙제 마감, 피드백, 공지 알림을 받으려면 알림 권한이 필요합니다.',
+        // Firebase Phone Auth — APNs Silent Push 수신을 위해 필수
+        // 미설정 시 reCAPTCHA fallback 으로 무한 루프 발생
+        UIBackgroundModes: ['remote-notification'],
+      },
+      // APNs entitlement — Phone Auth Silent Push 검증을 위해 production 환경 필수
+      entitlements: {
+        'aps-environment': 'production',
       },
     },
     android: {
@@ -70,12 +77,24 @@ module.exports = ({ config }) => {
       // React Native Firebase — phone auth 정상 동작을 위해 필수
       // GoogleService-Info.plist + google-services.json 으로 자동 초기화됨
       '@react-native-firebase/app',
+      // Messaging 모듈 — iOS APNs 자동 등록 트리거용
+      // (Phone Auth 가 silent push verifier 사용하려면 APNs 토큰이 등록되어 있어야 함)
+      '@react-native-firebase/messaging',
       // Firebase iOS Pod 들이 Swift static library 통합을 요구하므로 useFrameworks: 'static' 필수
       // 미설정 시 pod install 단계에서 "FirebaseAuth depends upon ... which do not define modules" 에러
       [
         'expo-build-properties',
         {
-          ios: { useFrameworks: 'static' },
+          ios: {
+            useFrameworks: 'static',
+            // New Architecture(Fabric/TurboModules) 비활성화 — RN 0.83 + Hermes + static frameworks 조합에서
+            // 시작 시 TurboModule 큐에서 ObjC NSException catch 실패 → abort() 발생 회피
+            // 반드시 ios 객체 안에 두어야 적용됨 (최상위에 두면 무시됨)
+            newArchEnabled: false,
+          },
+          android: {
+            newArchEnabled: false,
+          },
         },
       ],
       // Podfile post_install에 CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES=YES 자동 주입 (RNFB pod 한정)
