@@ -236,25 +236,30 @@ export const sendPhoneOtp = async (
   // 미등록 시 SDK 가 reCAPTCHA 로 자동 fallback → "Verifying you're not a robot..." 무한 루프
   // expo-notifications 는 권한 다이얼로그 띄우기 전엔 토큰 등록 안 함
   // → messaging().registerDeviceForRemoteMessages() 로 권한 요청 없이 APNs 등록만 수행
+  // production 빌드에서도 보이도록 console.warn 사용 (console.log 는 Hermes 가 strip 가능)
+  console.warn('[sendPhoneOtp] 진입 / Platform:', Platform.OS, '/ rnMessaging:', rnMessaging ? '로드됨' : 'NULL');
+
   if (Platform.OS === 'ios' && rnMessaging) {
     try {
       const messaging = rnMessaging();
-      // 이미 등록되어 있으면 즉시 반환 (idempotent)
-      if (!messaging.isDeviceRegisteredForRemoteMessages) {
+      const wasRegistered = messaging.isDeviceRegisteredForRemoteMessages;
+      console.warn('[sendPhoneOtp] 등록 상태:', wasRegistered ? '이미 등록됨' : '미등록');
+      if (!wasRegistered) {
         await messaging.registerDeviceForRemoteMessages();
+        console.warn('[sendPhoneOtp] registerDeviceForRemoteMessages 완료');
       }
       // APNs 토큰 수신 대기 (최대 3초) — 토큰을 받아야 RN Firebase Auth 가 silent push 사용
       const apnsToken = await messaging.getAPNSToken();
-      if (!apnsToken) {
-        // 토큰 못 받으면 reCAPTCHA 로 fallback 됨 (운영 환경에선 발생하면 안 됨)
-        console.warn('[sendPhoneOtp] APNs 토큰 미수신 — reCAPTCHA fallback 가능성');
-      }
-    } catch (e) {
-      // 등록 실패해도 OTP 발송 자체는 시도 (reCAPTCHA 로 fallback)
-      console.warn('[sendPhoneOtp] APNs 등록 실패:', e);
+      console.warn('[sendPhoneOtp] APNs 토큰:', apnsToken ? `수신됨 (${apnsToken.slice(0, 10)}…)` : '미수신 (null)');
+    } catch (e: unknown) {
+      const err = e as Error;
+      console.warn('[sendPhoneOtp] APNs 등록 실패:', err.message ?? String(e));
     }
+  } else {
+    console.warn('[sendPhoneOtp] 분기 skip (조건 불충족)');
   }
 
+  console.warn('[sendPhoneOtp] signInWithPhoneNumber 호출 시작');
   // RN Firebase: iOS APNs Silent Push / Android SafetyNet 으로 verifier 자동 처리
   return rnAuth().signInWithPhoneNumber(formattedPhone);
 };
