@@ -51,9 +51,11 @@ module.exports = ({ config }) => {
         // 미설정 시 reCAPTCHA fallback 으로 무한 루프 발생
         UIBackgroundModes: ['remote-notification'],
       },
-      // APNs entitlement — Phone Auth Silent Push 검증을 위해 production 환경 필수
+      // APNs entitlement — APNS_ENV 환경변수로 분기 (eas.json의 build.<profile>.env 에서 설정)
+      // production 빌드만 'production', development/preview 빌드는 'development'
+      // 잘못 설정 시 APNs 토큰 발급 실패 → Phone Auth reCAPTCHA fallback 무한 루프 발생
       entitlements: {
-        'aps-environment': 'production',
+        'aps-environment': process.env.APNS_ENV === 'production' ? 'production' : 'development',
       },
     },
     android: {
@@ -77,9 +79,12 @@ module.exports = ({ config }) => {
       // React Native Firebase — phone auth 정상 동작을 위해 필수
       // GoogleService-Info.plist + google-services.json 으로 자동 초기화됨
       '@react-native-firebase/app',
-      // Messaging 모듈 — iOS APNs 자동 등록 트리거용
-      // (Phone Auth 가 silent push verifier 사용하려면 APNs 토큰이 등록되어 있어야 함)
-      '@react-native-firebase/messaging',
+      // ⚠️ @react-native-firebase/messaging 은 사용하지 않음
+      // 이유: useFrameworks: 'static' + RN Firebase 24 + RN 0.83 조합에서
+      // RNFBApp 이 modular framework 로 먼저 로드되며 React-Core 매크로(RCT_EXPORT_METHOD 등)
+      // 를 흡수해 RNFBMessaging 컴파일 단계에서 헤더 모듈 충돌 발생
+      // → APNs 토큰은 expo-notifications.getDevicePushTokenAsync() 로 받고
+      //    auth().setAPNSToken() 으로 RN Firebase Auth 에 직접 주입 (lib/auth.ts 참조)
       // Firebase iOS Pod 들이 Swift static library 통합을 요구하므로 useFrameworks: 'static' 필수
       // 미설정 시 pod install 단계에서 "FirebaseAuth depends upon ... which do not define modules" 에러
       [
@@ -99,6 +104,9 @@ module.exports = ({ config }) => {
       ],
       // Podfile post_install에 CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES=YES 자동 주입 (RNFB pod 한정)
       './plugins/withPodfileNonModularHeaders',
+      // RN Firebase Auth iOS silent push verifier 활성화 — Phone Auth reCAPTCHA fallback 회피
+      // AppDelegate 의 didRegisterForRemoteNotificationsWithDeviceToken 에 Auth.setAPNSToken 호출 자동 주입
+      './plugins/withFirebaseAuthAPNs',
       '@react-native-google-signin/google-signin',
       [
         '@react-native-kakao/core',

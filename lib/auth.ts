@@ -21,16 +21,13 @@ import {
 // — RN Firebase 는 iOS APNs Silent Push, Android SafetyNet 으로 verifier 자동 처리
 import rnAuth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
-// @react-native-firebase/messaging — APNs 토큰을 Firebase Auth 가 자동으로 받아오도록 트리거
-// 미설치/네이티브 모듈 미포함 시 require 가 throw → null fallback (회원가입 화면 크래시 방지)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const rnMessaging = (() => {
-  try {
-    return require('@react-native-firebase/messaging').default;
-  } catch {
-    return null;
-  }
-})();
+// expo-notifications — APNs 토큰 수신용 (권한 다이얼로그 없이 토큰만 발급)
+// iOS Phone Auth 의 silent push verifier 가 동작하려면 APNs 토큰이 RN Firebase Auth 에
+// 등록되어 있어야 한다. @react-native-firebase/messaging 은 useFrameworks: 'static' +
+// RN 0.83 조합에서 modular header 충돌이 발생해 사용하지 못함.
+// → expo-notifications.getDevicePushTokenAsync() 가 내부적으로 APNs 등록을 트리거하고
+//    토큰 발급까지 한 번에 처리한다.
+import * as Notifications from 'expo-notifications';
 import {
   setDoc,
   updateDoc,
@@ -234,29 +231,31 @@ export const sendPhoneOtp = async (
   // ─── iOS APNs 토큰 사전 등록 (reCAPTCHA fallback 회피) ─────────────
   // RN Firebase 24.x 는 phone auth 호출 시 APNs 토큰이 등록되어 있어야 silent push verifier 사용
   // 미등록 시 SDK 가 reCAPTCHA 로 자동 fallback → "Verifying you're not a robot..." 무한 루프
-  // expo-notifications 는 권한 다이얼로그 띄우기 전엔 토큰 등록 안 함
-  // → messaging().registerDeviceForRemoteMessages() 로 권한 요청 없이 APNs 등록만 수행
+  // 동작 원리:
+  //  1) getDevicePushTokenAsync() 가 [UIApplication registerForRemoteNotifications] 호출
+  //  2) iOS 시스템이 application:didRegisterForRemoteNotificationsWithDeviceToken: 콜백 발생
+  //  3) Firebase iOS SDK 의 AppDelegate swizzle 이 콜백 가로채 [Auth setAPNSToken] 자동 호출
+  //  4) 이후 signInWithPhoneNumber 호출 시 silent push verifier 사용 가능
+  // → expo-notifications 가 권한 다이얼로그 없이 토큰 발급만 트리거 (사용자에게 알림 권한 요청 X)
   // production 빌드에서도 보이도록 console.warn 사용 (console.log 는 Hermes 가 strip 가능)
-  console.warn('[sendPhoneOtp] 진입 / Platform:', Platform.OS, '/ rnMessaging:', rnMessaging ? '로드됨' : 'NULL');
+  console.warn('[sendPhoneOtp] 진입 / Platform:', Platform.OS);
 
-  if (Platform.OS === 'ios' && rnMessaging) {
+  if (Platform.OS === 'ios') {
     try {
-      const messaging = rnMessaging();
-      const wasRegistered = messaging.isDeviceRegisteredForRemoteMessages;
-      console.warn('[sendPhoneOtp] 등록 상태:', wasRegistered ? '이미 등록됨' : '미등록');
-      if (!wasRegistered) {
-        await messaging.registerDeviceForRemoteMessages();
-        console.warn('[sendPhoneOtp] registerDeviceForRemoteMessages 완료');
-      }
-      // APNs 토큰 수신 대기 (최대 3초) — 토큰을 받아야 RN Firebase Auth 가 silent push 사용
-      const apnsToken = await messaging.getAPNSToken();
-      console.warn('[sendPhoneOtp] APNs 토큰:', apnsToken ? `수신됨 (${apnsToken.slice(0, 10)}…)` : '미수신 (null)');
+      const tokenData = await Notifications.getDevicePushTokenAsync();
+      const apnsToken = tokenData?.data;
+      console.warn(
+        '[sendPhoneOtp] APNs 토큰:',
+        apnsToken ? `수신됨 (${String(apnsToken).slice(0, 10)}…)` : '미수신 (null)'
+      );
+      // Firebase iOS SDK 의 swizzle 이 토큰 hook 처리하도록 짧은 대기
+      await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (e: unknown) {
       const err = e as Error;
       console.warn('[sendPhoneOtp] APNs 등록 실패:', err.message ?? String(e));
     }
   } else {
-    console.warn('[sendPhoneOtp] 분기 skip (조건 불충족)');
+    console.warn('[sendPhoneOtp] 분기 skip (iOS 아님)');
   }
 
   console.warn('[sendPhoneOtp] signInWithPhoneNumber 호출 시작');

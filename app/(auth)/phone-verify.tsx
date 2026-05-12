@@ -44,14 +44,26 @@ export default function PhoneVerifyScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 화면 진입 시 OTP 자동 발송 (네이티브 APNs 자동 검증)
+  // ⚠️ 중복 호출 방어:
+  // RN Firebase iOS phone auth 가 silent push verifier 미동작 시 reCAPTCHA fallback 으로
+  // SafariViewController/WebView 를 띄우는데, 이 과정에서 앱이 background → foreground 복귀할 때
+  // useEffect 가 재실행되거나 컴포넌트가 remount 되면 sendPhoneOtp 가 다시 호출되어
+  // reCAPTCHA 화면이 무한 반복되는 이슈 발생.
+  // → useRef 로 한 번만 발송했음을 추적해 재호출 차단 (deps 변화나 remount 무관하게 1회 보장)
+  const sentRef = useRef(false);
   useEffect(() => {
     if (!phone) return;
+    if (sentRef.current) return; // 이미 한 번 발송했으면 재호출 차단
+    sentRef.current = true;
+
     setIsSendingOtp(true);
     setError(null);
     sendPhoneOtp(phone)
       .then((result) => setConfirmationResult(result))
       .catch((e: unknown) => {
         const err = e as { code?: string; message?: string };
+        // 발송 실패 시 다음 시도 허용
+        sentRef.current = false;
         if (err.message === 'DUPLICATE_PHONE') {
           setError(strings.errors.duplicatePhone);
         } else if (err.code === 'auth/too-many-requests') {
