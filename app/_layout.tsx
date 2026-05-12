@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -85,12 +85,8 @@ function RootLayoutInner() {
                   setAcademyId(userData.academy_id);
                 }
               }
-              // 온보딩 완료된 사용자에게만 FCM 초기화 (토큰 발급 + Firestore 저장)
-              if (userData.academy_id && userData.role) {
-                initFCM(firebaseUser.uid).catch((e) =>
-                  console.warn('[Layout] FCM 초기화 실패:', e)
-                );
-              }
+              // FCM 초기화는 아래 별도 useEffect 에서 처리
+              // (onAuthStateChanged 시점엔 academy_id·role 미세팅 가능 — 가입 직후 온보딩 흐름)
             } else {
               setUser({ uid: firebaseUser.uid, email: firebaseUser.email ?? '' } as User);
             }
@@ -136,6 +132,20 @@ function RootLayoutInner() {
     );
     return () => unsub();
   }, [user?.uid]);
+
+  // FCM 토큰 초기화 — 온보딩 완료(academy_id + role 모두 세팅) 시점에 1회 호출
+  // onAuthStateChanged 는 로그인 시점 1회만 발동하므로 가입 직후 온보딩 완료 케이스는 누락됨
+  // → onSnapshot 으로 user 문서가 갱신돼 academy_id·role 이 채워지는 순간을 감지해 호출
+  // 같은 uid 에 대해 중복 호출 방지를 위해 ref 로 발화 여부 추적
+  const fcmInitedUidRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user?.uid || !user?.academy_id || !user?.role) return;
+    if (fcmInitedUidRef.current === user.uid) return;
+    fcmInitedUidRef.current = user.uid;
+    initFCM(user.uid).catch((e) =>
+      console.warn('[Layout] FCM 초기화 실패:', e)
+    );
+  }, [user?.uid, user?.academy_id, user?.role]);
 
   // FCM 리스너 등록 — 로그인된 사용자에게만 적용
   // 알림 클릭 딥링크 이동 + 토큰 갱신 자동 업데이트
