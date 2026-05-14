@@ -11,10 +11,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, getDocs, onSnapshot, documentId } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import firestore, { documentId } from '@react-native-firebase/firestore';
+import { firebase as fbFunctions } from '@react-native-firebase/functions';
 import { router } from 'expo-router';
-import { app } from '../../../../lib/firebase';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { useAttendanceStore } from '../../../../store/useAttendanceStore';
 import { Collections } from '../../../../lib/firestore';
@@ -82,6 +81,9 @@ export default function TeacherAttendanceScreen() {
 
   // 재연결 토스트 페이드 애니메이션
   const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  // 날짜 전환 시 명렬표/요약 페이드 — 데이터 교체가 휙 바뀌는 어색함 완화
+  const contentOpacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (justReconnected) {
       // 등장: 빠르게 나타났다가 천천히 사라짐
@@ -101,8 +103,9 @@ export default function TeacherAttendanceScreen() {
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isSavingAll, setIsSavingAll]             = useState(false);
 
-  // 저장 전 로컬 임시 상태 — 저장하기 버튼 누르기 전까지 Firestore에 반영 안 됨
-  const [pendingStatuses, setPendingStatuses] = useState<Record<string, AttendanceStatus>>({});
+  // 저장 전 로컬 임시 상태 — status·reason 둘 다 보관, 저장하기 버튼에서 일괄 반영
+  type PendingEntry = { status?: AttendanceStatus; reason?: string | null };
+  const [pending, setPending] = useState<Record<string, PendingEntry>>({});
 
   const dateListRef = useRef<FlatList<string>>(null);
   const unsubRef    = useRef<(() => void) | null>(null);
@@ -115,9 +118,10 @@ export default function TeacherAttendanceScreen() {
       return;
     }
 
-    getDocs(
-      query(Collections.classes(), where(documentId(), 'in', classIds))
-    ).then((snap) => {
+    Collections.classes()
+      .where(documentId(), 'in', classIds)
+      .get()
+      .then((snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class));
       setClasses(list);
       if (list.length > 0) {
@@ -138,7 +142,7 @@ export default function TeacherAttendanceScreen() {
     setIsLoadingStudents(true);
     setRecords({});
     // 날짜·반 변경 시 임시 상태 초기화
-    setPendingStatuses({});
+    setPending({});
 
     if (unsubRef.current) {
       unsubRef.current();
@@ -146,25 +150,23 @@ export default function TeacherAttendanceScreen() {
     }
 
     // 학생 목록 실시간 구독 — 신규 학생 가입 시 명렬표에 즉시 반영
-    const unsubStudents = onSnapshot(
-      query(
-        Collections.users(),
-        where('academy_id', '==', user.academy_id),
-        where('class_id', '==', selectedClassId),
-        where('role', '==', 'student'),
-      ),
-      (snap) => {
-        const active = snap.docs
-          .map((d) => ({ uid: d.id, ...d.data() } as User))
-          .filter((s) => s.is_active !== false && !s.deleted_at);
-        setStudents(active);
-        setIsLoadingStudents(false);
-      },
-      (e) => {
-        console.error('[TeacherAttendance] 학생 목록 구독 실패:', e);
-        setIsLoadingStudents(false);
-      }
-    );
+    const unsubStudents = Collections.users()
+      .where('academy_id', '==', user.academy_id)
+      .where('class_id', '==', selectedClassId)
+      .where('role', '==', 'student')
+      .onSnapshot(
+        (snap) => {
+          const active = snap.docs
+            .map((d) => ({ uid: d.id, ...d.data() } as User))
+            .filter((s) => s.is_active !== false && !s.deleted_at);
+          setStudents(active);
+          setIsLoadingStudents(false);
+        },
+        (e) => {
+          console.error('[TeacherAttendance] 학생 목록 구독 실패:', e);
+          setIsLoadingStudents(false);
+        }
+      );
 
     const unsubAttendance = subscribeAttendanceRecords(
       selectedClassId,
@@ -190,50 +192,93 @@ export default function TeacherAttendanceScreen() {
   }, []);
 
   // ── 날짜 선택 ──
+  // 페이드 아웃 → 날짜 변경 → 페이드 인 (총 ~340ms) — 데이터 교체 깜빡임 완화
   const handleDateSelect = useCallback((dateStr: string) => {
+    Animated.sequence([
+      Animated.timing(contentOpacity, { toValue: 0.25, duration: 120, useNativeDriver: true }),
+      Animated.timing(contentOpacity, { toValue: 1,    duration: 220, useNativeDriver: true }),
+    ]).start();
     setSelectedDate(dateStr);
     storeSetDate(dateStr);
-  }, []);
+  }, [contentOpacity]);
 
   // ── 상태 버튼 탭: 로컬 임시 상태만 변경 (Firestore 저장 안 함) ──
   const handleStatusChange = useCallback((studentUid: string, status: AttendanceStatus) => {
-    setPendingStatuses((prev) => ({ ...prev, [studentUid]: status }));
+    setPending((prev) => ({
+      ...prev,
+      [studentUid]: { ...prev[studentUid], status },
+    }));
   }, []);
 
-  // ── 표시용 상태: 임시 상태 우선, 없으면 Firestore 상태 ──
+  // ── 표시용 status·reason: 임시 우선, 없으면 Firestore ──
   // handleSaveAll에서 참조하므로 먼저 선언
   const mergedStatuses = useMemo(() => {
     const result: Record<string, AttendanceStatus | null> = {};
     students.forEach(({ uid }) => {
-      result[uid] = pendingStatuses[uid] ?? records[uid]?.status ?? null;
+      result[uid] = pending[uid]?.status ?? records[uid]?.status ?? null;
     });
     return result;
-  }, [students, pendingStatuses, records]);
+  }, [students, pending, records]);
 
-  // ── 저장하기: 반 전체 학생의 현재 상태를 Firestore에 일괄 저장 ──
-  // 상태가 설정된(null이 아닌) 학생만 저장하며, pendingStatuses + 기존 records 모두 포함
+  const mergedReasons = useMemo(() => {
+    const result: Record<string, string | null> = {};
+    students.forEach(({ uid }) => {
+      const p = pending[uid]?.reason;
+      if (p !== undefined) result[uid] = p;
+      else result[uid] = records[uid]?.reason ?? null;
+    });
+    return result;
+  }, [students, pending, records]);
+
+  // ── 사유 변경: 자동 저장 안 함, "저장하기"에서 status와 함께 일괄 처리 ──
+  const handleReasonChange = useCallback((studentUid: string, reason: string) => {
+    setPending((prev) => {
+      const cur = prev[studentUid] ?? {};
+      const trimmed = reason.trim();
+      const original = records[studentUid]?.reason ?? '';
+      if (trimmed === original) {
+        const next: PendingEntry = { ...cur };
+        delete next.reason;
+        if (next.status === undefined) {
+          const { [studentUid]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [studentUid]: next };
+      }
+      return { ...prev, [studentUid]: { ...cur, reason: trimmed || null } };
+    });
+  }, [records]);
+
+  // ── 저장하기: pending에 모인 status·reason 일괄 반영 ──
   const handleSaveAll = useCallback(async () => {
     if (!selectedClassId || !selectedDate || !user?.academy_id) return;
 
-    // 저장 대상: 반 전체 학생 중 상태가 있는 학생
-    const toSave = students
-      .map(({ uid }) => ({ uid, status: mergedStatuses[uid] }))
-      .filter((s): s is { uid: string; status: AttendanceStatus } => s.status !== null);
-
-    if (toSave.length === 0) return;
+    const entries = Object.entries(pending);
+    if (entries.length === 0) return;
 
     setIsSavingAll(true);
     try {
+      const saveResults: { uid: string; status: AttendanceStatus }[] = [];
       await Promise.all(
-        toSave.map(({ uid, status }) =>
-          setAttendanceRecord(selectedClassId, selectedDate, uid, status, user.academy_id)
-        )
+        entries.map(async ([uid, { status, reason }]) => {
+          const finalStatus = status ?? records[uid]?.status;
+          if (finalStatus) {
+            await setAttendanceRecord(
+              selectedClassId, selectedDate, uid, finalStatus, user.academy_id, reason
+            );
+            saveResults.push({ uid, status: finalStatus });
+          } else if (reason !== undefined) {
+            await updateAttendanceReason(
+              selectedClassId, selectedDate, uid, reason, user.academy_id
+            );
+          }
+        })
       );
-      // 저장 완료 후 임시 변경 상태 초기화 → 버튼 자동 비활성화
-      setPendingStatuses({});
+
+      setPending({});
 
       // 결석/지각 학생의 학부모에게 알림 발송 (백그라운드 — 실패해도 저장은 유지)
-      const alertTargets = toSave
+      const alertTargets = saveResults
         .filter((s) => s.status === 'absent' || s.status === 'late')
         .map((s) => ({
           uid: s.uid,
@@ -242,8 +287,7 @@ export default function TeacherAttendanceScreen() {
         }));
 
       if (alertTargets.length > 0) {
-        const functions = getFunctions(app, 'us-central1');
-        const fn = httpsCallable(functions, 'sendAttendanceAlertPush');
+        const fn = fbFunctions.app().functions('us-central1').httpsCallable('sendAttendanceAlertPush');
         fn({ academyId: user.academy_id, records: alertTargets }).catch((e) =>
           console.error('[TeacherAttendance] 출결 알림 발송 실패:', e)
         );
@@ -253,17 +297,7 @@ export default function TeacherAttendanceScreen() {
     } finally {
       setIsSavingAll(false);
     }
-  }, [selectedClassId, selectedDate, user?.academy_id, students, mergedStatuses]);
-
-  // ── 사유 저장: 체크 버튼 탭 시 즉시 저장 ──
-  const handleReasonSave = useCallback(async (studentUid: string, reason: string | null) => {
-    if (!selectedClassId || !selectedDate) return;
-    try {
-      await updateAttendanceReason(selectedClassId, selectedDate, studentUid, reason);
-    } catch (e) {
-      console.error('[TeacherAttendance] 사유 저장 실패:', e);
-    }
-  }, [selectedClassId, selectedDate]);
+  }, [selectedClassId, selectedDate, user?.academy_id, students, pending, records]);
 
   const summary = useMemo(() => {
     const values = Object.values(mergedStatuses);
@@ -275,8 +309,8 @@ export default function TeacherAttendanceScreen() {
   }, [mergedStatuses]);
 
   const notEnteredCount = students.length - summary.present - summary.late - summary.absent;
-  // 상태를 새로 탭한 학생이 있을 때만 저장 버튼 활성화
-  const hasPending = Object.keys(pendingStatuses).length > 0;
+  // 상태·사유 중 하나라도 변경된 학생이 있으면 저장 버튼 활성화
+  const hasPending = Object.keys(pending).length > 0;
 
   // ── 로딩 ──
   if (isLoadingClasses) {
@@ -333,48 +367,46 @@ export default function TeacherAttendanceScreen() {
       </View>
 
       {/* ── 날짜 스트립 ── */}
-      <FlatList
-        ref={dateListRef}
-        data={DATE_LIST}
-        keyExtractor={(item) => item}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.dateStripContent}
-        style={styles.dateStrip}
-        getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
-        initialScrollIndex={Math.max(0, TODAY_INDEX - 3)}
-        renderItem={({ item }) => {
-          const isSelected = item === selectedDate;
-          const isToday    = item === TODAY;
-          return (
-            <TouchableOpacity
-              style={[
-                styles.datePill,
-                isSelected && styles.datePillSelected,
-                !isSelected && isToday && styles.datePillToday,
-              ]}
-              onPress={() => handleDateSelect(item)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.datePillWeekday, isSelected && styles.datePillTextSelected]}>
-                {getWeekdayShort(item)}
-              </Text>
-              <Text style={[styles.datePillDay, isSelected && styles.datePillTextSelected]}>
-                {getDay(item)}
-              </Text>
-              {isToday && !isSelected && <View style={styles.todayDot} />}
-            </TouchableOpacity>
-          );
-        }}
-      />
+      {/* FlatList style={height} 가 column flex 안에서 종종 안 먹어 → 고정 높이 부모 View 로 감쌈 */}
+      <View style={styles.dateStripWrapper}>
+        <FlatList
+          ref={dateListRef}
+          data={DATE_LIST}
+          keyExtractor={(item) => item}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.dateStripContent}
+          getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
+          initialScrollIndex={Math.max(0, TODAY_INDEX - 3)}
+          renderItem={({ item }) => {
+            const isSelected = item === selectedDate;
+            const isToday    = item === TODAY;
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.datePill,
+                  isSelected && styles.datePillSelected,
+                  !isSelected && isToday && styles.datePillToday,
+                ]}
+                onPress={() => handleDateSelect(item)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.datePillWeekday, isSelected && styles.datePillTextSelected]}>
+                  {getWeekdayShort(item)}
+                </Text>
+                <Text style={[styles.datePillDay, isSelected && styles.datePillTextSelected]}>
+                  {getDay(item)}
+                </Text>
+                {isToday && !isSelected && <View style={styles.todayDot} />}
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
 
       {/* ── 반 선택 탭 ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.classTabBar}
-        contentContainerStyle={styles.classTabContent}
-      >
+      {/* ScrollView horizontal 이 자식 Text 를 안 보이게 만드는 RN 버그 회피 → View + flexWrap */}
+      <View style={styles.classTabBar}>
         {classes.map((c) => (
           <TouchableOpacity
             key={c.id}
@@ -387,45 +419,46 @@ export default function TeacherAttendanceScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
-
-      {/* ── 요약 카운터 ── */}
-      <View style={styles.summaryRow}>
-        <SummaryChip count={summary.present} label={strings.attendance.present} countColor="#10B981" />
-        <SummaryChip count={summary.late}    label={strings.attendance.late}    countColor="#F59E0B" />
-        <SummaryChip count={summary.absent}  label={strings.attendance.absent}  countColor="#EF4444" />
-        <SummaryChip count={notEnteredCount} label="미입력"                     countColor="#94A3B8" />
       </View>
 
-      {/* ── 명렬표 ── */}
-      {isLoadingStudents ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color="#5B50E8" />
+      {/* ── 요약 + 명렬표 (날짜 전환 시 페이드) ── */}
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
+        <View style={styles.summaryRow}>
+          <SummaryChip count={summary.present} label={strings.attendance.present} countColor="#10B981" />
+          <SummaryChip count={summary.late}    label={strings.attendance.late}    countColor="#F59E0B" />
+          <SummaryChip count={summary.absent}  label={strings.attendance.absent}  countColor="#EF4444" />
+          <SummaryChip count={notEnteredCount} label="미입력"                     countColor="#94A3B8" />
         </View>
-      ) : students.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyText}>등록된 학생이 없어요</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={students}
-          keyExtractor={(item) => item.uid}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <AttendanceRow
-              studentName={item.name}
-              schoolName={item.school_name ?? undefined}
-              status={mergedStatuses[item.uid] ?? null}
-              reason={records[item.uid]?.reason ?? null}
-              onStatusChange={(status) => handleStatusChange(item.uid, status)}
-              onReasonSave={(reason) => handleReasonSave(item.uid, reason)}
-              disabled={isSavingAll}
-              readOnly={!hasPending}
-            />
-          )}
-          ListFooterComponent={<View style={{ height: 16 }} />}
-        />
-      )}
+
+        {isLoadingStudents ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color="#5B50E8" />
+          </View>
+        ) : students.length === 0 ? (
+          <View style={styles.centered}>
+            <Text style={styles.emptyText}>등록된 학생이 없어요</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={students}
+            keyExtractor={(item) => item.uid}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => (
+              <AttendanceRow
+                studentName={item.name}
+                schoolName={item.school_name ?? undefined}
+                status={mergedStatuses[item.uid] ?? null}
+                reason={mergedReasons[item.uid] ?? null}
+                onStatusChange={(status) => handleStatusChange(item.uid, status)}
+                onReasonChange={(reason) => handleReasonChange(item.uid, reason)}
+                disabled={isSavingAll}
+                readOnly={!hasPending}
+              />
+            )}
+            ListFooterComponent={<View style={{ height: 16 }} />}
+          />
+        )}
+      </Animated.View>
 
       {/* ── 하단 저장하기 버튼 ── */}
       <View style={styles.saveWrapper}>
@@ -546,28 +579,35 @@ const styles = StyleSheet.create({
   },
 
   // ── 날짜 스트립 ──
-  dateStrip: {
-    maxHeight: 72,
+  // FlatList style={height} 만으로는 column flex 부모 안에서 안 먹는 경우 多
+  // → 고정 높이 부모 View 로 감싸서 강제. flexShrink:0 으로 압축도 방지
+  dateStripWrapper: {
+    height: 68,
+    flexShrink: 0,
+    flexGrow: 0,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
   dateStripContent: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
     gap: 4,
+    // FlatList horizontal 의 자식은 기본 stretch — center 로 막아서 pill 이 자연 높이 유지
+    alignItems: 'center',
   },
+  // height 명시 + line-height 고정 — 한글 폰트 ascender 차이로 인한 들쭉날쭉 방지
+  // width 48 = getItemLayout 의 length 52 - gap 4 (FlatList 스크롤 정확도 유지)
   datePill: {
     width: 48,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 10,
     gap: 2,
   },
   datePillSelected:      { backgroundColor: '#5B50E8' },
   datePillToday:         { backgroundColor: '#EEEDF9' },
-  datePillWeekday:       { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
-  datePillDay:           { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  datePillWeekday:       { fontSize: 12, lineHeight: 14, fontWeight: '500', color: '#94A3B8' },
+  datePillDay:           { fontSize: 16, lineHeight: 18, fontWeight: '700', color: '#0F172A' },
   datePillTextSelected:  { color: '#fff' },
   todayDot: {
     width: 4, height: 4, borderRadius: 2,
@@ -575,10 +615,13 @@ const styles = StyleSheet.create({
   },
 
   // ── 반 탭 ──
-  classTabBar:    { maxHeight: 48 },
-  classTabContent: {
-    paddingHorizontal: 20, paddingVertical: 10,
-    flexDirection: 'row', gap: 8,
+  // View + flexWrap 으로 변경 (ScrollView horizontal 의 Text 렌더링 이슈 회피)
+  classTabBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 8,
   },
   classTab: {
     paddingVertical: 6, paddingHorizontal: 16,
