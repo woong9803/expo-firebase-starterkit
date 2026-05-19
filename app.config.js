@@ -96,6 +96,11 @@ module.exports = ({ config }) => {
             // 시작 시 TurboModule 큐에서 ObjC NSException catch 실패 → abort() 발생 회피
             // 반드시 ios 객체 안에 두어야 적용됨 (최상위에 두면 무시됨)
             newArchEnabled: false,
+            // React-Core 를 소스에서 컴파일 — SDK 55 기본값(prebuilt RNCore binary)은
+            // useFrameworks: 'static' + RN Firebase 24 조합과 호환 안 됨
+            // (RNFBFirestoreModule.m 컴파일 시 RCT_EXTERN / RCT_EXPORT_METHOD 매크로 인식 실패)
+            // 첫 빌드는 5~15분 소요되지만 이후 캐시 사용
+            buildReactNativeFromSource: true,
           },
           android: {
             newArchEnabled: false,
