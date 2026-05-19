@@ -126,7 +126,10 @@ module.exports = ({ config }) => {
         'expo-notifications',
         {
           color: '#5B50E8',           // 알림 아이콘 배경색 (Android)
-          iosDisplayInForeground: true, // 앱 포그라운드 상태에서도 알림 표시
+          // iosDisplayInForeground 제거 — SDK 50+ 에서 제거된 레거시 옵션.
+          // 일부 빌드에서 iOS 네이티브 willPresent 응답을 강제로 덮어써
+          // setNotificationHandler 표시와 중복(알림 2회 수신) 유발.
+          // 포그라운드 표시는 lib/fcm.ts 의 setNotificationHandler 에서 단일 제어.
           sounds: [],
         },
       ],
