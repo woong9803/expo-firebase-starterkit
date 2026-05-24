@@ -16,8 +16,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { signUpWithEmail, createUserDoc, signInWithKakao, signInWithGoogle, signInWithApple } from '../../lib/auth';
-import { db } from '../../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { Collections } from '../../lib/firestore';
 
 function KakaoIcon() {
   return (
@@ -78,7 +77,7 @@ export default function RegisterScreen() {
       // 온보딩 단계 판단을 위해 users 문서 상태 확인
       // (signInWithKakao는 카카오 닉네임을 받아 doc을 미리 생성할 수 있음 →
       //  doc 존재 여부만으로 신규/기존 구분 불가)
-      const userSnap = await getDoc(doc(db, 'users', credential.user.uid));
+      const userSnap = await Collections.user(credential.user.uid).get();
       const data = userSnap.exists() ? userSnap.data() : null;
 
       // doc이 아직 없는 경우(Google/Apple 신규) — 즉시 생성

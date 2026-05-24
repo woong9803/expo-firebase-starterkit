@@ -14,29 +14,23 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
-  Linking,
-  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { signOut } from 'firebase/auth';
-import { getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { auth, app } from '../../../../lib/firebase';
 import { Collections } from '../../../../lib/firestore';
+import { safeSignOut } from '../../../../lib/auth';
+import { openKakaoSupport } from '../../../../lib/support';
+import { showDeleteAccountDialog } from '../../../../lib/deleteAccount';
 import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
-import { updateDoc } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Class, AttendanceRecord } from '../../../../types';
 import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 import { strings } from '../../../../constants/strings';
-
-const APP_VERSION = '1.0.0';
 
 // AsyncStorage 키 — 푸시 알림 ON/OFF 설정 저장
 const NOTIF_PREF_KEY = 'teacher_push_enabled';
@@ -79,7 +73,7 @@ export default function TeacherProfileScreen() {
 
     // Firestore notif_prefs 업데이트 — Cloud Functions 서버 측 필터링에 사용됨
     // 선생님은 단일 토글로 모든 알림 유형을 일괄 제어
-    await updateDoc(Collections.user(user.uid), {
+    await Collections.user(user.uid).update({
       'notif_prefs.homework': value,
       'notif_prefs.feedback': value,
       'notif_prefs.notice':   value,
@@ -88,7 +82,7 @@ export default function TeacherProfileScreen() {
 
     if (value === false) {
       // 토글 OFF: FCM 토큰 null 처리 → Cloud Functions가 발송 건너뜀
-      await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
+      await Collections.user(user.uid).update({ fcm_token: null }).catch((e) =>
         console.warn('[TeacherProfile] fcm_token 제거 실패:', e)
       );
     } else {
@@ -109,17 +103,18 @@ export default function TeacherProfileScreen() {
       return;
     }
 
-    const unsub = onSnapshot(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
-      (snap) => {
-        // 전체 반 중 내 담당반만 필터링
-        const filtered = snap.docs
-          .filter((d) => classIds.includes(d.id))
-          .map((d) => ({ id: d.id, ...d.data() } as Class));
-        setAssignedClasses(filtered);
-      },
-      (e) => console.warn('[TeacherProfile] 반 구독 실패:', e),
-    );
+    const unsub = Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .onSnapshot(
+        (snap) => {
+          // 전체 반 중 내 담당반만 필터링
+          const filtered = snap.docs
+            .filter((d) => classIds.includes(d.id))
+            .map((d) => ({ id: d.id, ...d.data() } as Class));
+          setAssignedClasses(filtered);
+        },
+        (e) => console.warn('[TeacherProfile] 반 구독 실패:', e),
+      );
     return () => unsub();
   }, [user?.assigned_class_ids?.join(','), user?.academy_id]);
 
@@ -133,14 +128,12 @@ export default function TeacherProfileScreen() {
       return;
     }
 
-    const unsub = onSnapshot(
-      query(
-        Collections.users(),
-        where('academy_id', '==', user.academy_id),
-        where('role', '==', 'student'),
-        where('is_active', '==', true),
-      ),
-      (snap) => {
+    const unsub = Collections.users()
+      .where('academy_id', '==', user.academy_id)
+      .where('role', '==', 'student')
+      .where('is_active', '==', true)
+      .onSnapshot(
+        (snap) => {
         // class_id별 학생 수 집계 — 탈퇴 학생(deleted_at != null) 제외
         const countByClass: Record<string, number> = {};
         snap.docs.forEach((d) => {
@@ -154,9 +147,9 @@ export default function TeacherProfileScreen() {
         // 총 담당 학생 수도 통계에 즉시 반영
         const total = Object.values(countByClass).reduce((a, b) => a + b, 0);
         setStats((prev) => ({ ...prev, studentCount: total }));
-      },
-      (e) => console.warn('[TeacherProfile] 학생 수 구독 실패:', e),
-    );
+        },
+        (e) => console.warn('[TeacherProfile] 학생 수 구독 실패:', e),
+      );
     return () => unsub();
   }, [user?.assigned_class_ids?.join(','), user?.academy_id]);
 
@@ -191,14 +184,11 @@ export default function TeacherProfileScreen() {
         await Promise.all(
           targetClassIds.flatMap((classId) =>
             dates.map(async (dateStr) => {
-              const snap = await getDocs(Collections.attendanceRecords(classId, dateStr));
+              const snap = await Collections.attendanceRecords(classId, dateStr).get();
               snap.forEach((docSnap) => {
                 const record = docSnap.data() as AttendanceRecord;
-                // onLeave(휴원)는 출석률 계산에서 제외
-                if (record.status !== 'onLeave') {
-                  totalCount++;
-                  if (record.status === 'present') presentCount++;
-                }
+                totalCount++;
+                if (record.status === 'present') presentCount++;
               });
             })
           )
@@ -223,7 +213,7 @@ export default function TeacherProfileScreen() {
         text: '로그아웃',
         style: 'destructive',
         onPress: async () => {
-          await signOut(auth);
+          await safeSignOut();
           clearUser();
           // app/_layout.tsx의 onAuthStateChanged가 /(auth)로 자동 이동
         },
@@ -234,49 +224,17 @@ export default function TeacherProfileScreen() {
   // ── 비밀번호 변경 모달 열기 ──────────────────
   const handlePasswordChange = () => setIsPwModalVisible(true);
 
-  // ── 소셜 계정 연결 (준비 중) ─────────────────
-  const handleSocialConnect = () => {
-    Alert.alert('소셜 계정 연결', '이 기능은 준비 중이에요.\n곧 업데이트될 예정입니다.', [
-      { text: '확인' },
-    ]);
-  };
-
-  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
+  // ── 문의하기 — 카카오톡 상담 채널로 연결 ──────
   const handleInquiry = () => {
-    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: ${APP_VERSION}\n사용자 ID: ${user?.uid ?? ''}`;
-    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
-    Linking.openURL(mailto).catch(() =>
-      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
-    );
+    openKakaoSupport();
   };
 
-  // ── 탈퇴하기 ──────────────────────────────────
+  // ── 탈퇴하기 (PIPA 삭제권 — 30일 후 / 즉시 완전 삭제 선택) ──
   const handleDeleteAccount = () => {
-    Alert.alert(
-      strings.account.deleteConfirmTitle,
-      strings.account.deleteConfirmMessage,
-      [
-        { text: strings.common.cancel, style: 'cancel' },
-        {
-          text: strings.account.deleteButton,
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeleting(true);
-            try {
-              const fns = getFunctions(app, 'asia-northeast3');
-              const deleteUserFn = httpsCallable(fns, 'deleteUser');
-              await deleteUserFn({});
-              await signOut(auth);
-              clearUser();
-            } catch {
-              Alert.alert(strings.common.error, strings.account.deleteFailed);
-            } finally {
-              setIsDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+    showDeleteAccountDialog({
+      onLoadingChange: setIsDeleting,
+      onSuccess: clearUser,
+    });
   };
 
   return (
@@ -437,17 +395,6 @@ export default function TeacherProfileScreen() {
           <View style={styles.menuLeft}>
             <Ionicons name="lock-closed-outline" size={20} color="#64748B" style={styles.menuIcon} />
             <Text style={styles.menuLabel}>비밀번호 변경</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
-        </TouchableOpacity>
-
-        <View style={styles.menuDivider} />
-
-        {/* 소셜 계정 연결 */}
-        <TouchableOpacity style={styles.menuItem} onPress={handleSocialConnect} activeOpacity={0.7}>
-          <View style={styles.menuLeft}>
-            <Ionicons name="phone-portrait-outline" size={20} color="#64748B" style={styles.menuIcon} />
-            <Text style={styles.menuLabel}>소셜 계정 연결</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>

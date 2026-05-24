@@ -15,8 +15,8 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
  *   - 1회 수동 호출로 기존 데이터 마이그레이션
  *   - 충돌(같은 번호 다른 uid) 발생 시 skip 카운트로 보고됨 → 수동 확인
  */
+// region: 전역 옵션(asia-northeast3) 상속
 export const backfillPhoneLookups = onCall(
-  { region: 'us-central1' },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', '로그인이 필요합니다.');

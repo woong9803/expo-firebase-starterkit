@@ -48,11 +48,12 @@ export const createStudentAccount = onCall(async (request) => {
   });
 
   // ── 2단계: 입력 검증 ───────────────────────────────
-  const { name, classId, academyId, birthDate } = request.data as {
+  const { name, classId, academyId, birthDate, guardianConsent } = request.data as {
     name?: unknown;
     classId?: unknown;
     academyId?: unknown;
     birthDate?: unknown;
+    guardianConsent?: unknown;
   };
 
   if (
@@ -79,6 +80,23 @@ export const createStudentAccount = onCall(async (request) => {
         'invalid-argument',
         '생년월일 형식이 잘못되었습니다 (YYYY-MM-DD)'
       );
+    }
+  }
+
+  // ── 2-1단계: PIPA 제22조 — 만 14세 미만 보호자 동의 검증 ───────
+  // birthDate 가 주어졌고 만 14세 미만이면 guardianConsent === true 필수
+  // (클라이언트 UI 가드 우회 차단 — 서버 측 최종 확인)
+  let isUnder14Confirmed = false;
+  if (typeof birthDate === 'string') {
+    const ageYears = computeAgeYears(birthDate);
+    if (ageYears !== null && ageYears < 14) {
+      isUnder14Confirmed = true;
+      if (guardianConsent !== true) {
+        throw new HttpsError(
+          'failed-precondition',
+          '만 14세 미만 학생은 보호자(법정대리인) 동의가 필요합니다'
+        );
+      }
     }
   }
 
@@ -149,7 +167,7 @@ export const createStudentAccount = onCall(async (request) => {
   if (!academySnap.exists) {
     throw new HttpsError('not-found', '존재하지 않는 학원입니다');
   }
-  const academy = academySnap.data() as { status?: string };
+  const academy = academySnap.data() as { status?: string; plan?: string };
   if (academy.status !== 'active' && academy.status !== 'pending') {
     throw new HttpsError(
       'permission-denied',
@@ -157,19 +175,47 @@ export const createStudentAccount = onCall(async (request) => {
     );
   }
 
-  // ── 7단계: pending 학원 학생 수 제한 (파일럿 정책) ──
-  // security.md: pending 상태에서는 학생 최대 3명
+  // ── 7단계: 학생 수 제한 (pending 정책 + 플랜별 제한) ──
+  // 기준 (domain-terms.md / security.md):
+  //   pending: 3명 — 파일럿 검증 단계
+  //   free:    30명 — 미결제 기본 (starter 기준 보수 설정)
+  //   trial:   무제한 — 14일 체험 (Pro 동등)
+  //   starter: 30명
+  //   standard: 100명
+  //   pro:     무제한
+  // active 상태에서 plan 필드가 없으면 free 로 간주
+  const STUDENT_LIMIT: Record<string, number> = {
+    free: 30,
+    trial: Number.MAX_SAFE_INTEGER,
+    starter: 30,
+    standard: 100,
+    pro: Number.MAX_SAFE_INTEGER,
+  };
+
+  let limit: number;
+  let limitLabel: string;
   if (academy.status === 'pending') {
+    limit = 3;
+    limitLabel = '승인 전';
+  } else {
+    const plan = academy.plan ?? 'free';
+    limit = STUDENT_LIMIT[plan] ?? STUDENT_LIMIT.free;
+    limitLabel = plan;
+  }
+
+  if (Number.isFinite(limit) && limit < Number.MAX_SAFE_INTEGER) {
     const studentCount = await db
       .collection('users')
       .where('academy_id', '==', academyId)
       .where('role', '==', 'student')
       .count()
       .get();
-    if (studentCount.data().count >= 3) {
+    if (studentCount.data().count >= limit) {
       throw new HttpsError(
         'failed-precondition',
-        '승인 전 학원은 학생 최대 3명까지만 생성할 수 있습니다'
+        academy.status === 'pending'
+          ? `승인 전 학원은 학생 최대 ${limit}명까지만 생성할 수 있습니다`
+          : `${limitLabel} 플랜은 학생 최대 ${limit}명까지만 등록할 수 있습니다. 상위 플랜으로 업그레이드해주세요.`
       );
     }
   }
@@ -204,6 +250,12 @@ export const createStudentAccount = onCall(async (request) => {
       is_active: true,
       birth_date: birthDate ?? null,
       guardian_phone: null,
+      // PIPA 제22조 — 만 14세 미만 학생일 때 보호자(법정대리인) 동의 기록
+      // 14세 이상이거나 birthDate 미입력이면 null
+      guardian_consent_at: isUnder14Confirmed
+        ? admin.firestore.FieldValue.serverTimestamp()
+        : null,
+      guardian_consent_by: isUnder14Confirmed ? callerUid : null,
       enrollment_date: admin.firestore.FieldValue.serverTimestamp(),
       phone_number: '',
       phone_verified: false,
@@ -267,4 +319,39 @@ const generateTempPassword = (length: number): string => {
     result += chars.charAt(randomInt(chars.length));
   }
   return result;
+};
+
+/**
+ * 만 나이 계산 (서버용)
+ * - YYYY-MM-DD 형식 검증 + 실제 Date 객체 검증
+ * - 생일이 안 지났으면 -1 (한국 만 나이 기준)
+ * - 형식 오류 시 null
+ *
+ * 클라이언트 lib/age.ts 와 동일 로직 — 의존성 분리 위해 서버 측 자체 구현
+ */
+const computeAgeYears = (birthDate: string): number | null => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return null;
+  const [yStr, mStr, dStr] = birthDate.split('-');
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+
+  const now = new Date();
+  if (y < 1900 || y > now.getFullYear()) return null;
+  if (m < 1 || m > 12) return null;
+  if (d < 1 || d > 31) return null;
+
+  // 실제 유효성 (예: 2025-02-30 차단)
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+    return null;
+  }
+
+  let age = now.getFullYear() - y;
+  const todayM = now.getMonth() + 1;
+  const todayD = now.getDate();
+  if (todayM < m || (todayM === m && todayD < d)) {
+    age -= 1;
+  }
+  return age;
 };

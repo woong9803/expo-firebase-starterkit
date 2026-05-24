@@ -59,25 +59,45 @@ export const enforceClassLimitForPending = onDocumentCreated(
     if (status === 'active') return;
 
     // pending/rejected/그 외 상태에서는 1개 제한 적용
-    // 같은 학원의 classes 개수 카운트 (count aggregation)
-    const classesCountSnap = await db
+    // 같은 학원의 classes 전체를 가져와 created_at 오름차순 정렬
+    // (count aggregation 만 쓰면 동시에 만들어진 두 문서의 트리거가 둘 다 카운트=2 를
+    //  보고 각자 자기 자신을 삭제하는 race condition 발생 — 둘 다 사라짐)
+    const allSnap = await db
       .collection('classes')
       .where('academy_id', '==', academyId)
-      .count()
       .get();
-    const classCount = classesCountSnap.data().count;
 
     // 1개 이하면 정상 — 통과
-    if (classCount <= 1) return;
+    if (allSnap.size <= 1) return;
 
-    // 2개 이상 → pending 학원 정책 위반 → 방금 생성된 문서 삭제
+    // created_at 오름차순 정렬 (없으면 doc.id 로 fallback — auto-id 는 timestamp prefix)
+    // 같은 nanosecond 인 경우 doc.id 로 결정적 tiebreak — 두 트리거가 동일한 결정 도달
+    const sorted = allSnap.docs.slice().sort((a, b) => {
+      const aTime = a.data().created_at?.toMillis?.() ?? 0;
+      const bTime = b.data().created_at?.toMillis?.() ?? 0;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.id.localeCompare(b.id);
+    });
+
+    // 가장 오래된 1개가 자신이면 살림 — 후순위 트리거가 자기 자신을 삭제
+    const oldestId = sorted[0].id;
+    if (oldestId === event.params.classId) {
+      logger.info(
+        '[enforceClassLimit] pending 학원 — 자신이 가장 오래된 반, 통과',
+        { academyId, classId: event.params.classId },
+      );
+      return;
+    }
+
+    // 자신이 가장 오래된 게 아님 → 정책 위반 → 자기 자신 삭제
     logger.warn(
       '[enforceClassLimit] pending 학원 반 1개 제한 위반 — 신규 문서 삭제',
       {
         academyId,
         academyStatus: status,
         classId: event.params.classId,
-        classCount,
+        classCount: allSnap.size,
+        oldestKeptId: oldestId,
       }
     );
     await snap.ref.delete();

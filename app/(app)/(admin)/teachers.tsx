@@ -17,7 +17,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -42,26 +41,20 @@ export default function AdminTeachersScreen() {
     (async () => {
       try {
         // 1. 선생님 목록 조회
-        const teacherSnap = await getDocs(
-          query(
-            Collections.users(),
-            where('academy_id', '==', user.academy_id),
-            where('role', '==', 'teacher'),
-            where('is_active', '==', true),
-          )
-        );
+        const teacherSnap = await Collections.users()
+          .where('academy_id', '==', user.academy_id)
+          .where('role', '==', 'teacher')
+          .where('is_active', '==', true)
+          .get();
         // 탈퇴 선생님(deleted_at != null) 제외
         const teacherList = teacherSnap.docs
           .filter(d => !d.data().deleted_at)
           .map(d => d.data() as User);
 
         // 2. 반 목록 조회 (classId → 반 이름 맵 생성)
-        const classSnap = await getDocs(
-          query(
-            Collections.classes(),
-            where('academy_id', '==', user.academy_id),
-          )
-        );
+        const classSnap = await Collections.classes()
+          .where('academy_id', '==', user.academy_id)
+          .get();
         const classMap: Record<string, string> = {};
         classSnap.docs.forEach(d => {
           // classId → 반 이름 매핑 (선생님의 assigned_class_ids 배열 변환용)
@@ -97,7 +90,7 @@ export default function AdminTeachersScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await updateDoc(Collections.user(teacher.uid), { is_active: false });
+              await Collections.user(teacher.uid).update({ is_active: false });
               setTeachers(prev => prev.filter(t => t.uid !== teacher.uid));
             } catch (e) {
               console.error('[AdminTeachers] 내보내기 실패:', e);

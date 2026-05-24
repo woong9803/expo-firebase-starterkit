@@ -24,10 +24,11 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import {
   getInfoAsync,
 } from 'expo-file-system/legacy';
-import { getIdToken } from 'firebase/auth';
-import { auth } from '../../../lib/firebase';
-import { getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+
+const serverTimestamp = () => firestore.FieldValue.serverTimestamp();
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -52,9 +53,8 @@ const uploadToFirebaseStorage = async (
   contentType: string
 ): Promise<string> => {
   // Firebase 인증 토큰 발급
-  const token = auth.currentUser
-    ? await getIdToken(auth.currentUser)
-    : null;
+  const currentUser = auth().currentUser;
+  const token = currentUser ? await currentUser.getIdToken() : null;
   if (!token) throw new Error('인증 토큰 없음');
 
   const bucket = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
@@ -135,7 +135,7 @@ export default function HomeworkSubmitScreen() {
     (async () => {
       try {
         // 숙제 정보 조회
-        const hwSnap = await getDoc(Collections.homework(hwId));
+        const hwSnap = await Collections.homework(hwId).get();
         if (!hwSnap.exists()) {
           Alert.alert('오류', '숙제를 찾을 수 없어요.');
           router.back();
@@ -157,7 +157,7 @@ export default function HomeworkSubmitScreen() {
         }
 
         // 기존 제출물 확인
-        const subSnap = await getDoc(Collections.submission(hwId, user.uid));
+        const subSnap = await Collections.submission(hwId, user.uid).get();
         if (subSnap.exists()) {
           setExistingSubmission(subSnap.data() as Submission);
           if (skipAlert === 'true') {
@@ -294,7 +294,7 @@ export default function HomeworkSubmitScreen() {
       //   학생은 image_urls/status/submitted_at/is_late/feedback(null로 리셋) 만 변경 가능
       //   feedback_comment 같은 다른 필드를 같이 보내면 permission denied 발생
       if (existingSubmission) {
-        await updateDoc(Collections.submission(hwId, user.uid), {
+        await Collections.submission(hwId, user.uid).update({
           image_urls: downloadUrls,
           status: 'submitted',
           is_late: false,    // 서버 트리거가 즉시 교정 — 클라 시계 신뢰 안 함
@@ -303,7 +303,7 @@ export default function HomeworkSubmitScreen() {
           is_retry: true,    // 학생 화면에서 "다시푸는중" 표시 — 선생님 검사 후에도 유지
         });
       } else {
-        await setDoc(Collections.submission(hwId, user.uid), {
+        await Collections.submission(hwId, user.uid).set({
           image_urls: downloadUrls,
           status: 'submitted',
           is_late: false,    // 서버 트리거가 즉시 교정

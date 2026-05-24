@@ -20,10 +20,15 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { addDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Collections } from '../../../lib/firestore';
+
+// RN Firebase serverTimestamp 헬퍼 (orderBy 기준 필드용)
+const serverTimestamp = () => firestore.FieldValue.serverTimestamp();
 import { useAuthStore } from '../../../store/useAuthStore';
 import ClassPickerSheet from '../../../components/ClassPickerSheet';
+import ProUpgradeSheet from '../../../components/ProUpgradeSheet';
+import { useProCheck } from '../../../hooks/useProCheck';
 import { parseYouTubeVideoId, getYouTubeThumbnailUrl } from '../../../lib/youtube';
 import { Class } from '../../../types';
 import { Image } from 'react-native';
@@ -32,6 +37,19 @@ export default function VideoRegisterScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
   const { user } = useAuthStore();
+
+  // ─── Pro 플랜 체크 ───────────────────────────────────────────────────
+  // 영상 기능은 Pro/trial 전용 — Firestore Rules 의 isPaidPlan() 으로도 차단되지만
+  // 사용자에게는 등록 시도 전에 시트로 명확히 안내한다.
+  const { isPro, isLoaded: isProLoaded, upgradeSheetVisible, showUpgradeSheet, hideUpgradeSheet } =
+    useProCheck();
+
+  // 화면 진입 시 Pro 가 아니면 시트 표시 (academy 로드 완료 후)
+  useEffect(() => {
+    if (isProLoaded && !isPro) showUpgradeSheet();
+    // showUpgradeSheet 는 useProCheck 내부에서 안정화됨
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProLoaded, isPro]);
 
   // ─── 입력 상태 ───────────────────────────────────────────────────────
   const [title, setTitle] = useState('');
@@ -52,9 +70,9 @@ export default function VideoRegisterScreen() {
     if (!user?.academy_id) return;
     (async () => {
       try {
-        const snap = await getDocs(
-          query(Collections.classes(), where('academy_id', '==', user.academy_id))
-        );
+        const snap = await Collections.classes()
+          .where('academy_id', '==', user.academy_id)
+          .get();
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         // 선생님이면 assigned_class_ids에 있는 반만 필터
         const filtered =
@@ -80,13 +98,18 @@ export default function VideoRegisterScreen() {
 
   // ─── 등록 ─────────────────────────────────────────────────────────
   const handleRegister = async () => {
+    // Pro 가드 — 무료/만료 플랜은 시트 표시 후 차단 (Rules 도 차단하지만 UX 보강)
+    if (isProLoaded && !isPro) {
+      showUpgradeSheet();
+      return;
+    }
     const error = validate();
     if (error) { Alert.alert('입력 오류', error); return; }
     if (!user?.uid || !parsedVideoId || !selectedClassId) return;
 
     setIsLoading(true);
     try {
-      await addDoc(Collections.videos(), {
+      await Collections.videos().add({
         title: title.trim(),
         youtube_url: youtubeUrl.trim(),
         video_id: parsedVideoId,
@@ -115,6 +138,7 @@ export default function VideoRegisterScreen() {
   const canSubmit = !!title.trim() && !!parsedVideoId && !!selectedClassId && !isLoading;
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -226,6 +250,18 @@ export default function VideoRegisterScreen() {
 
       </ScrollView>
     </KeyboardAvoidingView>
+
+    {/* ── Pro 업그레이드 시트 ── */}
+    <ProUpgradeSheet
+      visible={upgradeSheetVisible}
+      onClose={() => {
+        hideUpgradeSheet();
+        // Pro 가 아닌 사용자가 시트를 닫으면 화면 사용 의미 없음 → 뒤로 이동
+        if (!isPro) router.back();
+      }}
+      featureName="영상 등록"
+    />
+    </>
   );
 }
 

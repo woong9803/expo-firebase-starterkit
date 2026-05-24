@@ -7,8 +7,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../../../lib/firebase';
+import firestore from '@react-native-firebase/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { getMonthlyAttendance } from '../../../../lib/attendance';
 import MonthlyCalendar from '../../../../components/MonthlyCalendar';
@@ -44,8 +43,6 @@ function getStatusDisplay(record: AttendanceRecord): { text: string; color: stri
       return { text: `△ 지각${reason}`,      color: '#F59E0B' };
     case 'absent':
       return { text: `✕ 결석${reason}`,      color: '#EF4444' };
-    case 'onLeave':
-      return { text: '- 휴원',               color: '#94A3B8' };
   }
 }
 
@@ -150,15 +147,13 @@ export default function StudentAttendanceScreen() {
       const dateStr   = `${yearMonth}-${String(day).padStart(2, '0')}`;
       subscribedDatesRef.current.add(dateStr);
 
-      const recordRef = doc(
-        db,
-        'attendances',
-        `${user.class_id}_${dateStr}`,
-        'records',
-        user.uid,
-      );
+      const recordRef = firestore()
+        .collection('attendances')
+        .doc(`${user.class_id}_${dateStr}`)
+        .collection('records')
+        .doc(user.uid);
 
-      dateUnsubsRef.current[dateStr] = onSnapshot(recordRef, (snap) => {
+      dateUnsubsRef.current[dateStr] = recordRef.onSnapshot((snap) => {
         setRecordMap((prev) => {
           if (!snap.exists()) {
             if (!prev[dateStr]) return prev; // 원래도 없으면 스킵

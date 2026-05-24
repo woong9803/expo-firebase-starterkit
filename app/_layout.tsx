@@ -3,13 +3,11 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { getDoc, onSnapshot } from 'firebase/firestore';
 import { auth } from '../lib/firebase';
 import { Collections } from '../lib/firestore';
 import { useAuthStore } from '../store/useAuthStore';
 import { initFCM, registerFCMListeners } from '../lib/fcm';
-import { configureGoogleSignIn } from '../lib/auth';
+import { configureGoogleSignIn, safeSignOut } from '../lib/auth';
 import { initializeKakaoSDK } from '@react-native-kakao/core';
 import { User, Academy } from '../types';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -53,12 +51,12 @@ function RootLayoutInner() {
     // onAuthStateChanged 자체가 throw할 수 있으므로 try-catch 적용
     let unsubscribe: () => void = () => {};
     try {
-      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
         clearTimeout(fallbackTimer);
         try {
           if (firebaseUser) {
             const userSnap = await withTimeout(
-              getDoc(Collections.user(firebaseUser.uid)),
+              Collections.user(firebaseUser.uid).get(),
               5000
             );
             if (userSnap.exists()) {
@@ -67,7 +65,7 @@ function RootLayoutInner() {
               // 탈퇴 처리된 계정 감지 — 즉시 로그아웃
               if (userData.deleted_at != null) {
                 await firebaseUser.getIdToken(true).catch(() => {}); // 토큰 무효화 시도
-                await signOut(auth).catch(() => {});
+                await safeSignOut();
                 setUser(null);
                 setInitialized(true);
                 clearTimeout(fallbackTimer);
@@ -77,7 +75,7 @@ function RootLayoutInner() {
               setUser(userData);
               if (userData.academy_id) {
                 const academySnap = await withTimeout(
-                  getDoc(Collections.academy(userData.academy_id)),
+                  Collections.academy(userData.academy_id).get(),
                   5000
                 );
                 if (academySnap.exists()) {
@@ -121,8 +119,7 @@ function RootLayoutInner() {
   useEffect(() => {
     if (!user?.uid || !user?.role) return;
 
-    const unsub = onSnapshot(
-      Collections.user(user.uid),
+    const unsub = Collections.user(user.uid).onSnapshot(
       (snap) => {
         if (snap.exists()) {
           setUser({ ...snap.data(), uid: snap.id } as User);
@@ -162,17 +159,22 @@ function RootLayoutInner() {
   useEffect(() => {
     if (!initialized) return;
     const inAuthGroup = segments[0] === '(auth)';
+    const inAppGroup  = segments[0] === '(app)';
 
-    if (!user && !inAuthGroup) {
-      // 비로그인 상태인데 앱 안에 있으면 → 로그인 화면으로
-      router.replace('/(auth)');
-    } else if (user && inAuthGroup) {
-      // 로그인 상태인데 auth 화면에 있을 때:
-      // 온보딩 완료(academy_id + role 모두 있음)인 경우만 앱으로 이동
-      // 온보딩 중인 사용자는 auth 흐름 그대로 유지 — 이름 파라미터 등 보존
+    if (!user) {
+      // 비로그인 상태 — (auth) 그룹이 아니면 로그인 화면으로
+      // (첫 mount 시 segments[0]는 undefined일 수 있음)
+      if (!inAuthGroup) router.replace('/(auth)');
+    } else {
+      // 로그인 상태 — 온보딩 완료 여부에 따라 분기
       const onboardingComplete = !!(user.academy_id && user.role);
       if (onboardingComplete) {
-        router.replace('/(app)');
+        // 완료: (app) 그룹이 아니면 (app)으로 이동
+        // 첫 mount(segments[0] undefined) 케이스도 여기서 잡힘
+        if (!inAppGroup) router.replace('/(app)');
+      } else {
+        // 온보딩 중: (auth)에 없으면 auth 흐름으로 보내 phone-verify/role-select 등을 진행
+        if (!inAuthGroup) router.replace('/(auth)');
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

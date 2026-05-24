@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { getDoc, getDocs, doc, onSnapshot, query, where, orderBy, Timestamp } from 'firebase/firestore';
-import { db } from '../../../../lib/firebase';
+import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
+
+type Timestamp = FirebaseFirestoreTypes.Timestamp;
 import { getMonthlyAttendance, sendAbsenceReason } from '../../../../lib/attendance';
 import { subscribeNotices } from '../../../../lib/notice';
 import { useAuthStore } from '../../../../store/useAuthStore';
@@ -25,7 +27,6 @@ const STATUS_CONFIG: Record<AttendanceStatus, { emoji: string; label: string }> 
   present:  { emoji: '', label: strings.attendance.present },
   late:     { emoji: '', label: strings.attendance.late },
   absent:   { emoji: '', label: strings.attendance.absent },
-  onLeave:  { emoji: '', label: strings.attendance.onLeave },
 };
 
 // 오늘 날짜 문자열 (YYYY-MM-DD) — 로컬 시간 기준
@@ -39,7 +40,7 @@ function getTodayStr(): string {
 export default function ParentHomeScreen() {
   const { top } = useSafeAreaInsets();
   const { user, selectedChildUid, setSelectedChildUid } = useAuthStore();
-  const parentName = user?.name ?? '부모님';
+  const parentName = user?.name ?? '학부모님';
   const unreadCount = useNotificationStore((s) => s.unreadCount);
 
   // ── 자녀 목록 상태 ──────────────────────────────────────────
@@ -58,6 +59,8 @@ export default function ParentHomeScreen() {
 
   // ── 결석 사유 전송 ──────────────────────────────────────────
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
+  // '기타' 선택 시 직접 입력하는 사유 텍스트
+  const [customReason, setCustomReason] = useState('');
   const [isSending, setIsSending] = useState(false);
 
   // ── 오늘 숙제 현황 ──────────────────────────────────────────
@@ -92,8 +95,7 @@ export default function ParentHomeScreen() {
 
     // 자녀별 구독 해제 함수 목록
     const unsubs = childUids.map((childUid) =>
-      onSnapshot(
-        Collections.user(childUid),
+      Collections.user(childUid).onSnapshot(
         (snap) => {
           if (!snap.exists()) {
             loadedCount++;
@@ -160,16 +162,13 @@ export default function ParentHomeScreen() {
     setTodayRecord(undefined);
 
     // 해당 학생의 오늘 records 문서 구독
-    const recordRef = doc(
-      db,
-      'attendances',
-      `${selectedChild.class_id}_${todayStr}`,
-      'records',
-      selectedChild.uid,
-    );
+    const recordRef = firestore()
+      .collection('attendances')
+      .doc(`${selectedChild.class_id}_${todayStr}`)
+      .collection('records')
+      .doc(selectedChild.uid);
 
-    const unsub = onSnapshot(
-      recordRef,
+    const unsub = recordRef.onSnapshot(
       (snap) => {
         setTodayRecord(snap.exists() ? (snap.data() as AttendanceRecord) : null);
       },
@@ -199,9 +198,9 @@ export default function ParentHomeScreen() {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
 
-          const hwSnap = await getDocs(
-            query(Collections.homeworks(), where('class_id', '==', classId))
-          );
+          const hwSnap = await Collections.homeworks()
+            .where('class_id', '==', classId)
+            .get();
           const list = hwSnap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
 
           // 내일 자정 기준 (오늘 + 1일)
@@ -217,7 +216,7 @@ export default function ParentHomeScreen() {
 
           const withStatus = await Promise.all(
             active.map(async (hw) => {
-              const subSnap = await getDoc(Collections.submission(hw.id, childUid));
+              const subSnap = await Collections.submission(hw.id, childUid).get();
               const sub = subSnap.exists() ? (subSnap.data() as Submission) : null;
               return {
                 ...hw,
@@ -282,15 +281,13 @@ export default function ParentHomeScreen() {
       if (monthlySubDatesRef.current.has(dateStr)) return;
 
       monthlySubDatesRef.current.add(dateStr);
-      const recordRef = doc(
-        db,
-        'attendances',
-        `${selectedChild.class_id}_${dateStr}`,
-        'records',
-        selectedChild.uid,
-      );
+      const recordRef = firestore()
+        .collection('attendances')
+        .doc(`${selectedChild.class_id}_${dateStr}`)
+        .collection('records')
+        .doc(selectedChild.uid);
 
-      monthlyUnsubsRef.current[dateStr] = onSnapshot(recordRef, (snap) => {
+      monthlyUnsubsRef.current[dateStr] = recordRef.onSnapshot((snap) => {
         setMonthlyAttendance((prev) => {
           if (!snap.exists()) {
             const next = { ...prev };
@@ -364,8 +361,14 @@ export default function ParentHomeScreen() {
   }, [user?.academy_id, children.map((c) => c.class_id).join(',')]);
 
   // ── 5) 결석 사유 전송 ──────────────────────────────────────
+  // '기타' 선택 시 customReason 사용, 아니면 selectedReason 그대로 사용
   const handleSendReason = useCallback(async () => {
     if (!selectedChild?.class_id || !selectedReason || isSending) return;
+
+    // '기타' 선택했을 때 입력값이 비어있으면 전송 차단
+    const reasonText =
+      selectedReason === '기타' ? customReason.trim() : selectedReason;
+    if (!reasonText) return;
 
     setIsSending(true);
     try {
@@ -373,16 +376,20 @@ export default function ParentHomeScreen() {
         selectedChild.class_id,
         todayStr,
         selectedChild.uid,
-        selectedReason,
+        reasonText,
+        user?.academy_id,
       );
       Alert.alert('전송 완료', '결석 사유를 선생님께 전송했어요.');
       setSelectedReason(null);
-    } catch {
+      setCustomReason('');
+    } catch (e) {
+      // 학부모 사유 전송 실패 원인 추적 — Rules 거부·네트워크 오류 등
+      console.warn('[parent/sendAbsenceReason] failed:', e);
       Alert.alert('오류', strings.common.error);
     } finally {
       setIsSending(false);
     }
-  }, [selectedChild, selectedReason, isSending, todayStr]);
+  }, [selectedChild, selectedReason, customReason, isSending, todayStr]);
 
   // ── 날짜 차이 → "N일 전" 텍스트 변환 ─────────────────────────
   const daysAgoText = useCallback((ts: Timestamp): string => {
@@ -398,7 +405,7 @@ export default function ParentHomeScreen() {
     if (todayRecord === undefined) return { emoji: '', label: '확인 중...', sub: '' };
     if (todayRecord === null)      return { emoji: '', label: '미확인', sub: '아직 출결이 입력되지 않았어요' };
     const cfg = STATUS_CONFIG[todayRecord.status];
-    // 사유는 결석·지각일 때만 표시 — 출석·휴원으로 바뀌면 숨김
+    // 사유는 결석·지각일 때만 표시 — 출석으로 바뀌면 숨김
     const showReason = todayRecord.status === 'absent' || todayRecord.status === 'late';
     return {
       emoji: cfg.emoji,
@@ -416,13 +423,13 @@ export default function ParentHomeScreen() {
       {/* ── 헤더 ── */}
       <View style={[styles.header, { paddingTop: top + 12 }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>오늘도 믿고 맡겨주세요 🙏</Text>
-          <Text style={styles.name}>{parentName} 부모님 👋</Text>
+          <Text style={styles.greeting}>오늘도 믿고 맡겨주세요</Text>
+          <Text style={styles.name}>{parentName} 학부모님</Text>
 
           {/* 자녀 탭 — Firestore 로드 후 렌더링 */}
           <View style={styles.childTabs}>
             {isLoadingChildren ? (
-              <ActivityIndicator size="small" color="#F59E0B" />
+              <ActivityIndicator size="small" color="#B45309" />
             ) : children.length === 0 ? (
               <View style={styles.childTabActive}>
                 <Text style={styles.childTabActiveText}>자녀 없음</Text>
@@ -436,6 +443,7 @@ export default function ParentHomeScreen() {
                     setSelectedIdx(idx);
                     setSelectedChildUid(child.uid); // 전체 화면에 자녀 선택 공유
                     setSelectedReason(null);
+                    setCustomReason('');
                   }}
                   activeOpacity={0.8}
                 >
@@ -466,66 +474,97 @@ export default function ParentHomeScreen() {
 
       <View style={styles.body}>
 
-        {/* ── 오늘 출결 (주황 그라데이션) ── */}
-        <LinearGradient
-          colors={['#FBBF24', '#F59E0B', '#D97706']}
-          locations={[0, 0.4, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.attendCard}
-        >
-          {/* 반투명 원형 장식 */}
-          <View style={styles.attendDecorCircle} />
+        {/* ── 오늘 출결 카드 ── 다크 앰버 그라데이션 + 흰 텍스트 */}
+        {(() => {
+          const status = todayRecord?.status;
+          const isLoading = todayRecord === undefined;
+          const isUnrecorded = todayRecord === null;
 
-          {/* 상단 Row: 타이틀 | 날짜 */}
-          <View style={styles.attendTop}>
-            <Text style={styles.attendCardLabel}>오늘 출결 현황</Text>
-            <Text style={styles.attendDate}>{month}월 {new Date().getDate()}일</Text>
-          </View>
+          // 상태별 아이콘만 매핑 — 배경은 학부모 테마(다크 앰버) 고정
+          const iconName =
+            status === 'present' ? 'checkmark-circle' as const :
+            status === 'late'    ? 'time' as const :
+            status === 'absent'  ? 'close-circle' as const :
+            isUnrecorded         ? 'help-circle' as const :
+            'ellipsis-horizontal-circle' as const;
 
-          {/* 중간 Row: 아이콘 박스 + 상태 텍스트 */}
-          <View style={styles.attendMain}>
-            {/* 상태별 텍스트 기호 아이콘 박스 */}
-            <View style={styles.attendIconBox}>
-              <Text style={styles.attendIconText}>
-                {todayRecord?.status === 'present' ? '✓'
-                  : todayRecord?.status === 'absent'  ? '✕'
-                  : todayRecord?.status === 'late'    ? '△'
-                  : todayRecord === null              ? '?'
-                  : '···'}
-              </Text>
-            </View>
-            {/* 상태명 + 사유 */}
-            <View style={styles.attendInfo}>
-              <Text style={styles.attendStatus}>{statusDisplay.label}</Text>
-              {!!statusDisplay.sub && (
-                <Text style={styles.attendSub}>{statusDisplay.sub}</Text>
-              )}
-            </View>
-          </View>
-
-          {/* 하단: 프로그레스바 + 출결 일수 텍스트 */}
-          {monthlyRate !== null && (
-            <View style={styles.attendRateSection}>
-              <View style={styles.attendRateTrack}>
-                <View style={[
-                  styles.attendRateFill,
-                  {
-                    width: `${monthlyRate}%` as any,
-                    // 출석률에 따라 fill 투명도 조절
-                    backgroundColor:
-                      monthlyRate === 100 ? '#fff'
-                      : monthlyRate >= 80  ? 'rgba(255,255,255,0.9)'
-                      : 'rgba(255,255,255,0.7)',
-                  },
-                ]} />
+          return (
+            <LinearGradient
+              colors={['#B45309', '#92400E', '#78350F']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.attendCard}
+            >
+              {/* 상단: 타이틀 | 날짜 */}
+              <View style={styles.attendTop}>
+                <Text style={styles.attendCardLabel}>오늘 출결 현황</Text>
+                <Text style={styles.attendDate}>
+                  {month}월 {new Date().getDate()}일
+                </Text>
               </View>
-              <Text style={styles.attendCountText}>
-                출석 {monthlyCounts.present}일 · 지각 {monthlyCounts.late}일 · 결석 {monthlyCounts.absent}일
-              </Text>
-            </View>
-          )}
-        </LinearGradient>
+
+              {/* 메인: 아이콘 + 상태 + 사유 칩 */}
+              <View style={styles.attendMain}>
+                <View style={styles.attendIconBox}>
+                  {isLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Ionicons name={iconName} size={36} color="#fff" />
+                  )}
+                </View>
+                <View style={styles.attendInfo}>
+                  <Text style={styles.attendStatus}>{statusDisplay.label}</Text>
+                  {!!statusDisplay.sub && (
+                    <View style={styles.attendReasonChip}>
+                      <Text style={styles.attendReasonText}>{statusDisplay.sub}</Text>
+                    </View>
+                  )}
+                  {isUnrecorded && (
+                    <Text style={styles.attendUnrecordedSub}>
+                      아직 출결이 입력되지 않았어요
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* 하단: 출석률 + 프로그레스 + dot 카운트 */}
+              {monthlyRate !== null && (
+                <View style={styles.attendRateSection}>
+                  <View style={styles.attendRateHeader}>
+                    <Text style={styles.attendRateLabel}>이번달 출석률</Text>
+                    <Text style={styles.attendRateValue}>{monthlyRate}%</Text>
+                  </View>
+                  <View style={styles.attendRateTrack}>
+                    <View
+                      style={[
+                        styles.attendRateFill,
+                        { width: `${monthlyRate}%` as any },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.attendCountRow}>
+                    <View style={styles.attendCountItem}>
+                      <View style={[styles.attendCountDot, { backgroundColor: '#86EFAC' }]} />
+                      <Text style={styles.attendCountLabel}>출석</Text>
+                      <Text style={styles.attendCountNum}>{monthlyCounts.present}일</Text>
+                    </View>
+                    <View style={styles.attendCountItem}>
+                      <View style={[styles.attendCountDot, { backgroundColor: '#FCD34D' }]} />
+                      <Text style={styles.attendCountLabel}>지각</Text>
+                      <Text style={styles.attendCountNum}>{monthlyCounts.late}일</Text>
+                    </View>
+                    <View style={styles.attendCountItem}>
+                      <View style={[styles.attendCountDot, { backgroundColor: '#FCA5A5' }]} />
+                      <Text style={styles.attendCountLabel}>결석</Text>
+                      <Text style={styles.attendCountNum}>{monthlyCounts.absent}일</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </LinearGradient>
+          );
+        })()}
 
         {/* ── 오늘 숙제 현황 — 자녀가 있을 때만 표시 ── */}
         {selectedChild && todayHomeworks.length > 0 && (
@@ -581,11 +620,10 @@ export default function ParentHomeScreen() {
         )}
 
         {/* ── 결석 사유 전송 — 기록 없음(null) 또는 결석·지각 상태일 때만 표시 ──
-            출석(present) · 휴원(onLeave) · 로딩중(undefined)은 숨김           */}
+            출석(present) · 로딩중(undefined)은 숨김                              */}
         {selectedChild
           && todayRecord !== undefined
           && todayRecord?.status !== 'present'
-          && todayRecord?.status !== 'onLeave'
           && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>결석 사유 전송</Text>
@@ -597,7 +635,17 @@ export default function ParentHomeScreen() {
                 <TouchableOpacity
                   key={r}
                   style={[styles.reasonChip, selectedReason === r && styles.reasonChipSel]}
-                  onPress={() => setSelectedReason(selectedReason === r ? null : r)}
+                  onPress={() => {
+                    // 같은 칩 다시 누르면 해제 + 입력란도 초기화
+                    if (selectedReason === r) {
+                      setSelectedReason(null);
+                      setCustomReason('');
+                    } else {
+                      setSelectedReason(r);
+                      // '기타' 외의 칩 누르면 입력란 비움
+                      if (r !== '기타') setCustomReason('');
+                    }
+                  }}
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.reasonChipText, selectedReason === r && styles.reasonChipTextSel]}>
@@ -606,9 +654,36 @@ export default function ParentHomeScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* '기타' 선택 시 사유 직접 입력란 — 200자 제한 */}
+            {selectedReason === '기타' && (
+              <View style={styles.customReasonBox}>
+                <TextInput
+                  style={styles.customReasonInput}
+                  value={customReason}
+                  onChangeText={setCustomReason}
+                  placeholder="사유를 직접 입력해주세요 (예: 가족 여행)"
+                  placeholderTextColor="#94A3B8"
+                  multiline
+                  maxLength={200}
+                  textAlignVertical="top"
+                />
+                <Text style={styles.customReasonCount}>{customReason.length}/200</Text>
+              </View>
+            )}
+
             <TouchableOpacity
-              style={[styles.sendBtn, (!selectedReason || isSending) && styles.sendBtnOff]}
-              disabled={!selectedReason || isSending}
+              style={[
+                styles.sendBtn,
+                (!selectedReason
+                  || (selectedReason === '기타' && !customReason.trim())
+                  || isSending) && styles.sendBtnOff,
+              ]}
+              disabled={
+                !selectedReason
+                || (selectedReason === '기타' && !customReason.trim())
+                || isSending
+              }
               onPress={handleSendReason}
               activeOpacity={0.85}
             >
@@ -625,7 +700,7 @@ export default function ParentHomeScreen() {
         {selectedChild && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitleDark}>📢 최근 공지</Text>
+              <Text style={styles.sectionTitleDark}>최근 공지</Text>
               <TouchableOpacity onPress={() => router.push('/common/notice-list')} activeOpacity={0.7}>
                 <Text style={styles.sectionMore}>전체보기</Text>
               </TouchableOpacity>
@@ -737,7 +812,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 24, fontWeight: '800', color: '#0F172A', marginTop: 2, letterSpacing: -0.5 },
   childTabs: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   childTabActive: {
-    backgroundColor: '#F59E0B', borderRadius: 20,
+    backgroundColor: '#B45309', borderRadius: 20,
     paddingVertical: 6, paddingHorizontal: 14,
   },
   childTabActiveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
@@ -760,20 +835,17 @@ const styles = StyleSheet.create({
 
   body: { paddingHorizontal: 16 },
 
-  // 출결 카드
+  // 출결 카드 — 다크 앰버 그라데이션
   attendCard: {
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 22,
+    padding: 22,
     marginTop: 16,
     overflow: 'hidden',
-    gap: 0,
-  },
-  // 반투명 원형 장식
-  attendDecorCircle: {
-    position: 'absolute',
-    right: -20, top: -20,
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#7C2D12',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   // 상단 Row
   attendTop: {
@@ -781,40 +853,120 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  attendCardLabel: { fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: '500' },
-  attendDate: { fontSize: 11, color: 'rgba(255,255,255,0.75)' },
-  // 중간 Row
+  attendCardLabel: {
+    fontSize: 12,
+    color: 'rgba(255,237,213,0.95)',
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  attendDate: {
+    fontSize: 12,
+    color: 'rgba(255,237,213,0.95)',
+    fontWeight: '600',
+  },
+  // 메인 Row
   attendMain: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
-    gap: 14,
+    marginTop: 18,
+    gap: 16,
   },
   attendIconBox: {
-    width: 44, height: 44, borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 64, height: 64, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.30)',
     alignItems: 'center', justifyContent: 'center',
   },
-  attendIconText: { fontSize: 22, fontWeight: '800', color: '#fff' },
-  attendInfo: { flex: 1, gap: 2 },
-  attendStatus: { fontSize: 24, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  attendSub: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  // 하단: 프로그레스바 + 일수 텍스트
-  attendRateSection: { marginTop: 16, gap: 0 },
+  attendInfo: { flex: 1, gap: 6 },
+  attendStatus: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -1,
+    lineHeight: 36,
+  },
+  // 사유 칩 — 흰색 반투명
+  attendReasonChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  attendReasonText: {
+    fontSize: 12.5,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  attendUnrecordedSub: {
+    fontSize: 12.5,
+    color: 'rgba(255,237,213,0.92)',
+    fontWeight: '500',
+  },
+  // 하단: 출석률 + 프로그레스 + dot 카운트
+  attendRateSection: {
+    marginTop: 22,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+  },
+  attendRateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 8,
+  },
+  attendRateLabel: {
+    fontSize: 12,
+    color: 'rgba(255,237,213,0.92)',
+    fontWeight: '600',
+  },
+  attendRateValue: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
   attendRateTrack: {
-    height: 5,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
+    height: 7,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    borderRadius: 4,
     overflow: 'hidden',
   },
   attendRateFill: {
     height: '100%' as any,
-    borderRadius: 3,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
   },
-  attendCountText: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 6,
+  attendCountRow: {
+    flexDirection: 'row',
+    marginTop: 14,
+    gap: 16,
+  },
+  attendCountItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  attendCountDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  attendCountLabel: {
+    fontSize: 11.5,
+    color: 'rgba(255,237,213,0.85)',
+    fontWeight: '600',
+  },
+  attendCountNum: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
 
   // 섹션
@@ -871,7 +1023,7 @@ const styles = StyleSheet.create({
   // 좌측 세로바 — 상태별 색상
   hwBar: { width: 3 },
   hwBarMissing:  { backgroundColor: '#EF4444' },  // 미제출 — 빨강
-  hwBarPending:  { backgroundColor: '#F59E0B' },  // 검사대기 — 노랑
+  hwBarPending:  { backgroundColor: '#B45309' },  // 검사대기 — 다크 앰버
   hwBarRetry:    { backgroundColor: '#F97316' },  // 다시제출 — 주황
   hwBarDone:     { backgroundColor: '#10B981' },  // 완료 — 초록
   hwContent: { flex: 1, padding: 12 },
@@ -892,11 +1044,35 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 20,
     paddingVertical: 8, paddingHorizontal: 14, backgroundColor: '#fff',
   },
-  reasonChipSel: { backgroundColor: '#F59E0B', borderColor: '#F59E0B' },
+  reasonChipSel: { backgroundColor: '#B45309', borderColor: '#B45309' },
   reasonChipText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   reasonChipTextSel: { color: '#fff' },
+  // '기타' 사유 직접 입력 박스
+  customReasonBox: {
+    backgroundColor: '#FEF3E2',
+    borderWidth: 1.5,
+    borderColor: '#E8B07A',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  customReasonInput: {
+    fontSize: 14,
+    color: '#0F172A',
+    minHeight: 60,
+    padding: 0,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  customReasonCount: {
+    fontSize: 11,
+    color: '#78350F',
+    textAlign: 'right',
+    marginTop: 6,
+    fontWeight: '600',
+  },
   sendBtn: {
-    height: 52, borderRadius: 14, backgroundColor: '#F59E0B',
+    height: 52, borderRadius: 14, backgroundColor: '#B45309',
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnOff: { opacity: 0.45 },

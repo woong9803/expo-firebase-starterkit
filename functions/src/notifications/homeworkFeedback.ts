@@ -25,6 +25,23 @@ export const onHomeworkFeedback = onDocumentUpdated(
 
     const db = admin.firestore();
 
+    // ── 멱등성 가드 (Eventarc at-least-once 정책으로 인한 중복 호출 방지) ──
+    // 같은 피드백 값으로의 중복 발송을 막기 위해 feedback_notified_for 필드로 추적.
+    // 피드백이 실제로 변경된 경우(예: 👍 → 💧)에만 새 알림이 발송된다.
+    const subRef = event.data!.after.ref;
+    const shouldProcess = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(subRef);
+      if (!snap.exists) return false;
+      const cur = snap.data()!;
+      if (cur.feedback_notified_for === cur.feedback) return false; // 같은 값 재발송 차단
+      tx.update(subRef, { feedback_notified_for: cur.feedback });
+      return true;
+    });
+    if (!shouldProcess) {
+      logger.info('[homeworkFeedback] 중복 호출 — 알림 발송 건너뜀', { hwId, studentUid });
+      return;
+    }
+
     // 숙제 정보 조회
     const hwDoc = await db.collection('homeworks').doc(hwId).get();
     if (!hwDoc.exists) return;

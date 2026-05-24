@@ -6,7 +6,7 @@ import { NOTIFICATION_MESSAGES } from '../strings';
 
 interface AttendanceRecord {
   uid: string;       // 학생 uid
-  status: string;    // 'present' | 'late' | 'absent' | 'onLeave'
+  status: string;    // 'present' | 'late' | 'absent'
   name: string;      // 학생 이름
 }
 

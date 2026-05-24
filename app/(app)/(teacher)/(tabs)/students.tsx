@@ -22,8 +22,9 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
+const serverTimestamp = () => firestore.FieldValue.serverTimestamp();
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { User, Class } from '../../../../types';
 
@@ -75,33 +76,30 @@ export default function TeacherStudentsScreen() {
     const assignedIds = user.assigned_class_ids;
 
     // 담당반 실시간 구독
-    const unsubClasses = onSnapshot(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
-      (snap) => {
+    const unsubClasses = Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .onSnapshot((snap) => {
         const allClasses = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         setClasses(allClasses.filter(c => assignedIds.includes(c.id)));
-      }
-    );
+      });
 
     // 학생 목록 실시간 구독 — 신규 입학·비활성화 즉시 반영
-    const unsubStudents = onSnapshot(
-      query(
-        Collections.users(),
-        where('academy_id', '==', user.academy_id),
-        where('role', '==', 'student'),
-      ),
-      (snap) => {
-        const allStudents = snap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
-        setStudents(
-          allStudents.filter(s => s.class_id && assignedIds.includes(s.class_id) && s.is_active !== false && !s.deleted_at)
-        );
-        setIsLoading(false);
-      },
-      (e) => {
-        console.error('[TeacherStudents] 구독 실패:', e);
-        setIsLoading(false);
-      }
-    );
+    const unsubStudents = Collections.users()
+      .where('academy_id', '==', user.academy_id)
+      .where('role', '==', 'student')
+      .onSnapshot(
+        (snap) => {
+          const allStudents = snap.docs.map(d => ({ uid: d.id, ...d.data() } as User));
+          setStudents(
+            allStudents.filter(s => s.class_id && assignedIds.includes(s.class_id) && s.is_active !== false && !s.deleted_at)
+          );
+          setIsLoading(false);
+        },
+        (e) => {
+          console.error('[TeacherStudents] 구독 실패:', e);
+          setIsLoading(false);
+        }
+      );
 
     return () => { unsubClasses(); unsubStudents(); };
   }, [user?.academy_id, user?.assigned_class_ids?.join(',')]);
@@ -133,7 +131,7 @@ export default function TeacherStudentsScreen() {
     if (!feedbackTarget || !user) return;
     setIsSavingFeedback(true);
     try {
-      await updateDoc(Collections.user(feedbackTarget.uid), {
+      await Collections.user(feedbackTarget.uid).update({
         teacher_feedback: feedbackText.trim()
           ? {
               text: feedbackText.trim(),

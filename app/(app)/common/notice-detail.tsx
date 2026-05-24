@@ -25,8 +25,6 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getDoc } from 'firebase/firestore';
-
 import { useAuthStore } from '../../../store/useAuthStore';
 import { Collections } from '../../../lib/firestore';
 import { markNoticeRead } from '../../../lib/notice';
@@ -49,7 +47,10 @@ function formatDate(notice: Notice): string {
 
 export default function NoticeDetailScreen() {
   const { top } = useSafeAreaInsets();
-  const { noticeId } = useLocalSearchParams<{ noticeId: string }>();
+  // 호환성: 과거 발송된 푸시 알림은 deep_link 에 ?id= 로 저장되어 있음
+  // → id 파라미터도 함께 받아 noticeId 가 없을 때 fallback 으로 사용
+  const params = useLocalSearchParams<{ noticeId?: string; id?: string }>();
+  const noticeId = params.noticeId ?? params.id;
   const { user } = useAuthStore();
 
   const [notice, setNotice]     = useState<Notice | null>(null);
@@ -99,7 +100,7 @@ export default function NoticeDetailScreen() {
       setIsLoading(true);
       setError(false);
       try {
-        const snap = await getDoc(Collections.notice(noticeId));
+        const snap = await Collections.notice(noticeId).get();
         if (!snap.exists()) {
           setError(true);
           return;

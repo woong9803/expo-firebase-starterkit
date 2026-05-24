@@ -1,17 +1,22 @@
 /**
- * hooks/useProCheck.ts — Pro 플랜 체크 훅
+ * hooks/useProCheck.ts — 스탠다드+ 기능 게이트 훅
  *
- * 현재 학원의 플랜을 확인하여 Pro/trial 여부를 반환.
- * 무료 플랜이면 ProUpgradeSheet를 표시할 수 있도록 상태를 제공한다.
+ * PRD 가격 정책상 다음 기능은 모두 스탠다드/프로 전용:
+ *  - 수업 영상 등록·시청
+ *  - 미제출 자동 알림
+ *  - 공지 읽음 확인
  *
- * trial도 Pro로 취급 (실제 기능 제한 없음).
+ * → 무료(free)·체험판(trial)·스타터(starter)는 모두 차단되며,
+ *   ProUpgradeSheet 로 업그레이드 안내를 표시한다.
+ *
+ * 훅 이름은 과거 호환을 위해 useProCheck 로 유지하지만 실제 기준은 'standard | pro' 다.
  */
 
 import { useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 
 interface ProCheckResult {
-  /** Pro 또는 trial 플랜이면 true */
+  /** standard 또는 pro 플랜이면 true (trial·starter·free 는 false) */
   isPro: boolean;
   /** academy 데이터가 로드되었으면 true (null이면 false) */
   isLoaded: boolean;
@@ -30,7 +35,9 @@ export function useProCheck(): ProCheckResult {
   // academy가 아직 로드되지 않은 경우(null)에는 판단 보류
   // null이면 isLoading 상태 — 업그레이드 시트 트리거 금지
   const isLoaded = academy !== null;
-  const isPro = isLoaded && (academy.plan === 'pro' || academy.plan === 'trial');
+  // PRD 685줄 플랜표 기준: 영상·자동알림·읽음확인은 standard 이상에서만 허용
+  // trial 은 체험판이지만 영상 등 핵심 유료 기능은 차단 (가격 검증 단계 정책)
+  const isPro = isLoaded && (academy.plan === 'standard' || academy.plan === 'pro');
 
   return {
     isPro,

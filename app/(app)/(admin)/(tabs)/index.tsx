@@ -21,7 +21,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { useNotificationStore } from '../../../../store/useNotificationStore';
@@ -115,51 +114,55 @@ export default function AdminHomeScreen() {
   // 학생 수 실시간 구독
   useEffect(() => {
     if (!user?.academy_id) return;
-    const unsub = onSnapshot(
-      query(Collections.users(), where('academy_id', '==', user.academy_id), where('role', '==', 'student')),
-      (snap) => setStudentCount(snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length)
-    );
+    const unsub = Collections.users()
+      .where('academy_id', '==', user.academy_id)
+      .where('role', '==', 'student')
+      .onSnapshot((snap) =>
+        setStudentCount(snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length)
+      );
     return () => unsub();
   }, [user?.academy_id]);
 
   // 선생님 수 실시간 구독
   useEffect(() => {
     if (!user?.academy_id) return;
-    const unsub = onSnapshot(
-      query(Collections.users(), where('academy_id', '==', user.academy_id), where('role', '==', 'teacher')),
-      (snap) => setTeacherCount(snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length)
-    );
+    const unsub = Collections.users()
+      .where('academy_id', '==', user.academy_id)
+      .where('role', '==', 'teacher')
+      .onSnapshot((snap) =>
+        setTeacherCount(snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length)
+      );
     return () => unsub();
   }, [user?.academy_id]);
 
   // 반 목록 실시간 구독 — 반 추가/삭제/이름 변경 즉시 반영
   useEffect(() => {
     if (!user?.academy_id) return;
-    const unsub = onSnapshot(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
-      async (snap) => {
-        const classList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
-        setClasses(classList);
+    const unsub = Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .onSnapshot(
+        async (snap) => {
+          const classList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
+          setClasses(classList);
 
-        // 반별 학생 수 집계
-        const countResults = await Promise.all(
-          classList.map(async cls => {
-            const s = await getDocs(query(
-              Collections.users(),
-              where('academy_id', '==', user.academy_id),
-              where('class_id', '==', cls.id),
-              where('role', '==', 'student'),
-            ));
-            return { classId: cls.id, count: s.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length };
-          })
-        );
-        const cMap: Record<string, number> = {};
-        countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
-        setClassStudentCounts(cMap);
-        setIsLoading(false);
-      },
-      (e) => { console.error('[AdminHome] 반 구독 실패:', e); setIsLoading(false); }
-    );
+          // 반별 학생 수 집계
+          const countResults = await Promise.all(
+            classList.map(async cls => {
+              const s = await Collections.users()
+                .where('academy_id', '==', user.academy_id)
+                .where('class_id', '==', cls.id)
+                .where('role', '==', 'student')
+                .get();
+              return { classId: cls.id, count: s.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length };
+            })
+          );
+          const cMap: Record<string, number> = {};
+          countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
+          setClassStudentCounts(cMap);
+          setIsLoading(false);
+        },
+        (e) => { console.error('[AdminHome] 반 구독 실패:', e); setIsLoading(false); }
+      );
     return () => unsub();
   }, [user?.academy_id]);
 
@@ -174,15 +177,12 @@ export default function AdminHomeScreen() {
     Promise.all(
       classes.map(async (cls) => {
         const [studentSnap, recordsSnap] = await Promise.all([
-          getDocs(
-            query(
-              Collections.users(),
-              where('academy_id', '==', user.academy_id),
-              where('class_id', '==', cls.id),
-              where('role', '==', 'student'),
-            )
-          ),
-          getDocs(Collections.attendanceRecords(cls.id, todayStr)),
+          Collections.users()
+            .where('academy_id', '==', user.academy_id)
+            .where('class_id', '==', cls.id)
+            .where('role', '==', 'student')
+            .get(),
+          Collections.attendanceRecords(cls.id, todayStr).get(),
         ]);
 
         // is_active 필드가 없는 자체 가입 학생도 포함 (false가 아닌 경우 모두 활성), 탈퇴 학생 제외
@@ -276,16 +276,14 @@ export default function AdminHomeScreen() {
     const todayStr = getTodayStr();
 
     const unsubs = classes.map((cls) =>
-      onSnapshot(
-        Collections.attendanceRecords(cls.id, todayStr),
+      Collections.attendanceRecords(cls.id, todayStr).onSnapshot(
         async (snap) => {
           // 이 반의 최신 학생 목록 (이름 포함, 모달 목록 갱신용)
-          const studentSnap = await getDocs(query(
-            Collections.users(),
-            where('academy_id', '==', user.academy_id),
-            where('class_id', '==', cls.id),
-            where('role', '==', 'student'),
-          ));
+          const studentSnap = await Collections.users()
+            .where('academy_id', '==', user.academy_id)
+            .where('class_id', '==', cls.id)
+            .where('role', '==', 'student')
+            .get();
           // 비활성화·탈퇴 학생 모두 제외
           const activeStudents = studentSnap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at);
           const nameMap: Record<string, string> = {};

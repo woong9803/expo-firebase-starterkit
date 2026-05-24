@@ -26,7 +26,6 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +33,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAuthStore } from '../../../store/useAuthStore';
 import { strings } from '../../../constants/strings';
+import { openKakaoSupport } from '../../../lib/support';
 
 // ─────────────────────────────────────────────────────────────
 // 플랜 정보 (도메인 용어 domain-terms.md 와 일치)
@@ -152,17 +152,9 @@ export default function PlanUpgradeScreen() {
     }
   };
 
-  // ── 카카오톡 채널 문의 (URL 미설정 시 대체 경로) ──
+  // ── 카카오톡 채널 문의 ──
   const handleKakaoInquiry = () => {
-    // 실제 운영 시 카카오채널 URL로 교체
-    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(
-      '[플랜 업그레이드] 결제 문의'
-    )}&body=${encodeURIComponent(
-      `\n\n---\n학원명: ${academy?.name ?? ''}\n학원 ID: ${academy?.id ?? ''}\n희망 플랜: ${selectedPlanId}\n플랫폼: ${Platform.OS}`
-    )}`;
-    Linking.openURL(mailto).catch(() =>
-      Alert.alert('문의하기', `${strings.account.inquiryEmail}으로 이메일을 보내주세요.`)
-    );
+    openKakaoSupport();
   };
 
   return (

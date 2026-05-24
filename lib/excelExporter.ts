@@ -20,12 +20,15 @@ import {
 } from 'expo-file-system/legacy';
 import type { User, AttendanceRecord } from '../types/index';
 import {
-  getExcelColumnHeaders,
-  getAttendanceSymbol,
   formatBirthDate,
   formatEnrollmentPeriod,
   calcAttendanceSummary,
-  EMPTY_SYMBOL,
+  buildExportDateCols,
+  getDayCellValue,
+  getDayStatusSymbol,
+  getEffectiveSymbols,
+  LEFT_COLUMN_HEADERS,
+  RIGHT_COLUMN_HEADERS,
 } from './legalAttendanceFormat';
 import { strings } from '../constants/strings';
 
@@ -69,52 +72,43 @@ export async function generateLegalAttendanceExcel(
 ): Promise<ExportResult> {
   const { academyName, className, subjectName, teacherName, year, month, students, attendanceData } =
     params;
+  // teacherName 은 호출 시그니처 호환을 위해 받지만 본 양식에서는 사용하지 않는다.
+  void teacherName;
 
-  // ── 1) 해당 월의 날짜 목록 생성 ───────────────────────────
-  const lastDay = new Date(year, month, 0).getDate();
-  // 날짜 문자열 배열: ['YYYY-MM-01', 'YYYY-MM-02', ..., 'YYYY-MM-31']
-  const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
-  const dateCols = Array.from({ length: lastDay }, (_, i) => {
-    const dd = String(i + 1).padStart(2, '0');
-    return `${yearMonth}-${dd}`;
-  });
+  // ── 1) 날짜 컬럼: 출결 기록이 있는 날짜 + 퇴원자의 퇴원일(해당 월 안) 합집합 ──
+  // (학원 비운영일까지 1~말일 전체를 펼치면 빈 칸이 늘어남 — 운영일만 노출)
+  // 퇴원일은 출결 기록이 없어도 반드시 컬럼에 노출 (퇴원자 셀에 "퇴원" 표시용)
+  const dateCols = buildExportDateCols(attendanceData, students, year, month);
 
   // ── 2) 컬럼 헤더 행 조립 ─────────────────────────────────
-  const columnHeaders = getExcelColumnHeaders(year, month);
-  // 좌측 고정 컬럼 수 (번호·성명·생년월일·보호자연락처·교습과목·수강기간)
-  const LEFT_COL_COUNT = 6;
-  // 우측 합계 컬럼 수 (출석합계·지각합계·결석합계·출석률)
-  const RIGHT_COL_COUNT = 4;
+  const dayHeaders = dateCols.map((d) => `${Number(d.slice(8, 10))}일`);
+  const columnHeaders = [...LEFT_COLUMN_HEADERS, ...dayHeaders, ...RIGHT_COLUMN_HEADERS];
 
   // ── 3) 제목 행 조립 ──────────────────────────────────────
   // 전체 컬럼 수를 기준으로 병합 범위를 설정하므로 길이 먼저 계산
   const totalCols = columnHeaders.length;
-  const titleText = `${academyName} ${className} ${year}년 ${month}월 ${strings.export.title}`;
+  const titleText = `${academyName} ${className} ${year}년 ${month}월 ${strings.export.excelTitle}`;
   // 제목 행: 첫 셀에 텍스트, 나머지는 빈 문자열 (이후 merge 처리)
   const titleRow: string[] = [titleText, ...Array(totalCols - 1).fill('')];
 
   // ── 4) 학생 데이터 행 조립 ────────────────────────────────
   const dataRows: (string | number)[][] = students.map((student, idx) => {
-    // 날짜별 출결 기호 배열 (합계 계산용 — 기호만)
-    const daySymbols = dateCols.map((date) => {
+    // 날짜별 표시 셀 — 결석/지각 사유는 셀에 직접 "X(병원)" 형태로 함께 표기
+    // 퇴원자: 퇴원일 셀은 "퇴원", 퇴원 이후는 빈칸
+    const displaySymbols = dateCols.map((date) => {
       const dayRecord = attendanceData[date]?.[student.uid];
-      return getAttendanceSymbol(dayRecord?.status ?? null);
+      return getDayCellValue(date, student, dayRecord?.status, dayRecord?.reason);
     });
 
-    // 날짜별 셀 값 배열 (엑셀 출력용 — 결석/지각 사유 포함)
-    // 사유가 있는 경우: "X(병원)", "△(늦잠)" 형태로 표시
-    const dayCells = dateCols.map((date, i) => {
+    // 합계 계산용 셀 — 사유를 합치지 않은 순수 기호만 (calcAttendanceSummary는 정확 매칭)
+    const statusSymbols = dateCols.map((date) => {
       const dayRecord = attendanceData[date]?.[student.uid];
-      const symbol = daySymbols[i];
-      const hasReason =
-        symbol !== EMPTY_SYMBOL &&
-        dayRecord?.reason &&
-        (dayRecord.status === 'absent' || dayRecord.status === 'late');
-      return hasReason ? `${symbol}(${dayRecord!.reason})` : symbol;
+      return getDayStatusSymbol(date, student, dayRecord?.status);
     });
 
-    // 월간 합계 계산 (기호만 있는 배열 기준)
-    const summary = calcAttendanceSummary(daySymbols);
+    // 월간 합계 계산 — 퇴원자는 퇴원일 당일·이후 셀 제외해야 출석률 왜곡 방지 (B-3)
+    const effective = getEffectiveSymbols(statusSymbols, dateCols, student);
+    const summary = calcAttendanceSummary(effective);
 
     // 교습과목 및 수강반 컬럼: "수학 · 수학반" 형식
     const subjectClass =
@@ -122,9 +116,10 @@ export async function generateLegalAttendanceExcel(
         ? `${subjectName} · ${className}`
         : subjectName || className;
 
-    // 수강기간: enrollment_date Timestamp → "YYYY.MM.DD~"
+    // 수강기간 — 재원: "YYYY.MM.DD~" / 퇴원: "YYYY.MM.DD~YYYY.MM.DD"
     const enrollPeriod = formatEnrollmentPeriod(
-      student.enrollment_date as Parameters<typeof formatEnrollmentPeriod>[0]
+      student.enrollment_date as Parameters<typeof formatEnrollmentPeriod>[0],
+      student.withdrawal_date as Parameters<typeof formatEnrollmentPeriod>[1],
     );
 
     // 좌측 고정 컬럼 값
@@ -137,7 +132,7 @@ export async function generateLegalAttendanceExcel(
       enrollPeriod,                                      // 수강기간
     ];
 
-    // 우측 합계 컬럼 값
+    // 우측 합계 컬럼 값 — 사유는 일별 셀에 직접 표기하므로 별도 비고 컬럼 없음
     const rightCols: (string | number)[] = [
       summary.present,   // 출석합계
       summary.late,      // 지각합계
@@ -145,7 +140,7 @@ export async function generateLegalAttendanceExcel(
       summary.rate,      // 출석률 (예: "92%")
     ];
 
-    return [...leftCols, ...dayCells, ...rightCols];
+    return [...leftCols, ...displaySymbols, ...rightCols];
   });
 
   // ── 5) AOA(Array of Arrays)로 워크시트 생성 ───────────────
@@ -160,6 +155,7 @@ export async function generateLegalAttendanceExcel(
   });
 
   // ── 7) 컬럼 너비 설정 ─────────────────────────────────────
+  // 일별 셀에 사유가 함께 표기되므로 폭을 넉넉히 잡는다 (예: "X(병원)" / "△(늦잠)")
   ws['!cols'] = [
     { wch: 5 },   // 번호
     { wch: 10 },  // 성명
@@ -167,8 +163,8 @@ export async function generateLegalAttendanceExcel(
     { wch: 16 },  // 보호자연락처
     { wch: 20 },  // 교습과목 및 수강반
     { wch: 16 },  // 수강기간
-    // 날짜 컬럼들 (1일~말일): 각 3자
-    ...Array(lastDay).fill({ wch: 3 }),
+    // 날짜 컬럼들: 사유까지 들어가도록 12자 폭으로 통일
+    ...Array(dateCols.length).fill({ wch: 12 }),
     { wch: 8 },   // 출석합계
     { wch: 8 },   // 지각합계
     { wch: 8 },   // 결석합계

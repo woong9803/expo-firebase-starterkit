@@ -19,13 +19,8 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword,
-} from 'firebase/auth';
+import auth, { firebase as firebaseAuth } from '@react-native-firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
-import { auth } from '../lib/firebase';
 
 interface Props {
   visible: boolean;
@@ -74,7 +69,7 @@ export default function PasswordChangeModal({ visible, onClose }: Props) {
       return;
     }
 
-    const firebaseUser = auth.currentUser;
+    const firebaseUser = auth().currentUser;
     if (!firebaseUser?.email) {
       Alert.alert('오류', '로그인 정보를 찾을 수 없어요. 다시 로그인해주세요.');
       return;
@@ -83,11 +78,14 @@ export default function PasswordChangeModal({ visible, onClose }: Props) {
     setIsLoading(true);
     try {
       // Firebase는 비밀번호 변경 전 재인증 필요
-      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPw);
-      await reauthenticateWithCredential(firebaseUser, credential);
+      const credential = firebaseAuth.auth.EmailAuthProvider.credential(
+        firebaseUser.email,
+        currentPw,
+      );
+      await firebaseUser.reauthenticateWithCredential(credential);
 
       // 재인증 성공 → 비밀번호 변경
-      await updatePassword(firebaseUser, newPw);
+      await firebaseUser.updatePassword(newPw);
 
       Alert.alert('변경 완료', '비밀번호가 성공적으로 변경되었어요.', [
         { text: '확인', onPress: handleClose },

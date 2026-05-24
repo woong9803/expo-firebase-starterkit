@@ -16,7 +16,7 @@ import {
 const ACCESSORY_ID = 'codeInput';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { arrayUnion, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import {
   validateAcademyCode,
   validateInviteCode,
@@ -25,8 +25,10 @@ import {
 } from '../../lib/auth';
 import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
-import { UserRole, User } from '../../types';
+import { UserRole, User, Class } from '../../types';
 import { strings } from '../../constants/strings';
+import { resolveTuitionOnClassChange } from '../../lib/tuitionFormat';
+import { calculateAge, isUnder14 } from '../../lib/age';
 
 // Cloud Function rate limit(resource-exhausted) 에러 판별
 // validateOnboardingCode가 10분/5회 초과 시 이 코드를 반환
@@ -146,7 +148,18 @@ export default function CodeInputScreen() {
         }
       } catch (e) {
         // Rate limit은 handleConfirm 쪽에서 메시지 띄움 — 여기선 조용히 실패
-        if (!cancelled) setPreview(null);
+        // 단, failed-precondition (pending/비활성 학원 등 정책 차단) 은 사용자에게 사유를 알려줘야 함
+        const err = e as { code?: string; message?: string };
+        if (
+          !cancelled &&
+          (err.code === 'functions/failed-precondition' || err.code === 'failed-precondition') &&
+          err.message
+        ) {
+          // preview 카드의 info 자리에 차단 사유 노출 — 가입 버튼은 handleConfirm 에서 차단
+          setPreview({ name: '가입 불가', info: err.message });
+        } else if (!cancelled) {
+          setPreview(null);
+        }
       } finally {
         if (!cancelled) setIsLooking(false);
       }
@@ -207,28 +220,59 @@ export default function CodeInputScreen() {
           return;
         }
 
-        await updateDoc(Collections.user(user.uid), {
+        await Collections.user(user.uid).update({
           role: 'teacher' as UserRole,
           academy_id: result.academy_id,
           is_active: true,
         });
 
       } else if (role === 'student') {
+        // ── 생년월일 필수 검증 (PIPA 제22조 적용) ──
+        // 만 14세 미만 학생은 본인 가입 차단 → 학부모 가입 또는 학원 등록 안내 화면으로 이동
+        const trimmedBirthDate = birthDate.trim();
+        if (!trimmedBirthDate) {
+          handleFailure(strings.onboarding.birthDateRequired);
+          return;
+        }
+        const age = calculateAge(trimmedBirthDate);
+        if (age === null) {
+          handleFailure(strings.onboarding.birthDateInvalid);
+          return;
+        }
+        if (isUnder14(trimmedBirthDate)) {
+          // 14세 미만 — 코드 시도 카운트 소진하지 않고 안내 화면으로 라우팅
+          setIsLoading(false);
+          router.push('/(auth)/guardian-required');
+          return;
+        }
+
         const result = cached?.role === 'student'
           ? cached.data
           : await validateInviteCode(trimmedCode);
         if (!result) { handleFailure(strings.errors.invalidCode); return; }
         const linkCode = generateLinkCode();
 
-        // 생년월일이 입력된 경우에만 birth_date 저장 (선택 항목)
-        await updateDoc(Collections.user(user.uid), {
+        // 반 문서에서 default_tuition_fee 조회 — 학생 tuition_fee 자동 채움용
+        // validateOnboardingCode CF 는 default_tuition_fee 를 반환하지 않으므로 클라이언트에서 1회 추가 조회
+        // (가입 1회성 흐름이라 RTT 1회 추가 부담 없음, CF 시그니처 변경/배포 회피)
+        const classSnap = await Collections.class(result.class_id).get();
+        const classDefault = classSnap.exists()
+          ? ((classSnap.data() as Class).default_tuition_fee ?? null)
+          : null;
+        // 신규 학생은 tuition_fee 없음 → 첫 인자 undefined 고정 → number 또는 null 반환
+        const newFee = resolveTuitionOnClassChange(undefined, classDefault);
+
+        // birth_date 는 필수 저장 (PIPA 제22조 — 만 14세 이상 확인 근거)
+        await Collections.user(user.uid).update({
           role: 'student' as UserRole,
           class_id: result.class_id,
           academy_id: result.academy_id,
           link_code: linkCode,
           is_active: true, // 최초 역할 설정 시 활성화 (보안 규칙에서 온보딩 시에만 허용)
-          enrollment_date: serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
-          ...(birthDate.trim() ? { birth_date: birthDate.trim() } : {}),
+          enrollment_date: firestore.FieldValue.serverTimestamp(), // 반 가입 시점을 수강 시작일로 자동 기록
+          birth_date: trimmedBirthDate,
+          // 수강료 자동 채움 — null 도 명시적 미설정 의미로 저장 (undefined 일 때만 키 제외)
+          ...(newFee !== undefined ? { tuition_fee: newFee } : {}),
           ...(schoolName.trim() ? { school_name: schoolName.trim() } : {}),
         });
 
@@ -242,12 +286,12 @@ export default function CodeInputScreen() {
         const studentAcademyId = result.academy_id;
 
         // 학부모 자신의 phone_number는 guardian_phone 자동 기록에 필요 (1회 조회)
-        const parentSnap = await getDoc(Collections.user(user.uid));
+        const parentSnap = await Collections.user(user.uid).get();
 
         // 학부모 문서 업데이트
-        await updateDoc(Collections.user(user.uid), {
+        await Collections.user(user.uid).update({
           role: 'parent' as UserRole,
-          children: arrayUnion(studentUid),
+          children: firestore.FieldValue.arrayUnion(studentUid),
           academy_id: studentAcademyId,
           is_active: true, // 최초 역할 설정 시 활성화
         });
@@ -256,10 +300,10 @@ export default function CodeInputScreen() {
         // 법정 출석부 엑셀 내보내기 시 보호자 연락처로 사용
         // ⚠️ 논블로킹 처리 — 실패해도 온보딩 흐름 차단하지 않음
         const parentPhone = parentSnap.exists()
-          ? (parentSnap.data().phone_number as string | undefined)
+          ? (parentSnap.data()?.phone_number as string | undefined)
           : undefined;
         if (parentPhone) {
-          updateDoc(Collections.user(studentUid), {
+          Collections.user(studentUid).update({
             guardian_phone: parentPhone,
           }).catch((e) => {
             console.warn('[CodeInput] guardian_phone 자동 기록 실패:', e);
@@ -267,7 +311,7 @@ export default function CodeInputScreen() {
         }
       }
 
-      const freshSnap = await getDoc(Collections.user(user.uid));
+      const freshSnap = await Collections.user(user.uid).get();
       if (freshSnap.exists()) setUser(freshSnap.data() as User);
 
       // 선생님은 가입 후 담당반 선택 화면으로 이동 (건너뛰기 가능)
@@ -391,13 +435,14 @@ export default function CodeInputScreen() {
         {/* ── 학생 전용: 학교 / 생년월일 입력 ── */}
         {role === 'student' && (
           <View style={styles.birthDateSection}>
-            {/* 학교 */}
+            {/* 학교 (선택) */}
             <Text style={styles.birthDateLabel}>
-              학교 <Text style={styles.birthDateOptional}>(선택)</Text>
+              {strings.onboarding.studentSchoolLabel}{' '}
+              <Text style={styles.birthDateOptional}>(선택)</Text>
             </Text>
             <TextInput
               style={styles.birthDateInput}
-              placeholder="예: OO중학교"
+              placeholder={strings.onboarding.studentSchoolPlaceholder}
               placeholderTextColor="#94A3B8"
               value={schoolName}
               onChangeText={setSchoolName}
@@ -407,16 +452,17 @@ export default function CodeInputScreen() {
               returnKeyType="next"
             />
             <Text style={[styles.birthDateHint, { marginBottom: 12 }]}>
-              출석부 및 학원 관리에 사용돼요.
+              {strings.onboarding.studentSchoolHint}
             </Text>
 
-            {/* 생년월일 */}
+            {/* 생년월일 (필수) — PIPA 제22조 만 14세 미만 가드용 */}
             <Text style={styles.birthDateLabel}>
-              생년월일 <Text style={styles.birthDateOptional}>(선택)</Text>
+              {strings.onboarding.studentBirthDateLabel}{' '}
+              <Text style={styles.birthDateRequired}>(필수)</Text>
             </Text>
             <TextInput
               style={styles.birthDateInput}
-              placeholder="YYYY-MM-DD (예: 2015-03-15)"
+              placeholder={strings.onboarding.studentBirthDatePlaceholder}
               placeholderTextColor="#94A3B8"
               value={birthDate}
               onChangeText={setBirthDate}
@@ -425,7 +471,7 @@ export default function CodeInputScreen() {
               editable={!isLoading}
             />
             <Text style={styles.birthDateHint}>
-              법정 출석부 작성에 사용돼요. 나중에 원장님이 입력할 수도 있어요.
+              {strings.onboarding.studentBirthDateHint}
             </Text>
           </View>
         )}
@@ -641,6 +687,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: '#94A3B8',
+  },
+  // (필수) 라벨 — 강조용 보라색
+  birthDateRequired: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#5B50E8',
   },
   birthDateInput: {
     backgroundColor: '#F8FAFC',

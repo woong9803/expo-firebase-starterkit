@@ -7,7 +7,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { query, where, onSnapshot, getDoc } from 'firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
 import { subscribeNotices } from '../../../../lib/notice';
 import { useAuthStore } from '../../../../store/useAuthStore';
@@ -69,16 +68,17 @@ export default function StudentHomeScreen() {
       let cancelled = false;
       setIsLoading(true);
 
-      const unsub = onSnapshot(
-        query(Collections.homeworks(), where('class_id', '==', user.class_id)),
-        (snap) => {
+      const unsub = Collections.homeworks()
+        .where('class_id', '==', user.class_id)
+        .onSnapshot(
+          (snap) => {
           (async () => {
             const hwList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
 
             // 각 숙제의 제출 여부를 병렬로 확인
             const hwWithSubs = await Promise.all(
               hwList.map(async (hw) => {
-                const subSnap = await getDoc(Collections.submission(hw.id, user.uid));
+                const subSnap = await Collections.submission(hw.id, user.uid).get();
                 const sub = subSnap.exists() ? (subSnap.data() as Submission) : null;
                 return {
                   ...hw,
@@ -102,12 +102,12 @@ export default function StudentHomeScreen() {
             setHomeworks(pendingHws);
             setIsLoading(false);
           })();
-        },
-        (e) => {
-          console.error('[StudentHome] 숙제 구독 실패:', e);
-          if (!cancelled) setIsLoading(false);
-        }
-      );
+          },
+          (e) => {
+            console.error('[StudentHome] 숙제 구독 실패:', e);
+            if (!cancelled) setIsLoading(false);
+          }
+        );
 
       return () => { cancelled = true; unsub(); };
     }, [user?.uid, user?.class_id]),

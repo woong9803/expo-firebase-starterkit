@@ -23,17 +23,9 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import {
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+const Timestamp = firestore.Timestamp;
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { useHomeworkStore } from '../../../../store/useHomeworkStore';
@@ -104,12 +96,11 @@ export default function TeacherHomeworkScreen() {
     (async () => {
       try {
         const [classSnap, studentSnap] = await Promise.all([
-          getDocs(query(Collections.classes(), where('academy_id', '==', user.academy_id))),
-          getDocs(query(
-            Collections.users(),
-            where('academy_id', '==', user.academy_id),
-            where('role', '==', 'student'),
-          )),
+          Collections.classes().where('academy_id', '==', user.academy_id).get(),
+          Collections.users()
+            .where('academy_id', '==', user.academy_id)
+            .where('role', '==', 'student')
+            .get(),
         ]);
         const ids = classSnap.docs.map(d => d.id);
         const map: Record<string, string> = {};
@@ -139,20 +130,20 @@ export default function TeacherHomeworkScreen() {
 
     setLoading(true);
 
-    const q = query(
-      Collections.homeworks(),
-      where('class_id', 'in', allClassIds),
-      orderBy('due_date', 'asc'),
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
-      setHomeworks(list);
-      setLoading(false);
-    }, (e) => {
-      console.error('[TeacherHomework] 숙제 구독 실패:', e);
-      setLoading(false);
-    });
+    const unsub = Collections.homeworks()
+      .where('class_id', 'in', allClassIds)
+      .orderBy('due_date', 'asc')
+      .onSnapshot(
+        (snap) => {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
+          setHomeworks(list);
+          setLoading(false);
+        },
+        (e) => {
+          console.error('[TeacherHomework] 숙제 구독 실패:', e);
+          setLoading(false);
+        }
+      );
 
     // 컴포넌트 언마운트 시 구독 해제
     return () => unsub();
@@ -165,8 +156,7 @@ export default function TeacherHomeworkScreen() {
     if (homeworks.length === 0) return;
 
     const unsubs = homeworks.map((hw) =>
-      onSnapshot(
-        Collections.submissions(hw.id),
+      Collections.submissions(hw.id).onSnapshot(
         (snap) => {
           // 탈퇴 학생 제출물 제외 — activeStudentUidsRef로 필터
           const count = snap.docs.filter(d => activeStudentUidsRef.current.has(d.id)).length;
@@ -210,7 +200,7 @@ export default function TeacherHomeworkScreen() {
     if (!editTarget || !editTitle.trim()) return;
     setIsSaving(true);
     try {
-      await updateDoc(Collections.homework(editTarget.id), {
+      await Collections.homework(editTarget.id).update({
         title: editTitle.trim(),
         content: editContent.trim(),
         due_date: Timestamp.fromDate(editDueDate),
@@ -235,7 +225,7 @@ export default function TeacherHomeworkScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDoc(Collections.homework(hw.id));
+              await Collections.homework(hw.id).delete();
             } catch {
               Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
             }

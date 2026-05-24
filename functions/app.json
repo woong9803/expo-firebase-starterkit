@@ -1,0 +1,8 @@
+{
+  "android": {
+    "package": "com.anonymous.devappfirstfunctions"
+  },
+  "ios": {
+    "bundleIdentifier": "com.anonymous.devappfirstfunctions"
+  }
+}

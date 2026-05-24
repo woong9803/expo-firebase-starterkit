@@ -13,5 +13,5 @@ export const LEGAL_URLS = {
 // 고객 지원 URL — 카카오톡 채널, 이메일 등
 // 채널 URL 미발급 상태이면 빈 문자열 — 화면에서 안내 메시지로 폴백
 export const SUPPORT_URLS = {
-  kakaoChannel: '', // TODO: 카카오 비즈니스 채널 개설 후 URL 입력 (예: https://pf.kakao.com/_xxxxxx)
+  kakaoChannel: 'https://pf.kakao.com/_PxfeCX',
 };

@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 18.9.1",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APNS_ENV": "development"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "APNS_ENV": "development"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "RCT_USE_PREBUILT_RNCORE": "0",
+        "RCT_USE_RN_DEP": "0",
+        "RCT_NEW_ARCH_ENABLED": "0",
+        "APNS_ENV": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

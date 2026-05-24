@@ -12,7 +12,6 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Academy } from '../../types';
@@ -45,8 +44,7 @@ export default function PendingScreen() {
   useEffect(() => {
     if (!user?.academy_id) { setIsLoading(false); return; }
 
-    const unsub = onSnapshot(
-      Collections.academy(user.academy_id),
+    const unsub = Collections.academy(user.academy_id).onSnapshot(
       (snap) => {
         setIsLoading(false);
         if (!snap.exists()) return;

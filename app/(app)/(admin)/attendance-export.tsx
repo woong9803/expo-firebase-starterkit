@@ -19,16 +19,15 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, getDocs } from 'firebase/firestore';
 import * as Sharing from 'expo-sharing';
 
 import { useAuthStore } from '../../../store/useAuthStore';
 import { Collections } from '../../../lib/firestore';
-import { getClassMonthlyDataForExport } from '../../../lib/attendance';
+import { getClassMonthlyDataForExport, fetchStudentsForExport } from '../../../lib/attendance';
 import { generateLegalAttendanceExcel } from '../../../lib/excelExporter';
 import ProUpgradeSheet from '../../../components/ProUpgradeSheet';
 import { strings } from '../../../constants/strings';
-import type { Class, User } from '../../../types';
+import type { Class } from '../../../types';
 
 // ─────────────────────────────────────────────────────────────
 // 연월 유틸
@@ -75,9 +74,10 @@ export default function AdminAttendanceExportScreen() {
       setLoadingClasses(false);
       return;
     }
-    getDocs(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id))
-    ).then((snap) => {
+    Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .get()
+      .then((snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class));
       setClasses(list);
       if (list.length > 0) setSelectedClassId(list[0].id);
@@ -97,20 +97,13 @@ export default function AdminAttendanceExportScreen() {
 
     setGenerating(true);
     try {
-      // 1) 반 학생 목록 조회
-      const studentsSnap = await getDocs(
-        query(
-          Collections.users(),
-          where('academy_id', '==', user.academy_id),
-          where('class_id', '==', selectedClassId),
-          where('role', '==', 'student'),
-          where('is_active', '==', true),
-        )
+      // 1) 반 학생 목록 조회 — 재원자 + 해당 월에 걸친 퇴원자 포함
+      const students = await fetchStudentsForExport(
+        user.academy_id,
+        selectedClassId,
+        year,
+        month,
       );
-      // 탈퇴 학생은 엑셀에서 제외
-      const students = studentsSnap.docs
-        .map((d) => ({ uid: d.id, ...d.data() } as User))
-        .filter((s) => !s.deleted_at);
 
       if (students.length === 0) {
         Alert.alert('', strings.export.noStudents);

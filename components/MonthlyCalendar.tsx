@@ -23,7 +23,6 @@ const STATUS_CELL: Record<AttendanceStatus, { bg: string; color: string }> = {
   present: { bg: '#D1FAE5', color: '#065F46' },
   late:    { bg: '#FEF3C7', color: '#78350F' },
   absent:  { bg: '#FEE2E2', color: '#991B1B' },
-  onLeave: { bg: '#F1F5F9', color: '#64748B' },
 };
 
 // 범례 아이템 색상 (정사각형 스와치 + 레이블)
@@ -63,11 +62,10 @@ export default function MonthlyCalendar({
     month === 12 ? onMonthChange(year + 1, 1) : onMonthChange(year, month + 1);
   }
 
-  // ── 달력 날짜 배열 생성 (월요일 시작) ──────────────────────
+  // ── 달력 날짜 배열 생성 (일요일 시작) ──────────────────────
   // getDay(): 0=일, 1=월 ... 6=토
-  // 월요일 시작 오프셋: (getDay() + 6) % 7 → 0=월, 6=일
-  const rawDay = new Date(year, month - 1, 1).getDay();
-  const startOffset = (rawDay + 6) % 7;
+  // 일요일 시작 오프셋: 그대로 사용 → 0=일, 6=토
+  const startOffset = new Date(year, month - 1, 1).getDay();
   const lastDay = new Date(year, month, 0).getDate();
 
   // 앞쪽 빈 칸(null) + 실제 날짜
@@ -75,6 +73,17 @@ export default function MonthlyCalendar({
     ...Array(startOffset).fill(null),
     ...Array.from({ length: lastDay }, (_, i) => i + 1),
   ];
+
+  // 7일씩 잘라 명시적 행(row) 단위로 묶기
+  // ※ flexWrap + width:'14.2857%' 조합은 부동소수점 누적으로
+  //   7번째 셀(일요일)이 다음 줄로 밀려 요일이 어긋나는 버그가 발생함
+  const rows: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    const row = cells.slice(i, i + 7);
+    // 마지막 행이 7칸 미만이면 빈 칸으로 채워 셀 너비 일정 유지
+    while (row.length < 7) row.push(null);
+    rows.push(row);
+  }
 
   return (
     <View style={[styles.container, style]}>
@@ -100,43 +109,47 @@ export default function MonthlyCalendar({
         ))}
       </View>
 
-      {/* ── 날짜 그리드 ── */}
-      <View style={styles.grid}>
-        {cells.map((day, idx) => {
-          if (day === null) {
-            return <View key={`empty-${idx}`} style={styles.cell} />;
-          }
+      {/* ── 날짜 그리드: 7일씩 row 단위로 렌더링 ── */}
+      <View>
+        {rows.map((row, rowIdx) => (
+          <View key={`row-${rowIdx}`} style={styles.gridRow}>
+            {row.map((day, colIdx) => {
+              if (day === null) {
+                return <View key={`empty-${rowIdx}-${colIdx}`} style={styles.cell} />;
+              }
 
-          const dateKey = toDateKey(year, month, day);
-          const status = attendanceMap[dateKey] ?? null;
-          const isToday = dateKey === todayKey;
-          const cellStyle = status ? STATUS_CELL[status] : null;
-          // onDatePress가 있으면 모든 날짜 탭 가능 (상태 없는 날도 포함)
-          const pressable = !!onDatePress;
+              const dateKey = toDateKey(year, month, day);
+              const status = attendanceMap[dateKey] ?? null;
+              const isToday = dateKey === todayKey;
+              const cellStyle = status ? STATUS_CELL[status] : null;
+              // onDatePress가 있으면 모든 날짜 탭 가능 (상태 없는 날도 포함)
+              const pressable = !!onDatePress;
 
-          return (
-            <TouchableOpacity
-              key={dateKey}
-              activeOpacity={pressable ? 0.7 : 1}
-              onPress={pressable ? () => onDatePress(dateKey) : undefined}
-              style={[
-                styles.cell,
-                cellStyle ? { backgroundColor: cellStyle.bg } : null,
-                isToday && styles.todayBorder,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.dayText,
-                  cellStyle ? { color: cellStyle.color } : null,
-                  isToday && !status && styles.todayText,
-                ]}
-              >
-                {day}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+              return (
+                <TouchableOpacity
+                  key={dateKey}
+                  activeOpacity={pressable ? 0.7 : 1}
+                  onPress={pressable ? () => onDatePress(dateKey) : undefined}
+                  style={[
+                    styles.cell,
+                    cellStyle ? { backgroundColor: cellStyle.bg } : null,
+                    isToday && styles.todayBorder,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dayText,
+                      cellStyle ? { color: cellStyle.color } : null,
+                      isToday && !status && styles.todayText,
+                    ]}
+                  >
+                    {day}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ))}
       </View>
 
       {/* ── 범례 ── */}
@@ -208,17 +221,18 @@ const styles = StyleSheet.create({
   },
 
   // ── 날짜 그리드 ──
-  grid: {
+  // 7일씩 row 단위로 묶고 셀은 flex:1 로 균등 분배
+  // (% 기반 width 누적 오차로 일요일이 다음 줄로 밀리는 문제 방지)
+  gridRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    marginVertical: 2,
   },
   cell: {
-    width: `${100 / 7}%` as unknown as number,
+    flex: 1,
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    marginVertical: 2,
   },
   todayBorder: {
     borderWidth: 2,

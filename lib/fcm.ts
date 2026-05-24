@@ -1,7 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { updateDoc } from 'firebase/firestore';
 import Constants from 'expo-constants';
 import { Collections } from './firestore';
 
@@ -71,7 +70,7 @@ export async function initFCM(uid: string): Promise<void> {
     if (!expoPushToken) return;
 
     // Firestore users/{uid}.fcm_token 저장 (필드명은 호환 유지, 값은 Expo Push Token)
-    await updateDoc(Collections.user(uid), { fcm_token: expoPushToken });
+    await Collections.user(uid).update({ fcm_token: expoPushToken });
   } catch (err) {
     // 토큰 발급 실패 시 앱 동작에 영향 없도록 로그만 남김
     console.warn('[initFCM] 푸시 토큰 초기화 실패:', err);
@@ -120,7 +119,7 @@ export function registerFCMListeners(uid: string): () => void {
     const newToken = tokenData.data as string;
     if (newToken && uid) {
       try {
-        await updateDoc(Collections.user(uid), { fcm_token: newToken });
+        await Collections.user(uid).update({ fcm_token: newToken });
       } catch (err) {
         console.warn('[registerFCMListeners] 토큰 갱신 실패:', err);
       }

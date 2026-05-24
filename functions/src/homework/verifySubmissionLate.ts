@@ -74,20 +74,42 @@ export const onSubmissionCreated = onDocumentWritten(
     // 스트릭 갱신: 신규 제출(create) 시에만 — 재제출은 영향 없음
     // 클라이언트에서 streak 를 직접 쓰지 않으므로 서버에서 단일 진실 공급원
     if (isCreate) {
+      // ── 멱등성 가드 ──
+      // Eventarc at-least-once 정책으로 같은 create 이벤트가 두 번 트리거될 수 있다.
+      // streak +1 이 두 번 적용되지 않도록 streak_processed 플래그를 트랜잭션으로 선점.
+      const subRef = event.data!.after.ref;
       const userRef = db.collection('users').doc(studentUid);
-      if (isLateServer) {
-        // 지각 제출 → 스트릭 초기화
-        await userRef.update({ streak: 0 });
-        logger.info('[verifySubmissionLate] 스트릭 초기화 (지각)', { studentUid });
+
+      const processed = await db.runTransaction(async (tx) => {
+        const subSnap = await tx.get(subRef);
+        if (!subSnap.exists) return false;
+        if (subSnap.data()?.streak_processed === true) return false; // 이미 처리됨
+
+        const userSnap = await tx.get(userRef);
+        if (userSnap.exists) {
+          if (isLateServer) {
+            tx.update(userRef, { streak: 0 });
+          } else {
+            const current = (userSnap.data()?.streak as number | undefined) ?? 0;
+            tx.update(userRef, { streak: current + 1 });
+          }
+        }
+        tx.update(subRef, { streak_processed: true });
+        return true;
+      });
+
+      if (processed) {
+        logger.info(
+          isLateServer
+            ? '[verifySubmissionLate] 스트릭 초기화 (지각)'
+            : '[verifySubmissionLate] 스트릭 +1',
+          { studentUid }
+        );
       } else {
-        // 마감 전 제출 → 스트릭 +1 (트랜잭션으로 동시 제출 경합 방지)
-        await db.runTransaction(async (tx) => {
-          const userSnap = await tx.get(userRef);
-          if (!userSnap.exists) return;
-          const current = (userSnap.data()?.streak as number | undefined) ?? 0;
-          tx.update(userRef, { streak: current + 1 });
+        logger.info('[verifySubmissionLate] 중복 호출 — 스트릭 갱신 건너뜀', {
+          hwId,
+          studentUid,
         });
-        logger.info('[verifySubmissionLate] 스트릭 +1', { studentUid });
       }
     } else if (isLateServer && after.is_late !== isLateServer) {
       // 재제출인데 클라이언트가 false로 위조했다 서버가 true로 교정한 경우 →

@@ -18,8 +18,6 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getDocs, query, where } from 'firebase/firestore';
-
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useProCheck } from '../../../hooks/useProCheck';
 import { subscribeNoticeReadUsers } from '../../../lib/notice';
@@ -98,11 +96,13 @@ export default function AdminNoticeReadStatusScreen() {
   useEffect(() => {
     if (!user?.academy_id) return;
 
-    getDocs(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id))
-    ).then((snap) => {
-      setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
-    }).catch((e) => console.warn('[NoticeReadStatus] 반 로드 오류:', e));
+    Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .get()
+      .then((snap) => {
+        setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
+      })
+      .catch((e) => console.warn('[NoticeReadStatus] 반 로드 오류:', e));
   }, [user?.academy_id]);
 
   // ── 읽음 현황 실시간 구독 ───────────────────────────────────

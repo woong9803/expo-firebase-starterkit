@@ -24,15 +24,6 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  getDocs,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  deleteDoc,
-  updateDoc,
-} from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { parseYouTubeVideoId, getYouTubeThumbnailUrl, getYouTubeWatchUrl } from '../../../lib/youtube';
@@ -71,9 +62,10 @@ export default function AdminVideoListScreen() {
 
   useEffect(() => {
     if (!user?.academy_id) return;
-    getDocs(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id))
-    ).then(snap => {
+    Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .get()
+      .then(snap => {
       const map: Record<string, string> = {};
       snap.docs.forEach(d => { map[d.id] = (d.data() as Class).name; });
       classMapRef.current = map;
@@ -98,29 +90,26 @@ export default function AdminVideoListScreen() {
     setIsLoading(true);
     setError(false);
 
-    const q = query(
-      Collections.videos(),
-      where('class_id', 'in', classIds.slice(0, 30)),
-      orderBy('created_at', 'desc'),
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      snap => {
-        const list = snap.docs.map(d => ({
-          id: d.id,
-          ...d.data(),
-          className: classMapRef.current[d.data().class_id] ?? '알 수 없는 반',
-        } as VideoItem));
-        setVideos(list);
-        setIsLoading(false);
-      },
-      e => {
-        console.error('[AdminVideoList] 영상 실시간 구독 실패:', e);
-        setError(true);
-        setIsLoading(false);
-      }
-    );
+    // RN Firebase 체이닝 API — where('in')은 최대 30개까지 지원
+    const unsubscribe = Collections.videos()
+      .where('class_id', 'in', classIds.slice(0, 30))
+      .orderBy('created_at', 'desc')
+      .onSnapshot(
+        snap => {
+          const list = snap.docs.map(d => ({
+            id: d.id,
+            ...d.data(),
+            className: classMapRef.current[d.data().class_id] ?? '알 수 없는 반',
+          } as VideoItem));
+          setVideos(list);
+          setIsLoading(false);
+        },
+        e => {
+          console.error('[AdminVideoList] 영상 실시간 구독 실패:', e);
+          setError(true);
+          setIsLoading(false);
+        }
+      );
 
     // 컴포넌트 언마운트 또는 classIds 변경 시 구독 해제
     return () => unsubscribe();
@@ -139,7 +128,7 @@ export default function AdminVideoListScreen() {
           onPress: async () => {
             try {
               // onSnapshot이 삭제를 자동으로 감지해 목록에서 제거함
-              await deleteDoc(Collections.video(video.id));
+              await Collections.video(video.id).delete();
             } catch {
               Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
             }
@@ -173,7 +162,7 @@ export default function AdminVideoListScreen() {
     setIsSaving(true);
     try {
       // onSnapshot이 수정 내용을 자동으로 감지해 목록에 반영함
-      await updateDoc(Collections.video(editTarget.id), {
+      await Collections.video(editTarget.id).update({
         title: editTitle.trim(),
         youtube_url: editUrl.trim(),
         video_id: editParsedId,

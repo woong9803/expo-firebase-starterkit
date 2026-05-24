@@ -20,7 +20,6 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getDocs, query, where, updateDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -45,9 +44,9 @@ export default function ClassSelectScreen() {
 
     (async () => {
       try {
-        const snap = await getDocs(
-          query(Collections.classes(), where('academy_id', '==', user.academy_id))
-        );
+        const snap = await Collections.classes()
+          .where('academy_id', '==', user.academy_id)
+          .get();
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         setClasses(list);
 
@@ -83,7 +82,7 @@ export default function ClassSelectScreen() {
     try {
       const ids = Array.from(selected);
       // Firestore 업데이트
-      await updateDoc(Collections.user(user.uid), { assigned_class_ids: ids });
+      await Collections.user(user.uid).update({ assigned_class_ids: ids });
       // store 즉시 반영
       setAssignedClassIds(ids);
 

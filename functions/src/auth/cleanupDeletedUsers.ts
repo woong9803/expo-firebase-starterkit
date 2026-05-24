@@ -4,6 +4,48 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { hashForLog } from '../lib/hash';
 
 /**
+ * 단일 유저 완전 삭제 로직 (스케줄러·즉시 삭제 공용)
+ *
+ * 처리 순서:
+ * 1. Firebase Auth 계정 삭제 (이미 없으면 무시)
+ * 2. 학생인 경우 — homeworks/{hwId}/submissions/{uid} 서브컬렉션 삭제
+ * 3. Storage 파일 삭제 (homeworks/{uid}/ 경로)
+ * 4. Firestore users/{uid} 문서 삭제
+ *
+ * PIPA 삭제권 — deleteUser(immediate: true) 흐름에서 30일 대기 없이 즉시 호출됨
+ */
+export async function purgeDeletedUser(
+  db: admin.firestore.Firestore,
+  uid: string,
+  role: string | undefined
+): Promise<void> {
+  // 1. Firebase Auth 계정 삭제 — 이미 삭제된 경우(auth/user-not-found)는 무시
+  try {
+    await admin.auth().deleteUser(uid);
+  } catch (authErr: unknown) {
+    if ((authErr as { code?: string }).code !== 'auth/user-not-found') {
+      throw authErr;
+    }
+  }
+
+  // 2. 학생 — 제출 이력 서브컬렉션 삭제
+  if (role === 'student') {
+    await deleteStudentSubmissions(db, uid);
+  }
+
+  // 3. Storage 파일 삭제 (개인정보 파기)
+  await deleteUserStorageFiles(uid);
+
+  // 4. Firestore users/{uid} 문서 삭제
+  await db.collection('users').doc(uid).delete();
+
+  logger.info('[purgeDeletedUser] 유저 완전 삭제 완료', {
+    uidHash: hashForLog(uid),
+    role,
+  });
+}
+
+/**
  * 탈퇴 유저 완전 삭제 스케줄러 (매일 03:00 KST 실행)
  *
  * deleted_at 기준 30일 초과된 유저를 완전히 삭제한다:
@@ -42,33 +84,7 @@ export const cleanupDeletedUsers = onSchedule(
       const userData = userDoc.data();
 
       try {
-        // 1. Firebase Auth 계정 삭제
-        // 이미 삭제된 경우 auth/user-not-found 오류가 발생하므로 무시
-        try {
-          await admin.auth().deleteUser(uid);
-        } catch (authErr: unknown) {
-          if ((authErr as { code?: string }).code !== 'auth/user-not-found') {
-            throw authErr; // 예상치 못한 오류는 다시 throw
-          }
-          // user-not-found는 이미 삭제된 경우 — 정상 처리로 간주
-        }
-
-        // 2. 학생인 경우 — 제출 이력(submissions) 서브컬렉션 삭제
-        if (userData.role === 'student') {
-          await deleteStudentSubmissions(db, uid);
-        }
-
-        // 3. Firebase Storage — 유저 업로드 파일 삭제 (개인정보 파기)
-        // 숙제 사진 경로: homeworks/{studentUid}/...
-        await deleteUserStorageFiles(uid);
-
-        // 4. Firestore users/{uid} 문서 삭제
-        await db.collection('users').doc(uid).delete();
-
-        logger.info('[cleanupDeletedUsers] 유저 완전 삭제 완료', {
-          uidHash: hashForLog(uid),
-          role: userData.role,
-        });
+        await purgeDeletedUser(db, uid, userData.role as string | undefined);
       } catch (e) {
         // 개별 유저 삭제 실패 시 다음 유저로 계속 진행 (전체 실패 방지)
         logger.error('[cleanupDeletedUsers] 유저 삭제 실패', {

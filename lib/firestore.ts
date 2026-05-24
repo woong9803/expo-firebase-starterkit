@@ -1,57 +1,58 @@
-import { collection, doc } from 'firebase/firestore';
-import { db } from './firebase';
-
 /**
- * Firestore 컬렉션·문서 참조 헬퍼
- * 경로 문자열 하드코딩 방지 — 앱 전체에서 이 객체만 사용할 것
+ * lib/firestore.ts — Firestore 컬렉션·문서 참조 헬퍼 (RN Firebase)
+ *
+ * 경로 문자열 하드코딩 방지 — 앱 전체에서 이 객체만 사용할 것.
  *
  * 사용 예시:
  *   const academyRef = Collections.academy('abc123');
- *   const q = query(Collections.homeworks(), where('class_id', '==', classId));
+ *   const snap = await academyRef.get();
+ *   const list = await Collections.homeworks().where('class_id', '==', cid).get();
  */
+import { db } from './firebase';
+
 export const Collections = {
   // ── 학원 ──────────────────────────────────
-  academies: () => collection(db, 'academies'),
-  academy: (academyId: string) => doc(db, 'academies', academyId),
+  academies: () => db.collection('academies'),
+  academy: (academyId: string) => db.collection('academies').doc(academyId),
 
   // ── 사용자 ────────────────────────────────
-  users: () => collection(db, 'users'),
-  user: (uid: string) => doc(db, 'users', uid),
+  users: () => db.collection('users'),
+  user: (uid: string) => db.collection('users').doc(uid),
 
   // ── 반 ────────────────────────────────────
-  classes: () => collection(db, 'classes'),
-  class: (classId: string) => doc(db, 'classes', classId),
+  classes: () => db.collection('classes'),
+  class: (classId: string) => db.collection('classes').doc(classId),
 
   // ── 숙제 ──────────────────────────────────
-  homeworks: () => collection(db, 'homeworks'),
-  homework: (hwId: string) => doc(db, 'homeworks', hwId),
+  homeworks: () => db.collection('homeworks'),
+  homework: (hwId: string) => db.collection('homeworks').doc(hwId),
 
   // ── 제출물 (homeworks 하위 컬렉션) ────────
   submissions: (hwId: string) =>
-    collection(db, 'homeworks', hwId, 'submissions'),
+    db.collection('homeworks').doc(hwId).collection('submissions'),
   submission: (hwId: string, studentUid: string) =>
-    doc(db, 'homeworks', hwId, 'submissions', studentUid),
+    db.collection('homeworks').doc(hwId).collection('submissions').doc(studentUid),
 
   // ── 출결 (문서 ID: {classId}_{YYYY-MM-DD}) ─
-  attendances: () => collection(db, 'attendances'),
+  attendances: () => db.collection('attendances'),
   attendance: (classId: string, date: string) =>
-    doc(db, 'attendances', `${classId}_${date}`),
+    db.collection('attendances').doc(`${classId}_${date}`),
   // 출결 records 하위 컬렉션 (studentUid → AttendanceRecord)
   attendanceRecords: (classId: string, date: string) =>
-    collection(db, 'attendances', `${classId}_${date}`, 'records'),
+    db.collection('attendances').doc(`${classId}_${date}`).collection('records'),
 
   // ── 공지사항 ──────────────────────────────
-  notices: () => collection(db, 'notices'),
-  notice: (noticeId: string) => doc(db, 'notices', noticeId),
+  notices: () => db.collection('notices'),
+  notice: (noticeId: string) => db.collection('notices').doc(noticeId),
 
   // ── 알림 ──────────────────────────────────
-  notifications: () => collection(db, 'notifications'),
-  notification: (notifId: string) => doc(db, 'notifications', notifId),
+  notifications: () => db.collection('notifications'),
+  notification: (notifId: string) => db.collection('notifications').doc(notifId),
 
   // ── 영상 ──────────────────────────────────
-  videos: () => collection(db, 'videos'),
-  video: (videoId: string) => doc(db, 'videos', videoId),
+  videos: () => db.collection('videos'),
+  video: (videoId: string) => db.collection('videos').doc(videoId),
 
   // ── 앱 설정 (단일 문서 v1) ─────────────────
-  appConfig: () => doc(db, 'appConfig', 'v1'),
+  appConfig: () => db.collection('appConfig').doc('v1'),
 };

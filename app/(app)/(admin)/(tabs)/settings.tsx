@@ -11,28 +11,29 @@ import {
   TextInput,
   Share,
   useWindowDimensions,
-  Linking,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { signOut } from 'firebase/auth';
 import * as Clipboard from 'expo-clipboard';
 // 암호학적으로 안전한 난수 — 반 초대코드 생성에 사용 (Math.random 대체)
 import * as Crypto from 'expo-crypto';
-import {
-  query, where, getDocs, onSnapshot, addDoc, updateDoc, deleteDoc, getCountFromServer,
-  arrayUnion, arrayRemove,
-} from 'firebase/firestore';
-import { auth, app } from '../../../../lib/firebase';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import firestore from '@react-native-firebase/firestore';
+import { safeSignOut } from '../../../../lib/auth';
+import { openKakaoSupport } from '../../../../lib/support';
+import { showDeleteAccountDialog } from '../../../../lib/deleteAccount';
 import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 import { Collections } from '../../../../lib/firestore';
+
+const arrayUnion = (...elements: unknown[]) => firestore.FieldValue.arrayUnion(...elements);
+const arrayRemove = (...elements: unknown[]) => firestore.FieldValue.arrayRemove(...elements);
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { strings } from '../../../../constants/strings';
 import { User, Class } from '../../../../types';
+import { formatTuitionInput, parseTuitionInput, tuitionToInputString } from '../../../../lib/tuitionFormat';
 
 // ─────────────────────────────────────────────────────────────
 // 유틸
@@ -95,6 +96,8 @@ export default function AdminSettingsScreen() {
   const [isNewClassModalVisible, setIsNewClassModalVisible] = useState(false);
   const [newClassName, setNewClassName]     = useState('');
   const [newClassSubject, setNewClassSubject] = useState(''); // 교습과목
+  // 기본 수강료 — 콤마 포함 문자열로 보관 (예: '290,000'), 저장 시 number 로 변환. 빈 문자열 = 미설정(null)
+  const [newClassTuitionFee, setNewClassTuitionFee] = useState('');
   const [isCreatingClass, setIsCreatingClass] = useState(false);
 
   // ── 반 설정 모달 (이름 편집 / 삭제) ──
@@ -102,6 +105,8 @@ export default function AdminSettingsScreen() {
   const [isClassSettingVisible, setIsClassSettingVisible] = useState(false);
   const [editClassName, setEditClassName]   = useState('');
   const [editClassSubject, setEditClassSubject] = useState(''); // 교습과목
+  // 기본 수강료 (수정용) — 콤마 포함 문자열
+  const [editClassTuitionFee, setEditClassTuitionFee] = useState('');
   const [isSavingClass, setIsSavingClass]   = useState(false);
   const [isReissuingCode, setIsReissuingCode] = useState(false); // 초대코드 재발급 로딩
 
@@ -109,36 +114,34 @@ export default function AdminSettingsScreen() {
   useEffect(() => {
     if (!user?.academy_id) return;
 
-    const unsub = onSnapshot(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
-      async (snap) => {
-        const classList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
-        setClasses(classList);
+    const unsub = Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .onSnapshot(
+        async (snap) => {
+          const classList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
+          setClasses(classList);
 
-        // 반별 학생 수 집계
-        const countResults = await Promise.all(
-          classList.map(async cls => {
-            // getCountFromServer는 클라이언트 필터 불가 → getDocs로 교체 후 탈퇴 학생 제외
-            const s = await getDocs(
-              query(
-                Collections.users(),
-                where('academy_id', '==', user.academy_id),
-                where('class_id', '==', cls.id),
-                where('role', '==', 'student'),
-                where('is_active', '==', true),
-              )
-            );
-            const count = s.docs.filter(d => !d.data().deleted_at).length;
-            return { classId: cls.id, count };
-          })
-        );
-        const cMap: Record<string, number> = {};
-        countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
-        setStudentCounts(cMap);
-        setIsLoading(false);
-      },
-      (e) => { console.error('[AdminSettings] 반 구독 실패:', e); setIsLoading(false); }
-    );
+          // 반별 학생 수 집계 — getCount API는 RN Firebase에서 .count() 체이닝이지만,
+          // 클라이언트 필터(탈퇴 제외)가 필요하므로 .get() 후 docs 필터링 유지
+          const countResults = await Promise.all(
+            classList.map(async cls => {
+              const s = await Collections.users()
+                .where('academy_id', '==', user.academy_id)
+                .where('class_id', '==', cls.id)
+                .where('role', '==', 'student')
+                .where('is_active', '==', true)
+                .get();
+              const count = s.docs.filter(d => !d.data().deleted_at).length;
+              return { classId: cls.id, count };
+            })
+          );
+          const cMap: Record<string, number> = {};
+          countResults.forEach(({ classId, count }) => { cMap[classId] = count; });
+          setStudentCounts(cMap);
+          setIsLoading(false);
+        },
+        (e) => { console.error('[AdminSettings] 반 구독 실패:', e); setIsLoading(false); }
+      );
 
     return () => unsub();
   }, [user?.academy_id]);
@@ -147,34 +150,32 @@ export default function AdminSettingsScreen() {
   useEffect(() => {
     if (!user?.academy_id) return;
 
-    const unsub = onSnapshot(
-      query(
-        Collections.users(),
-        where('academy_id', '==', user.academy_id),
-        where('role', '==', 'teacher'),
-        where('is_active', '==', true),
-      ),
-      (snap) => {
-        // 탈퇴 선생님(deleted_at != null) 제외
-        const teacherList = snap.docs
-          .filter(d => !d.data().deleted_at)
-          .map(d => ({ uid: d.id, ...d.data() } as User));
-        setTeachers(teacherList);
+    const unsub = Collections.users()
+      .where('academy_id', '==', user.academy_id)
+      .where('role', '==', 'teacher')
+      .where('is_active', '==', true)
+      .onSnapshot(
+        (snap) => {
+          // 탈퇴 선생님(deleted_at != null) 제외
+          const teacherList = snap.docs
+            .filter(d => !d.data().deleted_at)
+            .map(d => ({ uid: d.id, ...d.data() } as User));
+          setTeachers(teacherList);
 
-        // classId → 담당 선생님 이름 배열 역매핑 — 반당 다수 배정 가능
-        const tMap: Record<string, string[]> = {};
-        [...teacherList]
-          .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
-          .forEach(t => {
-            (t.assigned_class_ids ?? []).forEach(cid => {
-              if (!tMap[cid]) tMap[cid] = [];
-              tMap[cid].push(t.name);
+          // classId → 담당 선생님 이름 배열 역매핑 — 반당 다수 배정 가능
+          const tMap: Record<string, string[]> = {};
+          [...teacherList]
+            .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+            .forEach(t => {
+              (t.assigned_class_ids ?? []).forEach(cid => {
+                if (!tMap[cid]) tMap[cid] = [];
+                tMap[cid].push(t.name);
+              });
             });
-          });
-        setClassTeacherMap(tMap);
-      },
-      (e) => console.error('[AdminSettings] 선생님 구독 실패:', e)
-    );
+          setClassTeacherMap(tMap);
+        },
+        (e) => console.error('[AdminSettings] 선생님 구독 실패:', e)
+      );
 
     return () => unsub();
   }, [user?.academy_id]);
@@ -187,23 +188,37 @@ export default function AdminSettingsScreen() {
       return;
     }
     if (!user?.academy_id) return;
+    // 승인 전 학원은 반 1개까지만 — security.md 정책
+    // (서버 트리거 enforceClassLimitForPending 가 자동 삭제하지만 클라이언트에서도 사전 차단)
+    if (academy?.status === 'pending' && classes.length >= 1) {
+      Alert.alert(
+        '승인 전 학원',
+        '승인 전에는 반을 1개까지만 만들 수 있어요. 승인 완료 후 추가로 만들 수 있어요.'
+      );
+      return;
+    }
 
     setIsCreatingClass(true);
     try {
       const newCode = generateCode();
       const subjectTrimmed = newClassSubject.trim();
-      const docRef = await addDoc(Collections.classes(), {
+      // 수강료: 빈 문자열 → null(미설정), 0 → 0(무료), 그 외 → number
+      const tuitionFee = parseTuitionInput(newClassTuitionFee);
+      const docRef = await Collections.classes().add({
         name: trimmed,
         academy_id: user.academy_id,
         invite_code: newCode,
         // subject가 비어 있으면 저장하지 않음 (선택 필드)
         ...(subjectTrimmed ? { subject: subjectTrimmed } : {}),
+        // 기본 수강료: null 도 의미 있는 값(미설정)이므로 항상 저장
+        default_tuition_fee: tuitionFee,
       });
       // classes는 onSnapshot이 자동 갱신 — 여기서 setClasses 호출하면 중복 추가됨
       setStudentCounts(prev => ({ ...prev, [docRef.id]: 0 }));
       setIsNewClassModalVisible(false);
       setNewClassName('');
       setNewClassSubject('');
+      setNewClassTuitionFee('');
     } catch (e) {
       console.error('[AdminSettings] 반 생성 실패:', e);
       Alert.alert('오류', '반 생성에 실패했어요. 다시 시도해주세요.');
@@ -221,14 +236,17 @@ export default function AdminSettingsScreen() {
     setIsSavingClass(true);
     try {
       const subjectTrimmed = editClassSubject.trim();
-      // subject는 선택 필드 — 빈 문자열이면 null로 초기화
-      await updateDoc(Collections.class(editClass.id), {
+      // 기본 수강료: 빈 문자열 → null(미설정), 0 → 0(무료), 그 외 → number
+      const tuitionFee = parseTuitionInput(editClassTuitionFee);
+      // subject·default_tuition_fee 모두 선택 필드 — null 도 의미 있는 값이므로 항상 저장
+      await Collections.class(editClass.id).update({
         name: trimmed,
         subject: subjectTrimmed || null,
+        default_tuition_fee: tuitionFee,
       });
       setClasses(prev => prev.map(c =>
         c.id === editClass.id
-          ? { ...c, name: trimmed, subject: subjectTrimmed || undefined }
+          ? { ...c, name: trimmed, subject: subjectTrimmed || undefined, default_tuition_fee: tuitionFee }
           : c
       ));
       setIsClassSettingVisible(false);
@@ -253,7 +271,7 @@ export default function AdminSettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteDoc(Collections.class(editClass.id));
+              await Collections.class(editClass.id).delete();
               setClasses(prev => prev.filter(c => c.id !== editClass.id));
               setIsClassSettingVisible(false);
               setEditClass(null);
@@ -278,7 +296,7 @@ export default function AdminSettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await updateDoc(Collections.user(teacher.uid), { is_active: false });
+              await Collections.user(teacher.uid).update({ is_active: false });
               setTeachers(prev => prev.filter(t => t.uid !== teacher.uid));
             } catch (e) {
               Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
@@ -297,12 +315,12 @@ export default function AdminSettingsScreen() {
     try {
       if (isAssigned) {
         // 이미 담당 중 → 제거
-        await updateDoc(Collections.user(teacher.uid), {
+        await Collections.user(teacher.uid).update({
           assigned_class_ids: arrayRemove(editClass.id),
         });
       } else {
         // 미담당 → 추가 (중복 담당 허용)
-        await updateDoc(Collections.user(teacher.uid), {
+        await Collections.user(teacher.uid).update({
           assigned_class_ids: arrayUnion(editClass.id),
         });
       }
@@ -348,7 +366,7 @@ export default function AdminSettingsScreen() {
             setIsReissuingCode(true);
             try {
               const newCode = generateCode();
-              await updateDoc(Collections.class(editClass.id), { invite_code: newCode });
+              await Collections.class(editClass.id).update({ invite_code: newCode });
               // 반 목록 상태 갱신
               setClasses(prev => prev.map(c =>
                 c.id === editClass.id ? { ...c, invite_code: newCode } : c
@@ -381,42 +399,17 @@ export default function AdminSettingsScreen() {
     }
   };
 
-  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
+  // ── 문의하기 — 카카오톡 상담 채널로 연결 ──────
   const handleInquiry = () => {
-    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: 1.0.0\n사용자 ID: ${user?.uid ?? ''}`;
-    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
-    Linking.openURL(mailto).catch(() =>
-      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
-    );
+    openKakaoSupport();
   };
 
-  // ── 탈퇴하기 ──────────────────────────────────
+  // ── 탈퇴하기 (PIPA 삭제권 — 30일 후 / 즉시 완전 삭제 선택) ──
   const handleDeleteAccount = () => {
-    Alert.alert(
-      strings.account.deleteConfirmTitle,
-      strings.account.deleteConfirmMessage,
-      [
-        { text: strings.common.cancel, style: 'cancel' },
-        {
-          text: strings.account.deleteButton,
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeleting(true);
-            try {
-              const fns = getFunctions(app, 'asia-northeast3');
-              const deleteUserFn = httpsCallable(fns, 'deleteUser');
-              await deleteUserFn({});
-              await signOut(auth);
-              clearUser();
-            } catch {
-              Alert.alert(strings.common.error, strings.account.deleteFailed);
-            } finally {
-              setIsDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+    showDeleteAccountDialog({
+      onLoadingChange: setIsDeleting,
+      onSuccess: clearUser,
+    });
   };
 
   // ── 로그아웃 ──
@@ -427,7 +420,7 @@ export default function AdminSettingsScreen() {
         text: '로그아웃',
         style: 'destructive',
         onPress: async () => {
-          await signOut(auth);
+          await safeSignOut();
           clearUser();
         },
       },
@@ -492,21 +485,9 @@ export default function AdminSettingsScreen() {
           </View>
         </View>
 
-        {/* 플랜 업그레이드 CTA — 승인 완료 학원에만 노출 */}
-        {/* (pending 상태는 기능 제한이라 결제 불가) */}
-        {academy?.status === 'active' && (
-          <TouchableOpacity
-            style={styles.planUpgradeBtn}
-            onPress={() => router.push('/(app)/(admin)/plan-upgrade')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="rocket-outline" size={16} color="#5B50E8" />
-            <Text style={styles.planUpgradeBtnText}>
-              {academy.plan === 'free' || !academy.plan ? '플랜 업그레이드' : '플랜 관리'}
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color="#5B50E8" />
-          </TouchableOpacity>
-        )}
+        {/* 플랜 업그레이드 CTA — 결제 기능은 앱 정식 출시 시점에 오픈 예정 */}
+        {/* 진입 버튼만 임시 숨김. plan-upgrade 화면 코드와 styles.planUpgradeBtn 은 유지 */}
+        {/* 출시 시 위 블록(academy?.status === 'active' && <TouchableOpacity>…)을 복구하면 끝 */}
       </LinearGradient>
 
       {/* ── 반 관리 ── */}
@@ -547,6 +528,7 @@ export default function AdminSettingsScreen() {
                       setEditClass(cls);
                       setEditClassName(cls.name);
                       setEditClassSubject(cls.subject ?? ''); // 기존 교습과목 불러오기
+                      setEditClassTuitionFee(tuitionToInputString(cls.default_tuition_fee)); // 기존 기본 수강료
                       setIsClassSettingVisible(true);
                     }}
                     activeOpacity={0.8}
@@ -558,15 +540,38 @@ export default function AdminSettingsScreen() {
             ))
           )}
 
-          {/* 새 반 만들기 버튼 */}
+          {/* 새 반 만들기 버튼 — pending 학원은 1개 한도 (security.md 정책) */}
           <View style={classes.length > 0 ? styles.divider : undefined} />
-          <TouchableOpacity
-            style={styles.newClassBtn}
-            onPress={() => setIsNewClassModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.newClassBtnText}>+ 새 반 만들기</Text>
-          </TouchableOpacity>
+          {(() => {
+            const isPendingClassLimit = academy?.status === 'pending' && classes.length >= 1;
+            return (
+              <TouchableOpacity
+                style={[styles.newClassBtn, isPendingClassLimit && styles.newClassBtnDisabled]}
+                onPress={() => {
+                  if (isPendingClassLimit) {
+                    Alert.alert(
+                      '승인 전 학원',
+                      '승인 전에는 반을 1개까지만 만들 수 있어요. 승인 완료 후 추가로 만들 수 있어요.'
+                    );
+                    return;
+                  }
+                  setIsNewClassModalVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.newClassBtnText,
+                    isPendingClassLimit && styles.newClassBtnTextDisabled,
+                  ]}
+                >
+                  {isPendingClassLimit
+                    ? '승인 후 반을 추가로 만들 수 있어요'
+                    : '+ 새 반 만들기'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })()}
         </View>
       </View>
 
@@ -684,54 +689,76 @@ export default function AdminSettingsScreen() {
         animationType="slide"
         onRequestClose={() => setIsNewClassModalVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsNewClassModalVisible(false)}
-        />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>새 반 만들기</Text>
-
-          {/* 반 이름 */}
-          <TextInput
-            style={styles.modalInput}
-            placeholder="반 이름 (예: 초등 A반)"
-            placeholderTextColor="#94A3B8"
-            value={newClassName}
-            onChangeText={setNewClassName}
-            autoFocus
-          />
-
-          {/* 교습과목 — 법정 출석부 필수 기재항목 */}
-          <TextInput
-            style={styles.modalInput}
-            placeholder="교습과목 (예: 수학, 영어) — 선택"
-            placeholderTextColor="#94A3B8"
-            value={newClassSubject}
-            onChangeText={setNewClassSubject}
-          />
-
+        {/* 키보드가 올라올 때 모달 시트도 함께 위로 이동시켜 입력 필드가 가려지지 않도록 함 */}
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <TouchableOpacity
-            style={[styles.modalPrimaryBtn, isCreatingClass && { opacity: 0.6 }]}
-            onPress={handleCreateClass}
-            disabled={isCreatingClass}
-            activeOpacity={0.8}
-          >
-            {isCreatingClass ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.modalPrimaryBtnText}>만들기</Text>
-            )}
-          </TouchableOpacity>
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setIsNewClassModalVisible(false)}
+          />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>새 반 만들기</Text>
 
-          <TouchableOpacity
-            style={styles.modalCancelBtn}
-            onPress={() => { setIsNewClassModalVisible(false); setNewClassName(''); setNewClassSubject(''); }}
-          >
-            <Text style={styles.modalCancelText}>취소</Text>
-          </TouchableOpacity>
-        </View>
+            {/* 반 이름 */}
+            <TextInput
+              style={styles.modalInput}
+              placeholder="반 이름 (예: 초등 A반)"
+              placeholderTextColor="#94A3B8"
+              value={newClassName}
+              onChangeText={setNewClassName}
+              autoFocus
+            />
+
+            {/* 교습과목 — 법정 출석부 필수 기재항목 */}
+            <TextInput
+              style={styles.modalInput}
+              placeholder="교습과목 (예: 수학, 영어) — 선택"
+              placeholderTextColor="#94A3B8"
+              value={newClassSubject}
+              onChangeText={setNewClassSubject}
+            />
+
+            {/* 기본 수강료 — 학생 배정 시 학생 수강료가 비어있으면 자동 채움 (선택)
+                자동 콤마 표기, 0 입력 시 '무료', 빈 입력은 '미설정'(null) 저장 */}
+            <TextInput
+              style={styles.modalInput}
+              placeholder="기본 수강료 (예: 290,000원) — 선택"
+              placeholderTextColor="#94A3B8"
+              value={newClassTuitionFee}
+              onChangeText={(t) => setNewClassTuitionFee(formatTuitionInput(t))}
+              keyboardType="numeric"
+            />
+
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, isCreatingClass && { opacity: 0.6 }]}
+              onPress={handleCreateClass}
+              disabled={isCreatingClass}
+              activeOpacity={0.8}
+            >
+              {isCreatingClass ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.modalPrimaryBtnText}>만들기</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancelBtn}
+              onPress={() => {
+                setIsNewClassModalVisible(false);
+                setNewClassName('');
+                setNewClassSubject('');
+                setNewClassTuitionFee('');
+              }}
+            >
+              <Text style={styles.modalCancelText}>취소</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── 반 설정 모달 ── */}
@@ -741,17 +768,22 @@ export default function AdminSettingsScreen() {
         animationType="slide"
         onRequestClose={() => setIsClassSettingVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsClassSettingVisible(false)}
-        />
-        <View style={[styles.modalSheet, { maxHeight: windowHeight * 0.85 }]}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>{editClass?.name} 설정</Text>
+        {/* 키보드가 올라올 때 모달 시트도 함께 위로 이동시켜 입력 필드가 가려지지 않도록 함 */}
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setIsClassSettingVisible(false)}
+          />
+          <View style={[styles.modalSheet, { maxHeight: windowHeight * 0.85 }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>{editClass?.name} 설정</Text>
 
-          {/* 내용이 많으므로 ScrollView로 감쌈 */}
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {/* 내용이 많으므로 ScrollView로 감쌈 */}
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
             {/* 반 이름 */}
             <TextInput
@@ -769,6 +801,17 @@ export default function AdminSettingsScreen() {
               placeholderTextColor="#94A3B8"
               value={editClassSubject}
               onChangeText={setEditClassSubject}
+            />
+
+            {/* 기본 수강료 — 학생 배정 시 학생 수강료가 비어있으면 자동 채움 (선택)
+                자동 콤마 표기, 0 입력 시 '무료', 빈 입력은 '미설정'(null) 저장 */}
+            <TextInput
+              style={styles.modalInput}
+              placeholder="기본 수강료 (예: 290,000원) — 선택"
+              placeholderTextColor="#94A3B8"
+              value={editClassTuitionFee}
+              onChangeText={(t) => setEditClassTuitionFee(formatTuitionInput(t))}
+              keyboardType="numeric"
             />
 
             {/* 현재 초대코드 표시 + 재발급 */}
@@ -845,7 +888,8 @@ export default function AdminSettingsScreen() {
             </TouchableOpacity>
 
           </ScrollView>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </ScrollView>
@@ -970,6 +1014,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   newClassBtnText: { fontSize: 15, fontWeight: '700', color: '#5B50E8' },
+  // pending 한도 도달 시 비활성화 — 회색 dashed 박스로 다운그레이드
+  newClassBtnDisabled: { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' },
+  newClassBtnTextDisabled: { color: '#94A3B8' },
 
   // 선생님 행
   teacherRow: {
@@ -1041,6 +1088,13 @@ const styles = StyleSheet.create({
 
   // 모달 공통
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  // 키보드 회피 래퍼 — flex:1 로 화면 전체를 차지하면서 modalSheet 를 하단에 정렬
+  // backgroundColor 로 backdrop 효과를 주고, 자식 absoluteFill TouchableOpacity 가 탭 닫기 처리
+  modalKeyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
   modalSheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20, borderTopRightRadius: 20,

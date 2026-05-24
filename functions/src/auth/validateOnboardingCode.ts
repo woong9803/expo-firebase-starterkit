@@ -99,6 +99,32 @@ export const validateOnboardingCode = onCall(async (request) => {
     }
     const doc = snap.docs[0];
     const academy = doc.data();
+
+    // 선생님 가입 차단 — security.md 정책:
+    //  - pending: "선생님 초대 불가" (승인 완료 후에만 합류 허용)
+    //  - rejected/그 외: 비활성 학원 → 가입 자체 차단
+    if (academy.status === 'pending') {
+      logger.info('[validateOnboardingCode] pending 학원 선생님 가입 차단', {
+        uidHash: hashForLog(uid),
+        academyIdHash: hashForLog(doc.id),
+      });
+      throw new HttpsError(
+        'failed-precondition',
+        '아직 승인되지 않은 학원이에요. 원장님의 학원 승인 완료 후 가입할 수 있어요.'
+      );
+    }
+    if (academy.status !== 'active') {
+      logger.info('[validateOnboardingCode] 비활성 학원 가입 차단', {
+        uidHash: hashForLog(uid),
+        academyIdHash: hashForLog(doc.id),
+        status: academy.status,
+      });
+      throw new HttpsError(
+        'failed-precondition',
+        '운영이 중단된 학원이에요. 원장님께 문의해주세요.'
+      );
+    }
+
     return {
       academy_id: doc.id,
       name: academy.name,
@@ -121,6 +147,25 @@ export const validateOnboardingCode = onCall(async (request) => {
     }
     const doc = snap.docs[0];
     const cls = doc.data();
+
+    // 학원 상태 체크 — rejected/비활성 학원의 반 코드는 학생 자가 가입 차단
+    // pending 은 허용 (승인 전 학생 등록은 createStudentAccount 의 3명 한도로 별도 통제)
+    if (cls.academy_id) {
+      const academySnap = await db.collection('academies').doc(cls.academy_id).get();
+      const academyStatus = academySnap.data()?.status;
+      if (academyStatus !== 'active' && academyStatus !== 'pending') {
+        logger.info('[validateOnboardingCode] 비활성 학원 반코드 차단', {
+          uidHash: hashForLog(uid),
+          academyIdHash: hashForLog(cls.academy_id),
+          status: academyStatus,
+        });
+        throw new HttpsError(
+          'failed-precondition',
+          '운영이 중단된 학원의 반이에요. 선생님께 문의해주세요.'
+        );
+      }
+    }
+
     return {
       class_id: doc.id,
       academy_id: cls.academy_id,
@@ -148,6 +193,24 @@ export const validateOnboardingCode = onCall(async (request) => {
   if (student.deleted_at) {
     throw new HttpsError('not-found', '탈퇴한 계정입니다');
   }
+
+  // 학원 상태 체크 — rejected/비활성 학원 학생의 연동 차단
+  if (student.academy_id) {
+    const academySnap = await db.collection('academies').doc(student.academy_id).get();
+    const academyStatus = academySnap.data()?.status;
+    if (academyStatus !== 'active' && academyStatus !== 'pending') {
+      logger.info('[validateOnboardingCode] 비활성 학원 연동코드 차단', {
+        uidHash: hashForLog(uid),
+        academyIdHash: hashForLog(student.academy_id),
+        status: academyStatus,
+      });
+      throw new HttpsError(
+        'failed-precondition',
+        '운영이 중단된 학원이에요. 자녀의 학원으로 문의해주세요.'
+      );
+    }
+  }
+
   return {
     student_uid: doc.id,
     name: student.name,

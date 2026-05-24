@@ -16,7 +16,7 @@ import {
 const ACCESSORY_ID = 'academyRegister';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addDoc, serverTimestamp, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Collections } from '../../lib/firestore';
 import { generateLinkCode } from '../../lib/auth';
 import { auth } from '../../lib/firebase';
@@ -73,11 +73,11 @@ export default function AcademyRegisterScreen() {
       // 14일 무료 체험 만료일 계산 (domain-terms.md: trial 플랜 14일)
       // ⚠️ 클라이언트 시계 기반 — P2-12 완료 시 Rules에서 plan 필드 잠그면
       //    이후 plan 변경은 CF(verifyTossPayment)를 통해서만 가능
-      const trialEndsAt = Timestamp.fromMillis(Date.now() + 14 * 24 * 60 * 60 * 1000);
+      const trialEndsAt = firestore.Timestamp.fromMillis(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
       // Firestore academies 컬렉션에 신규 문서 생성 (status: pending)
       // owner_uid — P1-5: Rules에서 owner_uid == request.auth.uid 검증 + isOnboarding() 게이트로 uid당 1개 제한
-      const academyRef = await addDoc(Collections.academies(), {
+      const academyRef = await Collections.academies().add({
         name: academyName.trim(),
         academy_code: academyCode,
         academy_type: academyType,
@@ -90,25 +90,25 @@ export default function AcademyRegisterScreen() {
         trial_ends_at: trialEndsAt,
         approved_at: null,
         reject_reason: null,
-        submitted_at: serverTimestamp(),
-        created_at: serverTimestamp(),
+        submitted_at: firestore.FieldValue.serverTimestamp(),
+        created_at: firestore.FieldValue.serverTimestamp(),
       });
 
       // users 문서에 role: 'admin', academy_id 저장 (문서 없을 경우 생성)
       // ⚠️ phone_verified는 여기서 건드리지 않음 — phone-verify.tsx에서 이미 true로 저장됨
       //    (merge: true 이므로 필드를 생략하면 기존 값 유지)
-      await setDoc(Collections.user(currentUser.uid), {
+      await Collections.user(currentUser.uid).set({
         role: 'admin',
         academy_id: academyRef.id,
         uid: currentUser.uid,
         email: currentUser.email ?? '',
         name: '',
         is_active: true,
-        created_at: serverTimestamp(),
+        created_at: firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
       // Firestore 업데이트 후 store 즉시 반영
-      const freshSnap = await getDoc(Collections.user(currentUser.uid));
+      const freshSnap = await Collections.user(currentUser.uid).get();
       if (freshSnap.exists()) {
         setUser(freshSnap.data() as User);
       }

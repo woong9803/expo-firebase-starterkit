@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { updateDoc } from 'firebase/firestore';
 import { Collections } from '../lib/firestore';
 import { AppNotification } from '../types';
 
@@ -31,7 +30,7 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   // 단건 읽음 처리 — Firestore 업데이트 + 로컬 상태 반영
   markAsRead: (id) => {
     // Firestore 업데이트 (비동기, 실패 시 무시)
-    updateDoc(Collections.notification(id), { is_read: true }).catch((e) => {
+    Collections.notification(id).update({ is_read: true }).catch((e) => {
       console.warn('[NotificationStore] markAsRead 실패:', e);
     });
 

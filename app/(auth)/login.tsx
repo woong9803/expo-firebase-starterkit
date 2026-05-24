@@ -49,8 +49,8 @@ import {
   signInWithKakao,
   createUserDoc,
 } from '../../lib/auth';
-import { auth, db } from '../../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { auth } from '../../lib/firebase';
+import { Collections } from '../../lib/firestore';
 import { strings } from '../../constants/strings';
 
 export default function LoginScreen() {
@@ -75,7 +75,12 @@ export default function LoginScreen() {
     try {
       await signInWithEmail(email.trim(), password);
     } catch (e: unknown) {
-      setError((e as Error).message || strings.common.error);
+      // 진단용 — Firebase auth/* 원본 코드를 로그로 남김 (race condition 추적용)
+      const err = e as { code?: string; message?: string };
+      if (err?.code) {
+        console.warn('[login] signInWithEmail 실패:', err.code, err.message);
+      }
+      setError(err?.message || strings.common.error);
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +101,7 @@ export default function LoginScreen() {
       // 온보딩 단계 판단을 위해 users 문서 상태 확인
       // (signInWithKakao는 카카오 닉네임을 받아 doc을 미리 생성할 수 있음 →
       //  doc 존재 여부만으로 신규/기존 구분 불가)
-      const userSnap = await getDoc(doc(db, 'users', credential.user.uid));
+      const userSnap = await Collections.user(credential.user.uid).get();
       const data = userSnap.exists() ? userSnap.data() : null;
 
       // doc이 아직 없는 경우(Google/Apple 신규) — 즉시 생성
@@ -218,7 +223,11 @@ export default function LoginScreen() {
         </View>
 
         {/* 비밀번호 찾기 */}
-        <TouchableOpacity style={styles.forgotRow} disabled={isLoading}>
+        <TouchableOpacity
+          style={styles.forgotRow}
+          onPress={() => router.push('/(auth)/forgot-password')}
+          disabled={isLoading}
+        >
           <Text style={styles.forgotText}>비밀번호 찾기</Text>
         </TouchableOpacity>
 

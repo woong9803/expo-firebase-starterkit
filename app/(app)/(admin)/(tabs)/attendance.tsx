@@ -14,7 +14,6 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { Collections } from '../../../../lib/firestore';
 import { setAttendanceRecord, subscribeAttendanceRecords, updateAttendanceReason } from '../../../../lib/attendance';
@@ -94,15 +93,12 @@ export default function AdminAttendanceScreen() {
     if (!user?.academy_id) return;
 
     Promise.all([
-      getDocs(query(Collections.classes(), where('academy_id', '==', user.academy_id))),
-      getDocs(
-        query(
-          Collections.users(),
-          where('academy_id', '==', user.academy_id),
-          where('role', '==', 'teacher'),
-          where('is_active', '==', true),
-        )
-      ),
+      Collections.classes().where('academy_id', '==', user.academy_id).get(),
+      Collections.users()
+        .where('academy_id', '==', user.academy_id)
+        .where('role', '==', 'teacher')
+        .where('is_active', '==', true)
+        .get(),
     ]).then(([classSnap, teacherSnap]) => {
       setClasses(classSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class)));
 
@@ -137,12 +133,11 @@ export default function AdminAttendanceScreen() {
     // ① 학생 수 + 활성 UID 목록 1회 조회 (탈퇴 학생 제외)
     Promise.all(
       classes.map(async (cls) => {
-        const snap = await getDocs(query(
-          Collections.users(),
-          where('academy_id', '==', user.academy_id),
-          where('class_id', '==', cls.id),
-          where('role', '==', 'student'),
-        ));
+        const snap = await Collections.users()
+          .where('academy_id', '==', user.academy_id)
+          .where('class_id', '==', cls.id)
+          .where('role', '==', 'student')
+          .get();
         const activeDocs = snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at);
         return {
           classId: cls.id,
@@ -163,8 +158,7 @@ export default function AdminAttendanceScreen() {
       // ② 날짜별 출결 레코드 실시간 구독 — 선생님 입력 즉시 반영
       let initialCount = 0;
       const unsubs = classes.map((cls) =>
-        onSnapshot(
-          Collections.attendanceRecords(cls.id, selectedDate),
+        Collections.attendanceRecords(cls.id, selectedDate).onSnapshot(
           (snap) => {
             const totalStudents = countMap[cls.id] ?? 0;
             const activeUids    = uidMap[cls.id] ?? new Set<string>();
@@ -263,40 +257,42 @@ export default function AdminAttendanceScreen() {
       </View>
 
       {/* ── 날짜 스트립 (과거 20일 ~ 미래 9일) ── */}
-      <FlatList
-        ref={dateListRef}
-        data={DATE_LIST}
-        keyExtractor={(item) => item}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.dateStripContent}
-        style={styles.dateStrip}
-        getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
-        initialScrollIndex={Math.max(0, TODAY_INDEX - 3)}
-        renderItem={({ item }) => {
-          const isSelected = item === selectedDate;
-          const isToday    = item === TODAY;
-          return (
-            <TouchableOpacity
-              style={[
-                styles.datePill,
-                isSelected && styles.datePillSelected,
-                !isSelected && isToday && styles.datePillToday,
-              ]}
-              onPress={() => setSelectedDate(item)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.datePillWeekday, isSelected && styles.datePillTextSelected]}>
-                {getWeekdayShort(item)}
-              </Text>
-              <Text style={[styles.datePillDay, isSelected && styles.datePillTextSelected]}>
-                {getDay(item)}
-              </Text>
-              {isToday && !isSelected && <View style={styles.todayDot} />}
-            </TouchableOpacity>
-          );
-        }}
-      />
+      {/* FlatList style={height} 가 column flex 안에서 종종 안 먹어 → 고정 높이 부모 View 로 감쌈 */}
+      <View style={styles.dateStripWrapper}>
+        <FlatList
+          ref={dateListRef}
+          data={DATE_LIST}
+          keyExtractor={(item) => item}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.dateStripContent}
+          getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
+          initialScrollIndex={Math.max(0, TODAY_INDEX - 3)}
+          renderItem={({ item }) => {
+            const isSelected = item === selectedDate;
+            const isToday    = item === TODAY;
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.datePill,
+                  isSelected && styles.datePillSelected,
+                  !isSelected && isToday && styles.datePillToday,
+                ]}
+                onPress={() => setSelectedDate(item)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.datePillWeekday, isSelected && styles.datePillTextSelected]}>
+                  {getWeekdayShort(item)}
+                </Text>
+                <Text style={[styles.datePillDay, isSelected && styles.datePillTextSelected]}>
+                  {getDay(item)}
+                </Text>
+                {isToday && !isSelected && <View style={styles.todayDot} />}
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
 
       {/* ── 반별 출결 카드 목록 ── */}
       <ScrollView
@@ -435,28 +431,35 @@ const styles = StyleSheet.create({
   excelBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   // 날짜 스트립
-  dateStrip: {
-    maxHeight: 72,
+  // FlatList style={height} 만으로는 column flex 부모 안에서 안 먹는 경우 多
+  // → 고정 높이 부모 View 로 감싸서 강제. flexShrink:0 으로 압축도 방지
+  dateStripWrapper: {
+    height: 68,
+    flexShrink: 0,
+    flexGrow: 0,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
   dateStripContent: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
     gap: 4,
+    // FlatList horizontal 의 자식은 기본 stretch — center 로 막아서 pill 이 자연 높이 유지
+    alignItems: 'center',
   },
+  // height 명시 + line-height 고정 — 한글 폰트 ascender 차이로 인한 들쭉날쭉 방지
+  // width 48 = getItemLayout 의 length 52 - gap 4 (FlatList 스크롤 정확도 유지)
   datePill: {
     width: 48,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 10,
     gap: 2,
   },
   datePillSelected:     { backgroundColor: '#5B50E8' },
   datePillToday:        { backgroundColor: '#EEEDF9' },
-  datePillWeekday:      { fontSize: 12, fontWeight: '500', color: '#94A3B8' },
-  datePillDay:          { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  datePillWeekday:      { fontSize: 12, lineHeight: 14, fontWeight: '500', color: '#94A3B8' },
+  datePillDay:          { fontSize: 16, lineHeight: 18, fontWeight: '700', color: '#0F172A' },
   datePillTextSelected: { color: '#fff' },
   todayDot: {
     width: 4, height: 4, borderRadius: 2,
@@ -532,10 +535,13 @@ interface DetailModalProps {
   onClose: () => void;
 }
 
+// 저장 전 임시값 — status·reason 모두 보관
+type PendingEntry = { status?: AttendanceStatus; reason?: string | null };
+
 function AttendanceDetailModal({ visible, cls, date, academyId, onClose }: DetailModalProps) {
   const [students, setStudents]           = useState<User[]>([]);
   const [records, setRecords]             = useState<Record<string, AttendanceRecord>>({});
-  const [pendingStatuses, setPendingStatuses] = useState<Record<string, AttendanceStatus>>({});
+  const [pending, setPending]             = useState<Record<string, PendingEntry>>({});
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isSavingAll, setIsSavingAll]     = useState(false);
 
@@ -547,28 +553,26 @@ function AttendanceDetailModal({ visible, cls, date, academyId, onClose }: Detai
 
     setIsLoadingStudents(true);
     setRecords({});
-    setPendingStatuses({});
+    setPending({});
 
     // 학생 목록 실시간 구독 — 신규 학생 가입 시 명렬표에 즉시 반영
-    const unsubStudents = onSnapshot(
-      query(
-        Collections.users(),
-        where('academy_id', '==', academyId),
-        where('class_id', '==', cls.id),
-        where('role', '==', 'student'),
-      ),
-      (snap) => {
-        const active = snap.docs
-          .map((d) => ({ uid: d.id, ...d.data() } as User))
-          .filter((s) => s.is_active !== false && !s.deleted_at);
-        setStudents(active);
-        setIsLoadingStudents(false);
-      },
-      (e) => {
-        console.error('[AdminAttendanceDetail] 학생 목록 구독 실패:', e);
-        setIsLoadingStudents(false);
-      }
-    );
+    const unsubStudents = Collections.users()
+      .where('academy_id', '==', academyId)
+      .where('class_id', '==', cls.id)
+      .where('role', '==', 'student')
+      .onSnapshot(
+        (snap) => {
+          const active = snap.docs
+            .map((d) => ({ uid: d.id, ...d.data() } as User))
+            .filter((s) => s.is_active !== false && !s.deleted_at);
+          setStudents(active);
+          setIsLoadingStudents(false);
+        },
+        (e) => {
+          console.error('[AdminAttendanceDetail] 학생 목록 구독 실패:', e);
+          setIsLoadingStudents(false);
+        }
+      );
 
     // 출결 레코드 실시간 구독
     const unsubAttendance = subscribeAttendanceRecords(
@@ -594,55 +598,85 @@ function AttendanceDetailModal({ visible, cls, date, academyId, onClose }: Detai
     }
   }, [visible]);
 
-  // ── 표시용 상태: 임시 상태 우선, 없으면 Firestore 상태 ──
+  // ── 표시용 status·reason: 임시 상태 우선, 없으면 Firestore 값 ──
   const mergedStatuses = useMemo(() => {
     const result: Record<string, AttendanceStatus | null> = {};
     students.forEach(({ uid }) => {
-      result[uid] = pendingStatuses[uid] ?? records[uid]?.status ?? null;
+      result[uid] = pending[uid]?.status ?? records[uid]?.status ?? null;
     });
     return result;
-  }, [students, pendingStatuses, records]);
+  }, [students, pending, records]);
+
+  const mergedReasons = useMemo(() => {
+    const result: Record<string, string | null> = {};
+    students.forEach(({ uid }) => {
+      const p = pending[uid]?.reason;
+      // pending에 명시적으로 들어 있으면 우선 (null도 표시)
+      if (p !== undefined) result[uid] = p;
+      else result[uid] = records[uid]?.reason ?? null;
+    });
+    return result;
+  }, [students, pending, records]);
 
   // ── 출결 상태 변경 (로컬 임시 저장) ──
   const handleStatusChange = useCallback((studentUid: string, status: AttendanceStatus) => {
-    setPendingStatuses((prev) => ({ ...prev, [studentUid]: status }));
+    setPending((prev) => ({
+      ...prev,
+      [studentUid]: { ...prev[studentUid], status },
+    }));
   }, []);
 
-  // ── 사유 즉시 저장 ──
-  const handleReasonSave = useCallback(async (studentUid: string, reason: string | null) => {
-    if (!cls) return;
-    try {
-      await updateAttendanceReason(cls.id, date, studentUid, reason);
-    } catch (e) {
-      console.error('[AdminAttendanceDetail] 사유 저장 실패:', e);
-    }
-  }, [cls?.id, date]);
+  // ── 사유 변경 (로컬 임시 저장) — 자동 저장 안 함, "저장하기"에서 일괄 처리 ──
+  const handleReasonChange = useCallback((studentUid: string, reason: string) => {
+    setPending((prev) => {
+      const cur = prev[studentUid] ?? {};
+      const trimmed = reason.trim();
+      const original = records[studentUid]?.reason ?? '';
+      // 저장된 원본과 같으면 pending에서 reason 제거
+      if (trimmed === original) {
+        const next: PendingEntry = { ...cur };
+        delete next.reason;
+        if (next.status === undefined) {
+          const { [studentUid]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [studentUid]: next };
+      }
+      return { ...prev, [studentUid]: { ...cur, reason: trimmed || null } };
+    });
+  }, [records]);
 
-  // ── 전체 저장 ──
+  // ── 전체 저장: pending에 모인 status·reason 일괄 반영 ──
   const handleSaveAll = useCallback(async () => {
     if (!cls || !academyId) return;
 
-    const toSave = students
-      .map(({ uid }) => ({ uid, status: mergedStatuses[uid] }))
-      .filter((s): s is { uid: string; status: AttendanceStatus } => s.status !== null);
-
-    if (toSave.length === 0) return;
+    const entries = Object.entries(pending);
+    if (entries.length === 0) return;
 
     setIsSavingAll(true);
     try {
       await Promise.all(
-        toSave.map(({ uid, status }) =>
-          setAttendanceRecord(cls.id, date, uid, status, academyId)
-        )
+        entries.map(([uid, { status, reason }]) => {
+          // status가 pending에 없으면 기존 records의 status 유지 — 사유만 변경된 케이스
+          const finalStatus = status ?? records[uid]?.status;
+          if (finalStatus) {
+            return setAttendanceRecord(cls.id, date, uid, finalStatus, academyId, reason);
+          }
+          // status가 어디에도 없는데 reason만 있는 케이스 (드물지만 안전 처리)
+          if (reason !== undefined) {
+            return updateAttendanceReason(cls.id, date, uid, reason, academyId);
+          }
+          return Promise.resolve();
+        })
       );
       // 저장 완료 후 임시 상태 초기화
-      setPendingStatuses({});
+      setPending({});
     } catch (e) {
       console.error('[AdminAttendanceDetail] 일괄 저장 실패:', e);
     } finally {
       setIsSavingAll(false);
     }
-  }, [cls?.id, date, academyId, students, mergedStatuses]);
+  }, [cls?.id, date, academyId, pending, records]);
 
   const summary = useMemo(() => {
     const values = Object.values(mergedStatuses);
@@ -653,7 +687,7 @@ function AttendanceDetailModal({ visible, cls, date, academyId, onClose }: Detai
     };
   }, [mergedStatuses]);
 
-  const hasPending   = Object.keys(pendingStatuses).length > 0;
+  const hasPending   = Object.keys(pending).length > 0;
   const notEntered   = students.length - summary.present - summary.late - summary.absent;
 
   return (
@@ -702,10 +736,12 @@ function AttendanceDetailModal({ visible, cls, date, academyId, onClose }: Detai
                 studentName={item.name}
                 schoolName={item.school_name ?? undefined}
                 status={mergedStatuses[item.uid] ?? null}
-                reason={records[item.uid]?.reason ?? null}
+                reason={mergedReasons[item.uid] ?? null}
                 onStatusChange={(status) => handleStatusChange(item.uid, status)}
-                onReasonSave={(reason) => handleReasonSave(item.uid, reason)}
+                onReasonChange={(reason) => handleReasonChange(item.uid, reason)}
                 disabled={isSavingAll}
+                // pending이 비어 있고 이 학생도 저장된 status가 있으면 보기 전용
+                // — pending이 하나라도 있으면 모달 전체가 편집 모드로 전환
                 readOnly={!hasPending}
               />
             )}

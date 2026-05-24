@@ -1,25 +1,18 @@
 /**
- * lib/auth.ts — 웅깅(Woongking) 인증 헬퍼 함수
+ * lib/auth.ts — 웅깅(Woongking) 인증 헬퍼 함수 (React Native Firebase)
  *
  * Firebase Auth 래퍼 + Firestore users 문서 관리 + 코드 검증 로직을 한 곳에서 관리.
  * 인증 화면(login, register, code-input 등)에서 직접 Firebase를 호출하지 말고
  * 이 파일의 함수를 import해서 사용할 것.
+ *
+ * 마이그레이션(2026-05-12): firebase JS SDK → @react-native-firebase/* 전환.
+ *   - 자동 세션 persistence (로그인 유지) 확보
+ *   - 두 SDK(JS/RN) 동시 사용에서 오던 phone OTP 후 signOut 우회 코드 제거
  */
 
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithCredential,
-  signInWithCustomToken,
-  GoogleAuthProvider,
-  OAuthProvider,
-  UserCredential,
-  fetchSignInMethodsForEmail,
-} from 'firebase/auth';
-// 휴대폰 OTP 는 React Native Firebase 네이티브 SDK 사용
-// — Web SDK 의 signInWithPhoneNumber 는 RN 환경에서 reCAPTCHA verifier 가 동작하지 않아 auth/argument-error 발생
-// — RN Firebase 는 iOS APNs Silent Push, Android SafetyNet 으로 verifier 자동 처리
 import rnAuth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import rnFirestore from '@react-native-firebase/firestore';
+import rnFunctions from '@react-native-firebase/functions';
 import { Platform } from 'react-native';
 // expo-notifications — APNs 토큰 수신용 (권한 다이얼로그 없이 토큰만 발급)
 // iOS Phone Auth 의 silent push verifier 가 동작하려면 APNs 토큰이 RN Firebase Auth 에
@@ -28,16 +21,7 @@ import { Platform } from 'react-native';
 // → expo-notifications.getDevicePushTokenAsync() 가 내부적으로 APNs 등록을 트리거하고
 //    토큰 발급까지 한 번에 처리한다.
 import * as Notifications from 'expo-notifications';
-import {
-  setDoc,
-  updateDoc,
-  getDoc,
-  doc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-// 암호학적으로 안전한 난수 — 학원/연동/초대 코드 생성에 사용
-// (Math.random() 은 예측 가능 PRNG → 코드 추측 공격 위험)
+// 암호학적으로 안전한 난수 — 학원/연동/초대 코드 생성 + Apple nonce 에 사용
 import * as Crypto from 'expo-crypto';
 // GoogleSignin 지연 로드 — 최상단 import 시 네이티브 모듈 없으면 번들 전체 크래시
 // Xcode로 빌드된 바이너리에 네이티브 모듈이 포함된 경우에만 정상 작동
@@ -50,7 +34,7 @@ const { GoogleSignin } = (() => {
   }
 })();
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { auth, db } from './firebase';
+import { db } from './firebase';
 import { Collections } from './firestore';
 import { User } from '../types';
 
@@ -64,26 +48,98 @@ const KakaoUser = (() => {
   }
 })();
 
+// ─── 안전 로그아웃 헬퍼 ────────────────────────────────────────────
+
+/**
+ * RN Firebase signOut + native 측 keychain/credential 정리 대기
+ *
+ * 배경(2026-05-21):
+ *   로그아웃 직후 즉시 다른 계정으로 이메일/비번 로그인 시도하면
+ *   `auth/invalid-credential` ("supplied auth credential is malformed or has expired")
+ *   가 발생하는 케이스 확인. JS 측 signOut 은 끝났지만 iOS keychain /
+ *   Android SharedPreferences 정리가 비동기로 잠시 더 걸리는 동안
+ *   native 가 이전 사용자 컨텍스트로 요청을 보내며 충돌.
+ *
+ * 처리:
+ *   - signOut 호출 후 300ms 대기 → native cleanup 시간 확보
+ *   - signOut 실패해도 swallow (이미 로그아웃 상태일 수 있음)
+ *   - 모든 로그아웃 호출 지점은 이 헬퍼로 통일 (auth().signOut 직접 호출 금지)
+ */
+export const safeSignOut = async (): Promise<void> => {
+  // ─── FCM 토큰 정리 (signOut 이전에 수행해야 함) ──────────────────
+  // 배경(2026-05-21):
+  //   같은 디바이스에서 학부모↔학생 등 다른 계정으로 전환할 때,
+  //   로그아웃 시 user.fcm_token 을 비우지 않으면 두 user 문서에 동일한
+  //   ExponentPushToken 이 남게 됨. 결과적으로 선생님이 학생에게 푸시를
+  //   보낼 때 학생 디바이스로 학생용+학부모용 알림이 둘 다 도착하는 버그.
+  // 처리:
+  //   - signOut 직전에 현재 로그인된 user 문서의 fcm_token 을 빈 문자열로 갱신
+  //   - signOut 이후엔 본인 문서 write 권한이 사라지므로 반드시 signOut 전에 수행
+  //   - 네트워크 오류 등으로 실패해도 로그아웃 자체는 막지 않음 (swallow)
+  try {
+    const currentUid = rnAuth().currentUser?.uid;
+    if (currentUid) {
+      await Collections.user(currentUid)
+        .update({ fcm_token: '' })
+        .catch((e) => console.warn('[safeSignOut] fcm_token 정리 실패(무시):', e));
+    }
+  } catch (e) {
+    console.warn('[safeSignOut] fcm_token 정리 단계 예외(무시):', e);
+  }
+
+  try {
+    await rnAuth().signOut();
+  } catch (e) {
+    // 이미 signOut 된 상태 등은 무시 — 로그만 남김
+    console.warn('[safeSignOut] signOut 실패(무시):', e);
+  }
+  // native keychain/credential persistence 정리 대기
+  await new Promise<void>((resolve) => setTimeout(resolve, 300));
+};
+
 // ─── 이메일/비밀번호 인증 ───────────────────────────────────────────
 
 /**
  * 이메일/비밀번호 로그인
  * 동일 이메일로 다른 소셜 방식 가입 시 안내 메시지 포함 에러 반환
+ *
+ * invalid-credential 친화 메시지(2026-05-21):
+ *   Firebase Auth SDK 22+ 부터 wrong-password / user-not-found / invalid-email 이
+ *   모두 `auth/invalid-credential` 로 통합됨 (보안상 케이스 미공개).
+ *   원본 영문 메시지 노출 대신 한국어 친화 안내로 변환.
  */
 export const signInWithEmail = async (
   email: string,
   password: string
-): Promise<UserCredential> => {
+): Promise<FirebaseAuthTypes.UserCredential> => {
   try {
-    return await signInWithEmailAndPassword(auth, email, password);
+    return await rnAuth().signInWithEmailAndPassword(email, password);
   } catch (error: unknown) {
     const authError = error as { code?: string };
     // 동일 이메일로 소셜 가입된 계정이 있는 경우
     if (authError.code === 'auth/account-exists-with-different-credential') {
-      const methods = await fetchSignInMethodsForEmail(auth, email);
+      const methods = await rnAuth().fetchSignInMethodsForEmail(email);
       throw new Error(
         `기존 방식(${methods[0]})으로 로그인 후 설정에서 소셜 계정을 연결할 수 있어요`
       );
+    }
+    // wrong-password / user-not-found / invalid-credential 통합 처리
+    if (
+      authError.code === 'auth/invalid-credential' ||
+      authError.code === 'auth/wrong-password' ||
+      authError.code === 'auth/user-not-found' ||
+      authError.code === 'auth/invalid-email'
+    ) {
+      throw new Error('이메일 또는 비밀번호를 다시 확인해 주세요.');
+    }
+    if (authError.code === 'auth/too-many-requests') {
+      throw new Error('로그인 시도가 너무 많아요. 잠시 후 다시 시도해 주세요.');
+    }
+    if (authError.code === 'auth/network-request-failed') {
+      throw new Error('네트워크 연결을 확인해 주세요.');
+    }
+    if (authError.code === 'auth/user-disabled') {
+      throw new Error('비활성화된 계정이에요. 학원에 문의해 주세요.');
     }
     throw error;
   }
@@ -93,8 +149,8 @@ export const signInWithEmail = async (
 export const signUpWithEmail = async (
   email: string,
   password: string
-): Promise<UserCredential> => {
-  return createUserWithEmailAndPassword(auth, email, password);
+): Promise<FirebaseAuthTypes.UserCredential> => {
+  return rnAuth().createUserWithEmailAndPassword(email, password);
 };
 
 // ─── 소셜 로그인 ───────────────────────────────────────────────────
@@ -115,9 +171,9 @@ export const configureGoogleSignIn = () => {
 /**
  * Google 로그인
  * @react-native-google-signin/google-signin으로 idToken 획득 후
- * Firebase GoogleAuthProvider credential로 변환해 로그인
+ * RN Firebase GoogleAuthProvider credential로 변환해 로그인
  */
-export const signInWithGoogle = async (): Promise<UserCredential> => {
+export const signInWithGoogle = async (): Promise<FirebaseAuthTypes.UserCredential> => {
   if (!GoogleSignin) {
     throw new Error(
       'Google 로그인 모듈이 없습니다.\n' +
@@ -128,31 +184,45 @@ export const signInWithGoogle = async (): Promise<UserCredential> => {
 
   const userInfo = await GoogleSignin.signIn();
   const idToken = userInfo.data?.idToken ?? null;
-  const credential = GoogleAuthProvider.credential(idToken);
+  const credential = rnAuth.GoogleAuthProvider.credential(idToken);
 
-  return signInWithCredential(auth, credential);
+  return rnAuth().signInWithCredential(credential);
 };
 
 /**
  * Apple 로그인 (iOS 전용)
  * 호출 전 반드시 Platform.OS === 'ios' 조건 확인 필요
- * expo-apple-authentication으로 identityToken 획득 후 Firebase OAuthCredential 변환
+ *
+ * RN Firebase 의 AppleAuthProvider.credential 은 (identityToken, rawNonce) 형태를 요구한다.
+ * - rawNonce 를 SHA256 해시한 값을 expo-apple-authentication 의 nonce 로 전달
+ * - Apple 이 발급한 identityToken 안에는 hashedNonce 가 포함되어 있고,
+ *   Firebase 는 rawNonce 를 자체 해싱해 일치 여부를 검증한다 (replay 공격 방지).
  */
-export const signInWithApple = async (): Promise<UserCredential> => {
+export const signInWithApple = async (): Promise<FirebaseAuthTypes.UserCredential> => {
+  // 32바이트 random nonce 생성 (hex 64자)
+  const rawNonceBytes = Crypto.getRandomBytes(32);
+  const rawNonce = Array.from(rawNonceBytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const hashedNonce = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    rawNonce
+  );
+
   const appleCredential = await AppleAuthentication.signInAsync({
     requestedScopes: [
       AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
       AppleAuthentication.AppleAuthenticationScope.EMAIL,
     ],
+    nonce: hashedNonce,
   });
 
-  // Apple identity token → Firebase OAuthCredential 변환
-  const oauthProvider = new OAuthProvider('apple.com');
-  const credential = oauthProvider.credential({
-    idToken: appleCredential.identityToken ?? '',
-  });
+  const credential = rnAuth.AppleAuthProvider.credential(
+    appleCredential.identityToken ?? '',
+    rawNonce
+  );
 
-  return signInWithCredential(auth, credential);
+  return rnAuth().signInWithCredential(credential);
 };
 
 /**
@@ -163,7 +233,7 @@ export const signInWithApple = async (): Promise<UserCredential> => {
  *
  * ⚠️ 카카오 Admin Key는 Cloud Function 환경변수에만 있음 — 클라이언트 코드 포함 절대 금지
  */
-export const signInWithKakao = async (): Promise<UserCredential> => {
+export const signInWithKakao = async (): Promise<FirebaseAuthTypes.UserCredential> => {
   // 네이티브 모듈 null 체크 — npx expo run:ios 리빌드 전에는 null
   if (!KakaoUser) {
     throw new Error(
@@ -173,13 +243,12 @@ export const signInWithKakao = async (): Promise<UserCredential> => {
   }
   // @react-native-kakao/user의 login() — accessToken 포함 토큰 반환
   const kakaoToken = await KakaoUser.login();
-  const functions = getFunctions();
-  const kakaoLoginFn = httpsCallable<
+  const kakaoLoginFn = rnFunctions().httpsCallable<
     { accessToken: string },
     { customToken: string; kakaoUser?: { name?: string; email?: string } }
-  >(functions, 'kakaoLogin');
+  >('kakaoLogin');
   const result = await kakaoLoginFn({ accessToken: kakaoToken.accessToken });
-  const credential = await signInWithCustomToken(auth, result.data.customToken);
+  const credential = await rnAuth().signInWithCustomToken(result.data.customToken);
 
   // 카카오 Custom Token 로그인은 Firebase Auth 의 displayName/email 을 자동으로 채우지 않음
   // → CF 응답으로 받은 카카오 닉네임·이메일을 직접 Firestore users 문서로 저장해야
@@ -201,11 +270,11 @@ export const signInWithKakao = async (): Promise<UserCredential> => {
 
 // ─── 휴대폰 OTP 인증 ───────────────────────────────────────────────
 //
-// React Native Firebase 사용 이유: Web SDK 는 RN 환경에서 reCAPTCHA verifier 미동작
-// 인증 흐름:
-//   1) RN Firebase 로 OTP 발송·검증 (APNs/SafetyNet 으로 verifier 자동)
-//   2) 검증 성공 후 RN Firebase 세션은 즉시 signOut — Web SDK 의 currentUser(소셜 로그인) 와 충돌 방지
-//   3) phone_verified 플래그만 Firestore users 문서에 저장 (phone-verify.tsx 에서 처리)
+// React Native Firebase 사용 — iOS APNs Silent Push / Android SafetyNet 으로 verifier 자동
+// (Web SDK 의 reCAPTCHA verifier 는 RN 환경에서 동작하지 않음)
+//
+// 마이그레이션 후 변경: 이제 메인 인증도 RN Firebase 라 phone OTP 검증 후
+// 별도 signOut 이 필요 없다. 이전엔 Web SDK 의 currentUser 와 충돌 회피 목적으로 signOut.
 
 // RN Firebase ConfirmationResult 타입을 외부에서도 쓰도록 re-export
 export type PhoneConfirmationResult = FirebaseAuthTypes.ConfirmationResult;
@@ -231,13 +300,6 @@ export const sendPhoneOtp = async (
   // ─── iOS APNs 토큰 사전 등록 (reCAPTCHA fallback 회피) ─────────────
   // RN Firebase 24.x 는 phone auth 호출 시 APNs 토큰이 등록되어 있어야 silent push verifier 사용
   // 미등록 시 SDK 가 reCAPTCHA 로 자동 fallback → "Verifying you're not a robot..." 무한 루프
-  // 동작 원리:
-  //  1) getDevicePushTokenAsync() 가 [UIApplication registerForRemoteNotifications] 호출
-  //  2) iOS 시스템이 application:didRegisterForRemoteNotificationsWithDeviceToken: 콜백 발생
-  //  3) Firebase iOS SDK 의 AppDelegate swizzle 이 콜백 가로채 [Auth setAPNSToken] 자동 호출
-  //  4) 이후 signInWithPhoneNumber 호출 시 silent push verifier 사용 가능
-  // → expo-notifications 가 권한 다이얼로그 없이 토큰 발급만 트리거 (사용자에게 알림 권한 요청 X)
-  // production 빌드에서도 보이도록 console.warn 사용 (console.log 는 Hermes 가 strip 가능)
   console.warn('[sendPhoneOtp] 진입 / Platform:', Platform.OS);
 
   if (Platform.OS === 'ios') {
@@ -259,23 +321,82 @@ export const sendPhoneOtp = async (
   }
 
   console.warn('[sendPhoneOtp] signInWithPhoneNumber 호출 시작');
-  // RN Firebase: iOS APNs Silent Push / Android SafetyNet 으로 verifier 자동 처리
   return rnAuth().signInWithPhoneNumber(formattedPhone);
 };
 
 /**
- * OTP 코드 검증
- * - confirm() 으로 코드 일치 여부만 판정
- * - 검증 성공 후 RN Firebase 세션은 signOut — Web SDK 의 소셜 로그인 세션을 보존
- *   (두 SDK 의 auth state 는 별개 — 동시 로그인 시 Firestore Rules 체크에서 충돌 가능)
+ * OTP 코드 검증 — 코드 일치 여부만 판정 (signOut 없음)
+ * 마이그레이션 후 메인 SDK 가 RN Firebase 단일이라 세션 격리 작업 불필요.
  */
 export const verifyPhoneOtp = async (
   confirmationResult: PhoneConfirmationResult,
   code: string
 ): Promise<void> => {
   await confirmationResult.confirm(code);
-  // 즉시 RN Firebase 세션 정리 — Web SDK 의 currentUser 만 유지되도록
-  await rnAuth().signOut();
+};
+
+// ─── 비밀번호 찾기 (휴대폰 OTP 기반) ────────────────────────────────
+
+/**
+ * 비밀번호 찾기용 휴대폰 OTP 발송
+ *
+ * sendPhoneOtp 와 반대로 "이미 가입된 번호"여야 정상 발송.
+ * 등록되지 않은 번호면 'NOT_REGISTERED' 에러로 즉시 실패시켜
+ * 잘못된 번호로 SMS 비용·요청 발생을 방지.
+ */
+export const sendPhoneOtpForReset = async (
+  phoneNumber: string
+): Promise<PhoneConfirmationResult> => {
+  // 등록된 번호인지 먼저 확인
+  const isRegistered = await checkPhoneDuplicate(phoneNumber);
+  if (!isRegistered) {
+    throw new Error('NOT_REGISTERED');
+  }
+
+  const formattedPhone = formatPhoneNumber(phoneNumber);
+
+  // iOS APNs 사전 등록 (silent push verifier 활성화 — sendPhoneOtp 와 동일 처리)
+  if (Platform.OS === 'ios') {
+    try {
+      const tokenData = await Notifications.getDevicePushTokenAsync();
+      const apnsToken = tokenData?.data;
+      console.warn(
+        '[sendPhoneOtpForReset] APNs 토큰:',
+        apnsToken ? `수신됨 (${String(apnsToken).slice(0, 10)}…)` : '미수신'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } catch (e: unknown) {
+      console.warn('[sendPhoneOtpForReset] APNs 등록 실패:', (e as Error).message);
+    }
+  }
+
+  return rnAuth().signInWithPhoneNumber(formattedPhone);
+};
+
+/**
+ * 비밀번호 재설정 Cloud Function 호출 래퍼
+ *
+ * 호출 전제: phone OTP 인증 완료 → phone-auth 로 sign-in 된 상태.
+ * 서버에서 토큰의 phone_number 와 입력 phoneNumber 매칭 검증.
+ *
+ * 성공 시 진짜 user(이메일/소셜 가입자)의 비번이 갱신되고
+ * 임시 phone-only user 는 서버에서 자동 정리됨.
+ */
+export const resetPasswordByPhone = async (
+  phoneNumber: string,
+  newPassword: string
+): Promise<void> => {
+  const formattedPhone = formatPhoneNumber(phoneNumber);
+  // CF 는 asia-northeast3 region 에 배포됨
+  // RN Firebase 의 region 지정 패턴: .app().functions(region).httpsCallable(name)
+  const fn = rnFunctions
+    .app()
+    .functions('asia-northeast3')
+    .httpsCallable<
+      { phoneNumber: string; newPassword: string },
+      { success: boolean }
+    >('resetPasswordByPhone');
+  await fn({ phoneNumber: formattedPhone, newPassword });
 };
 
 // ─── 소셜 로그인 신규 유저 처리 ──────────────────────────────────────
@@ -286,8 +407,7 @@ export const verifyPhoneOtp = async (
  * - 없으면 false (신규 유저 → phone-input으로 온보딩 시작)
  */
 export const checkUserDocExists = async (uid: string): Promise<boolean> => {
-  const { getDoc } = await import('firebase/firestore');
-  const snap = await getDoc(Collections.user(uid));
+  const snap = await Collections.user(uid).get();
   return snap.exists();
 };
 
@@ -301,10 +421,10 @@ export const createUserDoc = async (
   uid: string,
   data: Partial<Omit<User, 'uid' | 'created_at'>>
 ): Promise<void> => {
-  await setDoc(Collections.user(uid), {
+  await Collections.user(uid).set({
     uid,
     ...data,
-    created_at: serverTimestamp(),
+    created_at: rnFirestore.FieldValue.serverTimestamp(),
   });
 };
 
@@ -316,7 +436,7 @@ export const updateUserDoc = async (
   uid: string,
   data: Partial<Omit<User, 'uid' | 'created_at'>>
 ): Promise<void> => {
-  await updateDoc(Collections.user(uid), { ...data });
+  await Collections.user(uid).update({ ...data });
 };
 
 // ─── 코드 검증 ─────────────────────────────────────────────────────
@@ -324,12 +444,6 @@ export const updateUserDoc = async (
 // 모든 온보딩 코드(학원·반·연동) 검증은 validateOnboardingCode Cloud Function을
 // 거친다. 클라이언트 직접 쿼리는 무차별 대입 공격(6자리 영숫자 = 36^6)에 취약하므로,
 // 서버 rate limit(uid 10분/5회 + IP 10분/20회) 뒤에서만 수행한다.
-//
-// 반환 규칙:
-// - 성공: 서버가 돌려주는 리치 데이터(name/status 등) 그대로 반환
-// - 존재하지 않는 코드(not-found): null — 기존 호출부 호환 유지
-// - Rate limit(resource-exhausted) 및 기타 오류: 에러 그대로 throw
-//   → 화면 레벨에서 e.code === 'functions/resource-exhausted' 로 분기해 안내
 
 export interface AcademyCodeResult {
   academy_id: string;
@@ -358,15 +472,14 @@ async function callValidateCode<T>(
   type: 'academy' | 'invite' | 'link'
 ): Promise<T | null> {
   try {
-    const fn = httpsCallable<{ code: string; type: string }, T>(
-      getFunctions(),
+    const fn = rnFunctions().httpsCallable<{ code: string; type: string }, T>(
       'validateOnboardingCode'
     );
     const result = await fn({ code: code.toUpperCase(), type });
     return result.data;
   } catch (e: unknown) {
     const err = e as { code?: string };
-    // v9 모듈러 SDK: 'functions/not-found', 일부 버전: 'not-found'
+    // RN Firebase: 'functions/not-found' 또는 'not-found'
     if (err.code === 'functions/not-found' || err.code === 'not-found') {
       return null;
     }
@@ -406,15 +519,6 @@ export const validateLinkCode = (
 /**
  * 6자리 영숫자 랜덤 코드 생성 — 학생 연동코드(link_code),
  * 학원코드(academy_code), 반 초대코드(invite_code) 발급에 사용
- *
- * 보안 고려:
- *  - Math.random() 은 V8 PRNG 라 충분한 출력 샘플로 다음 값 예측 가능 →
- *    6자리(36진수)는 약 22억 경우의 수지만 예측 가능 RNG 라면 공격 범위가 좁아진다
- *  - expo-crypto.getRandomBytes() 는 OS 의 CSPRNG 를 호출 (iOS SecRandom, Android SecureRandom)
- *  - 모듈 편향(modulo bias) 회피: 256 % 36 = 4 → 36의 배수 미만 바이트만 채택
- *
- * Cloud Functions 의 createStudentAccount 는 별도로 crypto.randomInt 를 사용한다
- * (Node.js 표준 crypto). 이 함수는 클라이언트 경로 전용.
  */
 export const generateLinkCode = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -439,18 +543,13 @@ export const generateLinkCode = (): string => {
  * 휴대폰 번호 중복 여부 확인
  *
  * phone_lookups/{phone} 문서 존재 여부로 판정.
- * 과거에는 users 컬렉션을 where('phone_number', ...) 로 검색했으나
- * Firestore Rules 가 익명 사용자에게 users 컬렉션 list 권한을 주지 않아
- * "Missing or insufficient permissions" 에러가 발생.
- *
- * → 휴대폰 번호 자체를 문서 ID 로 쓰는 별도 컬렉션을 두고, 단건 get 으로 확인.
- *   (phone_lookups Rules: get 만 허용, list 는 차단)
+ * (phone_lookups Rules: get 만 허용, list 는 차단)
  */
 export const checkPhoneDuplicate = async (
   phoneNumber: string
 ): Promise<boolean> => {
   const formattedPhone = formatPhoneNumber(phoneNumber);
-  const snap = await getDoc(doc(db, 'phone_lookups', formattedPhone));
+  const snap = await db.collection('phone_lookups').doc(formattedPhone).get();
   return snap.exists();
 };
 
@@ -463,9 +562,9 @@ export const recordPhoneLookup = async (
   uid: string
 ): Promise<void> => {
   const formattedPhone = formatPhoneNumber(phoneNumber);
-  await setDoc(doc(db, 'phone_lookups', formattedPhone), {
+  await db.collection('phone_lookups').doc(formattedPhone).set({
     uid,
-    created_at: serverTimestamp(),
+    created_at: rnFirestore.FieldValue.serverTimestamp(),
   });
 };
 

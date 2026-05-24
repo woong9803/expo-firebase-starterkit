@@ -19,20 +19,11 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  limit,
-  writeBatch,
-  doc,
-} from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useNotificationStore } from '../../../store/useNotificationStore';
 import { Collections } from '../../../lib/firestore';
-import { db } from '../../../lib/firebase';
 import { strings } from '../../../constants/strings';
 import type { AppNotification } from '../../../types';
 
@@ -129,26 +120,22 @@ export default function NotificationInboxScreen() {
   useEffect(() => {
     if (!user?.uid) return;
 
-    const q = query(
-      Collections.notifications(),
-      where('target_uid', '==', user.uid),
-      orderBy('created_at', 'desc'),
-      limit(50)
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const notifs: AppNotification[] = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<AppNotification, 'id'>),
-        }));
-        setNotifications(notifs);
-      },
-      (err) => {
-        console.warn('[NotificationInbox] onSnapshot 오류:', err);
-      }
-    );
+    const unsub = Collections.notifications()
+      .where('target_uid', '==', user.uid)
+      .orderBy('created_at', 'desc')
+      .limit(50)
+      .onSnapshot(
+        (snap) => {
+          const notifs: AppNotification[] = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as Omit<AppNotification, 'id'>),
+          }));
+          setNotifications(notifs);
+        },
+        (err) => {
+          console.warn('[NotificationInbox] onSnapshot 오류:', err);
+        }
+      );
 
     // 컴포넌트 언마운트 시 구독 해제
     return () => unsub();
@@ -172,9 +159,9 @@ export default function NotificationInboxScreen() {
 
     try {
       // Firestore batch 업데이트로 일괄 처리
-      const batch = writeBatch(db);
+      const batch = firestore().batch();
       unreadItems.forEach((n) => {
-        batch.update(doc(db, 'notifications', n.id), { is_read: true });
+        batch.update(Collections.notification(n.id), { is_read: true });
       });
       await batch.commit();
 

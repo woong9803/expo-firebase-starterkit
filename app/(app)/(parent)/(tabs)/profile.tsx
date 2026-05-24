@@ -14,7 +14,6 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
-  Linking,
   Modal,
   TextInput,
   KeyboardAvoidingView,
@@ -23,14 +22,17 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { signOut } from 'firebase/auth';
-import { getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { auth, app } from '../../../../lib/firebase';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Collections } from '../../../../lib/firestore';
+import { safeSignOut } from '../../../../lib/auth';
+import { openKakaoSupport } from '../../../../lib/support';
+import { showDeleteAccountDialog } from '../../../../lib/deleteAccount';
+
+const arrayRemove = (value: string) => firestore.FieldValue.arrayRemove(value);
+const arrayUnion  = (value: string) => firestore.FieldValue.arrayUnion(value);
 import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { strings } from '../../../../constants/strings';
@@ -106,9 +108,9 @@ export default function ParentProfileScreen() {
     if (!user?.uid) return;
 
     // Firestore notif_prefs 업데이트
-    await updateDoc(Collections.user(user.uid), {
+    await Collections.user(user.uid).update({
       [`notif_prefs.${key}`]: value,
-    }).catch((e) => console.warn('[ParentProfile] notif_prefs 업데이트 실패:', e));
+    }).catch((e: unknown) => console.warn('[ParentProfile] notif_prefs 업데이트 실패:', e));
 
     // 현재 다른 토글의 값 (state는 아직 이전 값이므로 직접 계산)
     const hw  = key === 'homework'   ? value : homeworkNotif;
@@ -124,12 +126,12 @@ export default function ParentProfileScreen() {
 
     if (allOff) {
       // 모든 알림 OFF → FCM 토큰 제거
-      await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
+      await Collections.user(user.uid).update({ fcm_token: null }).catch((e: unknown) =>
         console.warn('[ParentProfile] fcm_token 제거 실패:', e)
       );
     } else if (value && wasAllOff) {
       // 이전에 모두 OFF였다가 하나 ON 전환 → FCM 토큰 재발급
-      await initFCM(user.uid).catch((e) =>
+      await initFCM(user.uid).catch((e: unknown) =>
         console.warn('[ParentProfile] FCM 재초기화 실패:', e)
       );
     }
@@ -148,14 +150,14 @@ export default function ParentProfileScreen() {
         const results = await Promise.all(
           childUids.map(async (childUid) => {
             // 자녀 사용자 문서 조회
-            const childSnap = await getDoc(Collections.user(childUid));
+            const childSnap = await Collections.user(childUid).get();
             if (!childSnap.exists()) return null;
             const childData = childSnap.data() as User;
 
             // 자녀가 속한 반 이름 조회
             let className = strings.profile.noClass;
             if (childData.class_id) {
-              const classSnap = await getDoc(Collections.class(childData.class_id));
+              const classSnap = await Collections.class(childData.class_id).get();
               if (classSnap.exists()) {
                 className = (classSnap.data() as Class).name;
               }
@@ -190,7 +192,7 @@ export default function ParentProfileScreen() {
               if (!user) return;
               try {
                 // Firestore에서 parent.children 배열에서 해당 uid 제거
-                await updateDoc(Collections.user(user.uid), {
+                await Collections.user(user.uid).update({
                   children: arrayRemove(child.uid),
                 });
                 // 로컬 상태 즉시 반영
@@ -244,7 +246,7 @@ export default function ParentProfileScreen() {
 
       // 학부모 children 배열에 자녀 uid 추가
       // academy_id는 CF가 반환한 값을 그대로 사용 (추가 조회 불필요)
-      await updateDoc(Collections.user(user.uid), {
+      await Collections.user(user.uid).update({
         children: arrayUnion(studentUid),
         // 첫 자녀 연동 시 academy_id가 없을 경우 자동 설정
         ...(user.academy_id ? {} : { academy_id: result.academy_id }),
@@ -252,9 +254,9 @@ export default function ParentProfileScreen() {
 
       // guardian_phone 기록 — 법정 출석부 보호자 연락처용 (논블로킹)
       if (user.phone_number) {
-        updateDoc(Collections.user(studentUid), {
+        Collections.user(studentUid).update({
           guardian_phone: user.phone_number,
-        }).catch((e) => {
+        }).catch((e: unknown) => {
           console.warn('[ParentProfile] guardian_phone 기록 실패:', e);
         });
       }
@@ -265,10 +267,10 @@ export default function ParentProfileScreen() {
 
       // 자녀 목록 UI 갱신 (반 이름 포함 — 반 이름은 CF가 안 주므로 별도 조회)
       let className = strings.profile.noClass;
-      const studentSnap = await getDoc(Collections.user(studentUid));
+      const studentSnap = await Collections.user(studentUid).get();
       const studentData = studentSnap.exists() ? (studentSnap.data() as User) : null;
       if (studentData?.class_id) {
-        const classSnap = await getDoc(Collections.class(studentData.class_id));
+        const classSnap = await Collections.class(studentData.class_id).get();
         if (classSnap.exists()) className = (classSnap.data() as Class).name;
       }
       setChildren((prev) => [
@@ -291,42 +293,17 @@ export default function ParentProfileScreen() {
     }
   }, [user, linkCodeInput, setUser]);
 
-  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
+  // ── 문의하기 — 카카오톡 상담 채널로 연결 ──────
   const handleInquiry = useCallback(() => {
-    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: 1.0.0\n사용자 ID: ${user?.uid ?? ''}`;
-    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
-    Linking.openURL(mailto).catch(() =>
-      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
-    );
-  }, [user?.uid]);
+    openKakaoSupport();
+  }, []);
 
-  // ── 탈퇴하기 ──────────────────────────────────
+  // ── 탈퇴하기 (PIPA 삭제권 — 30일 후 / 즉시 완전 삭제 선택) ──
   const handleDeleteAccount = useCallback(() => {
-    Alert.alert(
-      strings.account.deleteConfirmTitle,
-      strings.account.deleteConfirmMessage,
-      [
-        { text: strings.common.cancel, style: 'cancel' },
-        {
-          text: strings.account.deleteButton,
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeleting(true);
-            try {
-              const fns = getFunctions(app, 'asia-northeast3');
-              const deleteUserFn = httpsCallable(fns, 'deleteUser');
-              await deleteUserFn({});
-              await signOut(auth);
-              clearUser();
-            } catch {
-              Alert.alert(strings.common.error, strings.account.deleteFailed);
-            } finally {
-              setIsDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+    showDeleteAccountDialog({
+      onLoadingChange: setIsDeleting,
+      onSuccess: clearUser,
+    });
   }, [clearUser]);
 
   // ── 로그아웃 ───────────────────────────────────────────
@@ -337,7 +314,7 @@ export default function ParentProfileScreen() {
         text: strings.auth.logout,
         style: 'destructive',
         onPress: async () => {
-          await signOut(auth);
+          await safeSignOut();
           clearUser();
           // app/_layout.tsx의 onAuthStateChanged가 /(auth)로 자동 이동
         },
@@ -420,7 +397,7 @@ export default function ParentProfileScreen() {
 
       {/* ── 주황 그라데이션 프로필 영역 ── */}
       <LinearGradient
-        colors={['#F59E0B', '#D97706']}
+        colors={['#B45309', '#92400E']}
         style={[styles.gradientHeader, { paddingTop: top + 12 }]}
       >
         {/* 타이틀 */}
@@ -434,7 +411,7 @@ export default function ParentProfileScreen() {
         </View>
 
         {/* 이름 + 역할/자녀수 */}
-        <Text style={styles.profileName}>{user?.name ?? '부모님'}</Text>
+        <Text style={styles.profileName}>{user?.name ?? '학부모님'}</Text>
         <Text style={styles.profileSubtitle}>
           {strings.profile.childrenCount(childrenCount)}
         </Text>
@@ -445,7 +422,7 @@ export default function ParentProfileScreen() {
         <Text style={styles.sectionTitle}>{strings.profile.linkedChildren}</Text>
         <View style={styles.card}>
           {isLoadingChildren ? (
-            <ActivityIndicator color="#F59E0B" style={{ paddingVertical: 20 }} />
+            <ActivityIndicator color="#B45309" style={{ paddingVertical: 20 }} />
           ) : children.length === 0 ? (
             <Text style={styles.emptyText}>{strings.profile.noChildren}</Text>
           ) : (
@@ -506,7 +483,7 @@ export default function ParentProfileScreen() {
           <Switch
             value={homeworkNotif}
             onValueChange={(v) => handleNotifToggle('homework', v, NOTIF_HOMEWORK_KEY)}
-            trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
+            trackColor={{ false: '#E2E8F0', true: '#B45309' }}
             thumbColor="#fff"
           />
         </View>
@@ -525,7 +502,7 @@ export default function ParentProfileScreen() {
           <Switch
             value={attendanceNotif}
             onValueChange={(v) => handleNotifToggle('attendance', v, NOTIF_ATTENDANCE_KEY)}
-            trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
+            trackColor={{ false: '#E2E8F0', true: '#B45309' }}
             thumbColor="#fff"
           />
         </View>
@@ -544,7 +521,7 @@ export default function ParentProfileScreen() {
           <Switch
             value={noticeNotif}
             onValueChange={(v) => handleNotifToggle('notice', v, NOTIF_NOTICE_KEY)}
-            trackColor={{ false: '#E2E8F0', true: '#F59E0B' }}
+            trackColor={{ false: '#E2E8F0', true: '#B45309' }}
             thumbColor="#fff"
           />
         </View>
@@ -704,7 +681,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#FDE7C7',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -748,12 +725,12 @@ const styles = StyleSheet.create({
   addChildBtn: {
     margin: 12,
     height: 44,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#FDE7C7',
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: '#E8B07A',
     borderStyle: 'dashed',
   },
   addChildText: {
@@ -869,7 +846,7 @@ const styles = StyleSheet.create({
   },
   modalConfirmBtn: {
     height: 52,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#B45309',
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',

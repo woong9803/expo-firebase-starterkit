@@ -1,14 +1,6 @@
-import {
-  setDoc,
-  updateDoc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  doc,
-} from 'firebase/firestore';
-import { db } from './firebase';
+import firestore from '@react-native-firebase/firestore';
 import { Collections } from './firestore';
-import type { AttendanceStatus, AttendanceRecord } from '../types/index';
+import type { AttendanceStatus, AttendanceRecord, User } from '../types/index';
 
 // ─────────────────────────────────────────────────────────────
 // lib/attendance.ts
@@ -22,7 +14,7 @@ import type { AttendanceStatus, AttendanceRecord } from '../types/index';
  * @param classId    반 ID
  * @param date       날짜 문자열 (YYYY-MM-DD)
  * @param studentUid 학생 UID
- * @param status     출결 상태 (present / late / absent / onLeave)
+ * @param status     출결 상태 (present / late / absent)
  * @param academyId  학원 ID — 부모 문서에 academy_id 필드 보장용
  */
 export async function setAttendanceRecord(
@@ -30,16 +22,25 @@ export async function setAttendanceRecord(
   date: string,
   studentUid: string,
   status: AttendanceStatus,
-  academyId: string
+  academyId: string,
+  // reason 미지정(undefined) → 기존 reason 보존
+  // reason: null → 사유 제거 / reason: string → 사유 저장
+  reason?: string | null
 ): Promise<void> {
   // 1) 부모 출결 문서에 academy_id 필드 보장 (인덱스·Rules 조회에 필요)
   const attendanceDocRef = Collections.attendance(classId, date);
-  await setDoc(attendanceDocRef, { academy_id: academyId }, { merge: true });
+  await attendanceDocRef.set({ academy_id: academyId }, { merge: true });
 
   // 2) records 서브컬렉션의 studentUid 문서에 상태 저장
-  //    reason 필드는 건드리지 않음 — merge:true + status만 지정해야 기존 사유 보존
-  const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
-  await setDoc(recordRef, { status }, { merge: true });
+  //    reason은 명시적으로 넘어왔을 때만 payload에 포함 — undefined면 기존 reason 보존
+  //    reason을 새로 쓴 경우엔 reason_source 필드를 제거 — 선생님 입력은 알림 트리거 X
+  const recordRef = Collections.attendanceRecords(classId, date).doc(studentUid);
+  const payload: Record<string, unknown> = { status };
+  if (reason !== undefined) {
+    payload.reason = reason;
+    payload.reason_source = firestore.FieldValue.delete();
+  }
+  await recordRef.set(payload, { merge: true });
 }
 
 /**
@@ -59,8 +60,7 @@ export function subscribeAttendanceRecords(
 ): () => void {
   const recordsRef = Collections.attendanceRecords(classId, date);
 
-  const unsubscribe = onSnapshot(
-    recordsRef,
+  const unsubscribe = recordsRef.onSnapshot(
     (snapshot) => {
       // snapshot → { studentUid: AttendanceRecord } 맵으로 변환
       const records: Record<string, AttendanceRecord> = {};
@@ -109,8 +109,12 @@ export async function getMonthlyAttendance(
       const docId = `${classId}_${date}`;
 
       // 학생은 자신의 records 문서 직접 읽기 권한 있음
-      const recordRef = doc(db, 'attendances', docId, 'records', studentUid);
-      const recordSnap = await getDoc(recordRef);
+      const recordRef = firestore()
+        .collection('attendances')
+        .doc(docId)
+        .collection('records')
+        .doc(studentUid);
+      const recordSnap = await recordRef.get();
 
       if (recordSnap.exists()) {
         result[date] = recordSnap.data() as AttendanceRecord;
@@ -122,17 +126,28 @@ export async function getMonthlyAttendance(
 }
 
 /**
- * 선생님이 출결 상태와 함께 사유를 저장한다.
- * setAttendanceRecord와 달리 reason 필드를 명시적으로 덮어쓴다.
+ * 선생님이 사유만 단독으로 저장한다 (status는 건드리지 않음).
+ * setDoc + merge로 record 문서가 없을 때도 안전하게 생성·갱신.
+ * - academyId가 주어지면 부모 문서에 academy_id 보장 (인덱스·Rules 조회 필수).
+ *   admin/teacher 화면에서 academyId를 함께 넘기길 권장.
  */
 export async function updateAttendanceReason(
   classId: string,
   date: string,
   studentUid: string,
-  reason: string | null
+  reason: string | null,
+  academyId?: string
 ): Promise<void> {
-  const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
-  await updateDoc(recordRef, { reason });
+  if (academyId) {
+    const attendanceDocRef = Collections.attendance(classId, date);
+    await attendanceDocRef.set({ academy_id: academyId }, { merge: true });
+  }
+  // 선생님/어드민 단독 사유 저장 — reason_source 필드 제거해서 알림 트리거 회피
+  const recordRef = Collections.attendanceRecords(classId, date).doc(studentUid);
+  await recordRef.set(
+    { reason, reason_source: firestore.FieldValue.delete() },
+    { merge: true }
+  );
 }
 
 /**
@@ -149,17 +164,27 @@ export async function sendAbsenceReason(
   classId: string,
   date: string,
   studentUid: string,
-  reason: string
+  reason: string,
+  // academyId가 주어지면 부모 문서 academy_id 보장 (admin 통계 쿼리 누락 방지)
+  academyId?: string
 ): Promise<void> {
-  const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
-  const snap = await getDoc(recordRef);
+  if (academyId) {
+    await Collections.attendance(classId, date).set(
+      { academy_id: academyId },
+      { merge: true }
+    );
+  }
 
+  const recordRef = Collections.attendanceRecords(classId, date).doc(studentUid);
+  const snap = await recordRef.get();
+
+  // reason_source: 'parent' 표식 — 트리거가 학부모 입력만 알림 발송하도록 식별
   if (snap.exists()) {
     // 기존 문서가 있으면 reason만 업데이트 — 선생님이 입력한 status는 건드리지 않음
-    await updateDoc(recordRef, { reason });
+    await recordRef.set({ reason, reason_source: 'parent' }, { merge: true });
   } else {
     // 기존 문서 없으면 결석 상태로 신규 생성 — 학부모 사전 등록
-    await setDoc(recordRef, { status: 'absent', reason });
+    await recordRef.set({ status: 'absent', reason, reason_source: 'parent' }, { merge: true });
   }
 }
 
@@ -179,11 +204,20 @@ export async function registerParentRecord(
   date: string,
   studentUid: string,
   status: 'absent' | 'late',
-  reason: string
+  reason: string,
+  // academyId가 주어지면 부모 문서 academy_id 보장 (admin 통계 쿼리 누락 방지)
+  academyId?: string
 ): Promise<void> {
-  const recordRef = doc(Collections.attendanceRecords(classId, date), studentUid);
-  // merge: true — 기존 문서가 있으면 status·reason 두 필드만 덮어씀
-  await setDoc(recordRef, { status, reason }, { merge: true });
+  if (academyId) {
+    await Collections.attendance(classId, date).set(
+      { academy_id: academyId },
+      { merge: true }
+    );
+  }
+  const recordRef = Collections.attendanceRecords(classId, date).doc(studentUid);
+  // merge: true — 기존 문서가 있으면 status·reason·source 세 필드만 덮어씀
+  // reason_source: 'parent' 표식 — 트리거가 학부모 입력만 알림 발송하도록 식별
+  await recordRef.set({ status, reason, reason_source: 'parent' }, { merge: true });
 }
 
 /**
@@ -206,7 +240,7 @@ export async function getAbsentCountToday(
   await Promise.all(
     targetClassIds.map(async (classId) => {
       const recordsRef = Collections.attendanceRecords(classId, todayStr);
-      const snapshot = await getDocs(recordsRef);
+      const snapshot = await recordsRef.get();
 
       snapshot.forEach((docSnap) => {
         const record = docSnap.data() as AttendanceRecord;
@@ -255,7 +289,7 @@ export async function getClassMonthlyDataForExport(
 
       // attendances/{classId}_{date}/records 서브컬렉션 전체 조회
       const recordsRef = Collections.attendanceRecords(classId, date);
-      const snapshot = await getDocs(recordsRef);
+      const snapshot = await recordsRef.get();
 
       if (!snapshot.empty) {
         // 해당 날짜에 출결 데이터가 있는 경우에만 결과에 포함
@@ -270,4 +304,57 @@ export async function getClassMonthlyDataForExport(
   );
 
   return result;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 엑셀 출결 — 월간 학생 목록 조회 (재원자 + 해당 월에 걸친 퇴원자 포함)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 엑셀 내보내기 대상 학생 목록을 조회한다 (앱 전용 — RN Firebase).
+ *
+ * 포함 기준:
+ * - 재원자(is_active: true): 항상 포함
+ * - 퇴원자(is_active: false + withdrawal_date 있음):
+ *   해당 월(year, month)이 enrollment_date ~ withdrawal_date 범위에 걸친 경우만 포함
+ *
+ * 제외 기준:
+ * - 탈퇴 처리된 계정(deleted_at != null)
+ *
+ * @param academyId    학원 ID
+ * @param classId      반 ID — 퇴원 시 class_id가 유지되므로 같은 쿼리로 잡힘
+ * @param year         기준 연도 (예: 2026)
+ * @param month        기준 월 (1~12)
+ */
+export async function fetchStudentsForExport(
+  academyId: string,
+  classId: string,
+  year: number,
+  month: number,
+): Promise<User[]> {
+  // is_active 필터를 빼고 같은 반 전체를 가져온 뒤 클라이언트에서 월 범위로 거른다
+  const snap = await Collections.users()
+    .where('academy_id', '==', academyId)
+    .where('role', '==', 'student')
+    .where('class_id', '==', classId)
+    .get();
+
+  // 기준 월의 첫 날·마지막 날(00:00 기준)
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+  return snap.docs
+    .map((d) => ({ uid: d.id, ...d.data() } as User))
+    .filter((s) => !s.deleted_at)
+    .filter((s) => {
+      if (s.is_active) return true;
+      // 퇴원자: withdrawal_date 없으면 제외 (데이터 이상)
+      if (!s.withdrawal_date) return false;
+      const withdrawal = s.withdrawal_date.toDate();
+      // 월 시작 이전에 이미 퇴원했으면 제외
+      if (withdrawal < monthStart) return false;
+      // enrollment_date가 월 끝 이후면 제외 (해당 월에 아직 입원 안 함)
+      if (s.enrollment_date && s.enrollment_date.toDate() > monthEnd) return false;
+      return true;
+    });
 }

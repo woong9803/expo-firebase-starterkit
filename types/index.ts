@@ -1,4 +1,7 @@
-import { Timestamp } from 'firebase/firestore';
+import type { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+
+// RN Firebase 의 Timestamp 별칭 — 기존 코드 호환을 위해 유지
+export type Timestamp = FirebaseFirestoreTypes.Timestamp;
 
 export type UserRole = 'admin' | 'teacher' | 'student' | 'parent';
 export type AcademyPlan = 'free' | 'starter' | 'standard' | 'pro' | 'trial';
@@ -18,8 +21,14 @@ export interface User {
   is_active: boolean;
   birth_date: string | null;      // 법정 출석부 대응 (YYYY-MM-DD)
   school_name: string | null;    // 학생 전용 — 재학 중인 학교명
+  address: string | null;        // 수강생 관리 대장 대응 — 거주지 주소 (모든 역할 공통, 회원가입 시 입력)
+  tuition_fee: number | null;    // 학생 전용 — 월 수강료 (원 단위). 비어있으면 반 default_tuition_fee 사용
   guardian_phone: string | null;  // 법정 출석부 대응
+  // ── PIPA 제22조: 만 14세 미만 학생 가입 시 법정대리인 동의 기록 (학생 전용) ──
+  guardian_consent_at: Timestamp | null;  // 동의 시각 — 14세 이상이거나 미수집 시 null
+  guardian_consent_by: string | null;     // 동의를 확인한 사용자 uid (학부모/선생님) — 미수집 시 null
   enrollment_date: Timestamp | null; // 법정 출석부 대응
+  withdrawal_date?: Timestamp | null; // 학생 전용 — 퇴원 처리 시점 자동 기록, 재원 복구 시 null
   phone_number: string;
   phone_verified: boolean;
   fcm_token?: string;               // Expo Push 토큰 (필드명은 호환 유지) — 없으면 알림 발송 안 함
@@ -64,8 +73,12 @@ export interface Class {
   academy_id: string;
   invite_code: string; // 6자리 영숫자
   subject?: string;        // 교습과목 (예: 수학, 영어) — 법정 출석부 '교습과목 및 수강반' 컬럼에 사용
+  default_tuition_fee?: number | null; // 반 기본 수강료 (원). 학생 배정·이동 시 학생 tuition_fee가 비어있으면 자동 채움
   student_count?: number;  // 캐시된 학생 수 (Firestore 저장 시 업데이트)
   present_count?: number;  // 오늘 출석 수 (실시간 계산, 선택적)
+  // pending 학원 반 1개 제한 트리거(enforceClassLimitForPending)가 동시에 만들어진 두 문서의
+  // 우선순위를 결정하는 데 사용 — 가장 오래된 1개를 살리고 나머지를 삭제
+  created_at: Timestamp;
   // ★ head_teacher_id 제거 — 담당반은 users/{uid}.assigned_class_ids[] 로 관리
 }
 
@@ -76,6 +89,9 @@ export interface Homework {
   class_id: string;
   due_date: Timestamp;
   created_by: string; // 선생님 uid
+  // 멱등성 마커 — onHomeworkCreated 트리거가 1회만 발송하도록 사용
+  // Eventarc at-least-once 정책으로 인한 중복 호출 방지용
+  notification_sent?: boolean;
 }
 
 // homeworks/{homeworkId}/submissions/{studentUid}
@@ -87,14 +103,23 @@ export interface Submission {
   feedback_comment?: string;             // 💧 선택 시 선생님이 남기는 텍스트 코멘트
   submitted_at: Timestamp;
   is_retry?: boolean;                    // 다시풀기 후 재제출 여부 — 학생이 💧 받고 재제출하면 true, 새 검사 전까지 유지
+  // 멱등성 마커 — onHomeworkFeedback 트리거가 같은 피드백 값으로 재발송하지 않도록 사용
+  feedback_notified_for?: '👍' | '💧' | null;
+  // 멱등성 마커 — onSubmissionCreated 트리거의 streak 갱신이 1회만 적용되도록 사용
+  streak_processed?: boolean;
 }
 
 // attendances/{classId_date}/records/{studentUid}
-export type AttendanceStatus = 'present' | 'late' | 'absent' | 'onLeave';
+export type AttendanceStatus = 'present' | 'late' | 'absent';
 
 export interface AttendanceRecord {
   status: AttendanceStatus;
-  reason: string | null; // 학부모가 입력한 결석 사유
+  reason: string | null; // 학부모/선생님이 입력한 결석 사유
+  // 사유를 누가 입력했는지 — 'parent' 일 때만 트리거가 선생님·어드민에게 알림 발송
+  // 선생님·어드민이 직접 입력한 경우엔 미지정(undefined) → 알림 발송 X
+  reason_source?: 'parent';
+  // 멱등성 마커 — onAttendanceReasonChanged 트리거가 같은 사유 값으로 재발송하지 않도록 사용
+  reason_notified_for?: string | null;
 }
 
 // 공지 첨부파일 — 이미지·일반 파일 공통 메타
@@ -118,6 +143,12 @@ export interface Notice {
   attachments?: NoticeAttachment[]; // 첨부파일 목록 (없으면 빈 배열 또는 미저장)
   created_at: Timestamp;
   created_by: string;           // 작성자 uid
+  // 멱등성 마커 — onNoticeCreated 트리거가 1회만 발송하도록 사용
+  // Eventarc at-least-once 정책으로 인한 중복 호출 방지용
+  notification_sent?: boolean;
+  // 미확인자 재알림(resendNoticeToUnread) 쿨다운 추적
+  last_resent_at?: Timestamp;
+  last_resent_count?: number;
 }
 
 // Notification은 브라우저 내장 타입과 충돌 — AppNotification으로 명명
@@ -155,6 +186,7 @@ export interface Payment {
   plan_months: number;        // 결제 개월 수 (기본 1개월)
   status: 'success' | 'canceled';
   paid_at: Timestamp;
+  receipt_url?: string;       // 토스페이먼츠 영수증 URL (verifyTossPayment에서 채워주면 노출)
 }
 
 // videos/{videoId} — 선생님이 반에 등록한 YouTube 영상

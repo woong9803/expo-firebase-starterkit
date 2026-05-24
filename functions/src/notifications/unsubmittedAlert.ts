@@ -39,6 +39,9 @@ export const sendUnsubmittedAlert = onSchedule(
     // 발송 완료 후 멱등성 필드를 업데이트할 숙제 문서 목록
     const docsToMark: admin.firestore.DocumentReference[] = [];
 
+    // 학원별 standard/pro 플랜 허용 여부 캐시 — 같은 학원에 여러 숙제가 있을 때 N+1 방지
+    const planAllowedCache = new Map<string, boolean>();
+
     for (const hwDoc of hwSnap.docs) {
       const hw = hwDoc.data();
 
@@ -48,6 +51,11 @@ export const sendUnsubmittedAlert = onSchedule(
       const classId: string = hw.class_id;
       const academyId = await getAcademyIdByClass(db, classId);
       if (!academyId) continue;
+
+      // 미제출 자동 알림은 PRD 685 줄 기준 standard/pro 전용
+      // → trial·starter·free 학원의 숙제는 알림 발송 건너뜀 (Rules 우회 시 방어 심화)
+      const planAllowed = await isStandardOrProAllowed(db, academyId, planAllowedCache);
+      if (!planAllowed) continue;
 
       // 해당 반 학생 목록 조회
       const studentsSnap = await db
@@ -70,9 +78,10 @@ export const sendUnsubmittedAlert = onSchedule(
         if (submittedUids.has(studentDoc.id)) continue;
         const student = studentDoc.data();
 
-        // 해당 학생의 학부모 조회
+        // 해당 학생의 학부모 조회 — academy_id 격리로 멀티 학원 자녀 누수 방지
         const parentsSnap = await db
           .collection('users')
+          .where('academy_id', '==', academyId)
           .where('role', '==', 'parent')
           .where('children', 'array-contains', studentDoc.id)
           .get();
@@ -119,4 +128,33 @@ async function getAcademyIdByClass(
 ): Promise<string | null> {
   const classDoc = await db.collection('classes').doc(classId).get();
   return classDoc.exists ? (classDoc.data()?.academy_id as string) : null;
+}
+
+/**
+ * 학원이 미제출 자동 알림 기능을 사용할 수 있는 플랜인지 확인 (standard/pro 만 허용).
+ *
+ * - PRD 685 줄: 미제출 자동 알림은 standard 이상 전용
+ * - 만료 체크: plan_expires_at 가 미래여야 통과
+ * - 캐시: 같은 학원의 여러 숙제 처리 시 academies 문서 중복 조회 방지
+ */
+async function isStandardOrProAllowed(
+  db: admin.firestore.Firestore,
+  academyId: string,
+  cache: Map<string, boolean>
+): Promise<boolean> {
+  if (cache.has(academyId)) return cache.get(academyId)!;
+
+  const snap = await db.collection('academies').doc(academyId).get();
+  if (!snap.exists) {
+    cache.set(academyId, false);
+    return false;
+  }
+  const data = snap.data() ?? {};
+  const plan = data.plan;
+  const expiresAt = data.plan_expires_at as admin.firestore.Timestamp | undefined;
+  const notExpired = !expiresAt || expiresAt.toMillis() > Date.now();
+  const allowed = (plan === 'standard' || plan === 'pro') && notExpired;
+
+  cache.set(academyId, allowed);
+  return allowed;
 }

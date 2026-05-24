@@ -135,6 +135,27 @@ export const strings = {
     teacherDesc: '수업을 담당하고 학생을 관리해요',
     studentDesc: '숙제를 제출하고 출결을 확인해요',
     parentDesc: '자녀의 학습 현황을 확인해요',
+    // 학생 가입 시 생년월일·학교 입력 라벨/힌트
+    studentSchoolLabel: '학교',
+    studentSchoolPlaceholder: '예: OO중학교',
+    studentSchoolHint: '출석부 및 학원 관리에 사용돼요.',
+    studentBirthDateLabel: '생년월일',
+    studentBirthDatePlaceholder: 'YYYY-MM-DD (예: 2015-03-15)',
+    studentBirthDateHint: '본인 확인과 보호자 동의 정책에 사용돼요. (개인정보보호법 제22조)',
+    birthDateRequired: '생년월일을 입력해주세요',
+    birthDateInvalid: '올바른 생년월일 형식이 아니에요 (예: 2015-03-15)',
+    // 만 14세 미만 안내 화면 (개인정보보호법 제22조 — 법정대리인 동의 필요)
+    guardianRequired: {
+      title: '보호자 동의가 필요해요',
+      subtitle: '개인정보보호법에 따라 만 14세 미만 학생은\n보호자(법정대리인)의 동의를 받아야 가입할 수 있어요.',
+      step1Title: '방법 1. 학부모님께 부탁드려요',
+      step1Body: '학부모님이 먼저 앱에 가입한 뒤,\n자녀 연동코드를 통해 학생 계정을 만들 수 있어요.',
+      step2Title: '방법 2. 학원에 문의해주세요',
+      step2Body: '원장님이나 선생님이 직접 학생 계정을\n등록해드릴 수 있어요.',
+      parentJoinBtn: '학부모로 가입하기',
+      inquiryBtn: '학원에 문의하기',
+      backBtn: '이전으로',
+    },
   },
   // 숙제
   homework: {
@@ -159,7 +180,6 @@ export const strings = {
     present: '출석',
     late: '지각',
     absent: '결석',
-    onLeave: '휴원',
     reason: '결석 사유',
     reasonPlaceholder: '결석 사유를 입력해주세요',
     lateReasonPlaceholder: '지각 사유를 입력해주세요',
@@ -178,7 +198,6 @@ export const strings = {
       present: '출석',
       late: '지각',
       absent: '결석',
-      onLeave: '휴원',
     },
     // 출결 저장 실패 오류 메시지
     errorSaveFailed: '출결 저장에 실패했어요. 다시 시도해주세요.',
@@ -190,7 +209,7 @@ export const strings = {
     selectClass: '반을 선택하세요',
     // 월간 캘린더 전용
     calendar: {
-      dayHeaders: ['월', '화', '수', '목', '금', '토', '일'],
+      dayHeaders: ['일', '월', '화', '수', '목', '금', '토'],
       legendPresent: '출석',
       legendLate: '지각',
       legendAbsent: '결석',
@@ -272,6 +291,8 @@ export const strings = {
   export: {
     // ── UI 문자열 ──────────────────────────────────
     title: '출결 내보내기',
+    // 엑셀 파일 내부 제목 행에 표시되는 텍스트 (화면 제목과 분리)
+    excelTitle: '출석부',
     selectClass: '반을 선택해주세요',
     selectMonth: '월을 선택해주세요',
     exportButton: '엑셀 파일 내보내기',
@@ -291,6 +312,8 @@ export const strings = {
     colLateTotal: '지각합계',
     colAbsentTotal: '결석합계',
     colAttendRate: '출석률',
+    // 퇴원자 셀 — 퇴원일 컬럼에 표시되는 텍스트 (출결 기호 대신)
+    withdrawalCell: '퇴원',
   },
   // 오류 메시지
   errors: {
@@ -300,6 +323,15 @@ export const strings = {
     invalidCode: '올바르지 않은 코드예요',
     uploadFailed: '업로드에 실패했어요. 다시 시도해주세요',
     permissionDenied: '권한이 없어요',
+  },
+  // 학생 계정 만들기 (teacher/admin)
+  createStudent: {
+    // 만 14세 미만 보호자 동의 체크박스 (PIPA 제22조)
+    guardianConsentTitle: '보호자(법정대리인) 동의 확인',
+    guardianConsentDesc: '입력하신 생년월일 기준 만 14세 미만 학생이에요.\n개인정보보호법에 따라 학부모님께 동의를 받으셨는지 확인해주세요.',
+    guardianConsentLabel: '보호자 동의를 받았어요',
+    guardianConsentRequired: '만 14세 미만 학생은 보호자 동의 체크가 필요해요.',
+    birthDateInvalid: '올바른 생년월일 형식이 아니에요 (예: 2015-03-15)',
   },
   // 개인정보처리방침 (Phase 12)
   privacy: {
@@ -336,6 +368,15 @@ export const strings = {
     deleteButton: '탈퇴',
     deleteSuccess: '탈퇴가 완료됐어요.',
     deleteFailed: '탈퇴 처리 중 오류가 발생했어요. 다시 시도해주세요.',
+    // PIPA 삭제권 — 30일 대기 vs 즉시 완전 삭제 선택
+    deleteOptionTitle: '탈퇴 방법을 선택해주세요',
+    deleteOptionMessage: '탈퇴 후 개인정보 처리 방식을 선택할 수 있어요.',
+    deleteOptionStandard: '30일 후 삭제 (복구 가능)',
+    deleteOptionImmediate: '지금 즉시 완전 삭제',
+    deleteImmediateConfirmTitle: '정말 즉시 삭제할까요?',
+    deleteImmediateConfirmMessage: '삭제 후에는 복구할 수 없어요.\n학습 기록·계정 정보·업로드 사진이 모두 사라져요.',
+    deleteImmediateButton: '즉시 삭제',
+    deleteImmediateSuccess: '계정과 모든 데이터가 완전히 삭제됐어요.',
     inquiryTitle: '문의하기',
     inquiryEmail: 'support@woongking.kr',
     inquirySubject: '[웅깅] 문의합니다',

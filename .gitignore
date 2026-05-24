@@ -36,6 +36,9 @@ yarn-error.*
 # Cloud Functions 시크릿 (운영 배포 시 Secret Manager 사용)
 functions/.env
 
+# Firebase Admin SDK 시크릿 (시드 스크립트용 — 절대 커밋 금지)
+scripts/serviceAccount.json
+
 # typescript
 *.tsbuildinfo
 

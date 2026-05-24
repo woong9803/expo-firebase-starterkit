@@ -287,7 +287,7 @@ export default function TeacherAttendanceScreen() {
         }));
 
       if (alertTargets.length > 0) {
-        const fn = fbFunctions.app().functions('us-central1').httpsCallable('sendAttendanceAlertPush');
+        const fn = fbFunctions.app().functions('asia-northeast3').httpsCallable('sendAttendanceAlertPush');
         fn({ academyId: user.academy_id, records: alertTargets }).catch((e) =>
           console.error('[TeacherAttendance] 출결 알림 발송 실패:', e)
         );

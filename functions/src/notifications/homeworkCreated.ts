@@ -30,6 +30,22 @@ export const onHomeworkCreated = onDocumentCreated(
 
     const db = admin.firestore();
 
+    // ── 멱등성 가드 (Eventarc at-least-once 정책으로 인한 중복 호출 방지) ──
+    // 같은 homeworkId 이벤트가 2회 이상 트리거돼도 알림은 1회만 발송되도록
+    // notification_sent 플래그를 트랜잭션으로 선점한다.
+    const hwRef = db.collection('homeworks').doc(homeworkId);
+    const shouldProcess = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(hwRef);
+      if (!snap.exists) return false;
+      if (snap.data()?.notification_sent === true) return false;
+      tx.update(hwRef, { notification_sent: true });
+      return true;
+    });
+    if (!shouldProcess) {
+      logger.info('[homeworkCreated] 중복 호출 — 알림 발송 건너뜀', { homeworkId });
+      return;
+    }
+
     // ─── 1) 반(class) 문서 조회 — academy_id + 반 이름 획득 ───────────────
     const classSnap = await db.collection('classes').doc(classId).get();
     if (!classSnap.exists) {
@@ -91,6 +107,10 @@ export const onHomeworkCreated = onDocumentCreated(
     // 학부모용 딥링크 — 학부모 숙제 탭
     const parentDeepLink = '/(app)/(parent)/(tabs)/homework';
 
+    // 동일 학부모가 같은 반에 자녀 2명 이상인 경우 같은 알림이 자녀 수만큼 중복 발송되는 문제 방지
+    // — `attendanceReasonAlert` 의 수신자 중복 제거 패턴과 동일하게 학부모 uid Set 으로 1회만 push
+    const notifiedParentUids = new Set<string>();
+
     for (const sDoc of studentsSnap.docs) {
       const student = sDoc.data();
       // 학생 알림 OFF 설정 시 건너뜀 (homework 카테고리 또는 전체 OFF)
@@ -106,10 +126,12 @@ export const onHomeworkCreated = onDocumentCreated(
         deepLink: studentDeepLink,
       });
 
-      // 그 학생의 학부모들도 알림
+      // 그 학생의 학부모들도 알림 — 동일 학부모는 1회만
       const parents = parentsByStudent.get(sDoc.id) ?? [];
       for (const parent of parents) {
         if (parent.notif_prefs?.homework === false) continue;
+        if (notifiedParentUids.has(parent.uid)) continue; // 이미 push 한 학부모 skip
+        notifiedParentUids.add(parent.uid);
         batch.push({
           academyId,
           targetUid: parent.uid,

@@ -18,7 +18,7 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getDoc, getDocs, query, where } from 'firebase/firestore';
+import firestore, { documentId } from '@react-native-firebase/firestore';
 
 import { useAuthStore } from '../../../store/useAuthStore';
 import { Collections } from '../../../lib/firestore';
@@ -55,7 +55,7 @@ export default function ChildrenSwitchScreen() {
       try {
         // 자녀 User 문서 일괄 조회
         const snaps = await Promise.all(
-          user.children.map((uid) => getDoc(Collections.user(uid)))
+          user.children.map((uid) => Collections.user(uid).get())
         );
         const loaded = snaps
           .filter((snap) => snap.exists() && !snap.data()?.deleted_at)  // 탈퇴 자녀 제외
@@ -67,9 +67,9 @@ export default function ChildrenSwitchScreen() {
 
         if (classIds.length > 0) {
           // class_id 배열로 한 번에 조회 (최대 10개 — Firestore 'in' 제한)
-          const classSnaps = await getDocs(
-            query(Collections.classes(), where('__name__', 'in', classIds.slice(0, 10)))
-          );
+          const classSnaps = await Collections.classes()
+            .where(documentId(), 'in', classIds.slice(0, 10))
+            .get();
           classSnaps.forEach((d) => {
             classMap[d.id] = (d.data() as Class).name;
           });
@@ -115,7 +115,7 @@ export default function ChildrenSwitchScreen() {
       {/* ── 로딩 ── */}
       {isLoading && (
         <View style={styles.centerBox}>
-          <ActivityIndicator color="#F59E0B" size="large" />
+          <ActivityIndicator color="#B45309" size="large" />
         </View>
       )}
 
@@ -230,9 +230,9 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: '#FEF3E2',
     borderWidth: 1.5,
-    borderColor: '#FDE68A',
+    borderColor: '#E8B07A',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#F59E0B',
+    color: '#B45309',
   },
   childInfo: {
     flex: 1,

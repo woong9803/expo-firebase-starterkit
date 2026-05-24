@@ -46,7 +46,6 @@ paths:
 | 출석 | `present` | `status: 'present'` |
 | 지각 | `late` | `status: 'late'` |
 | 결석 | `absent` | `status: 'absent'` |
-| 휴원 | `onLeave` | `status: 'onLeave'` — 엑셀 출력 시 `-` |
 | 결석 사유 | `reason` | 학부모가 앱에서 입력. `attendances.records.reason` |
 | 명렬표 | `rosterTable` | 선생님 화면의 실시간 출결 입력 UI |
 

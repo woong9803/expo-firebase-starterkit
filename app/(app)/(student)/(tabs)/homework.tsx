@@ -25,7 +25,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Collections } from '../../../../lib/firestore';
@@ -114,20 +113,20 @@ export default function StudentHomeworkScreen() {
       return;
     }
 
-    const q = query(
-      Collections.homeworks(),
-      where('class_id', '==', user.class_id),
-      orderBy('due_date', 'asc'),
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const hws = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
-      setHomeworks(hws);
-      setIsLoading(false);
-    }, (e) => {
-      console.error('[StudentHomework] 숙제 구독 실패:', e);
-      setIsLoading(false);
-    });
+    const unsub = Collections.homeworks()
+      .where('class_id', '==', user.class_id)
+      .orderBy('due_date', 'asc')
+      .onSnapshot(
+        (snap) => {
+          const hws = snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
+          setHomeworks(hws);
+          setIsLoading(false);
+        },
+        (e) => {
+          console.error('[StudentHomework] 숙제 구독 실패:', e);
+          setIsLoading(false);
+        }
+      );
 
     return () => unsub();
   }, [user?.class_id, user?.uid]);
@@ -138,8 +137,7 @@ export default function StudentHomeworkScreen() {
     if (!user?.uid || homeworks.length === 0) return;
 
     const unsubs = homeworks.map((hw) =>
-      onSnapshot(
-        Collections.submission(hw.id, user.uid),
+      Collections.submission(hw.id, user.uid).onSnapshot(
         (snap) => {
           const sub = snap.exists() ? (snap.data() as Submission) : null;
           setSubmissionMap(prev => ({ ...prev, [hw.id]: sub }));

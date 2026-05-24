@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function TabIcon({
   name,
@@ -11,20 +12,31 @@ function TabIcon({
 }) {
   return (
     <View style={styles.iconWrapper}>
-      <Ionicons name={name} size={22} color={focused ? '#F59E0B' : '#CBD5E1'} />
+      <Ionicons name={name} size={22} color={focused ? '#B45309' : '#CBD5E1'} />
       {focused && <View style={styles.activeDot} />}
     </View>
   );
 }
 
 export default function ParentTabLayout() {
+  // 안드로이드 시스템 네비/아이폰 홈 인디케이터 영역만큼 탭바를 늘려 가림 방지
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            // ui-screens.md 규칙: 탭바 본체 60 + 안전영역(홈 인디케이터/시스템 네비)
+            // paddingBottom 은 안전영역만큼만 — 라벨 아래 여백은 6 으로 압축
+            height: 60 + insets.bottom,
+            paddingBottom: 6 + insets.bottom,
+          },
+        ],
         tabBarLabelStyle: styles.tabLabel,
-        tabBarActiveTintColor: '#F59E0B',
+        tabBarActiveTintColor: '#B45309',
         tabBarInactiveTintColor: '#CBD5E1',
       }}
     >
@@ -82,11 +94,9 @@ export default function ParentTabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    height: 72,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
-    paddingBottom: 12,
     paddingTop: 8,
   },
   tabLabel: {
@@ -102,6 +112,6 @@ const styles = StyleSheet.create({
     width: 3,
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#B45309',
   },
 });

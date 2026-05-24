@@ -5,8 +5,7 @@
  * 업로드 실패 시 최대 3회 재시도.
  */
 
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from './firebase';
+import storage from '@react-native-firebase/storage';
 
 // 최대 재시도 횟수
 const MAX_RETRIES = 3;
@@ -46,16 +45,12 @@ const uploadWithRetry = async (uri: string, path: string): Promise<string> => {
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      // URI를 Blob으로 변환
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      // Storage 업로드
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+      // RN Firebase Storage — 로컬 file:// URI 직접 업로드 가능 (Blob 변환 불필요)
+      const storageRef = storage().ref(path);
+      await storageRef.putFile(uri, { contentType: 'image/jpeg' });
 
       // 다운로드 URL 반환
-      return await getDownloadURL(storageRef);
+      return await storageRef.getDownloadURL();
     } catch (e) {
       lastError = e;
       console.warn(`[Storage] 업로드 실패 (${attempt}/${MAX_RETRIES}회):`, e);

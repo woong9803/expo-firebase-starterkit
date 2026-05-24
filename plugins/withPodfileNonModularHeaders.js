@@ -11,12 +11,12 @@ const path = require('path');
 const MARKER = '# >>> CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES patch >>>';
 
 const PATCH = `${MARKER}
-    # RNFB* 타겟에만 적용 — React-Core 같은 다른 타겟에 적용하면 prefix header 처리가 깨짐
+    # 모든 pods 타겟에 적용 — RNFBMessaging 이 React-Core 헤더를 modular 모드로 import 시
+    # RCT_EXPORT_METHOD / RCTPromiseRejectBlock / RCT_EXTERN 매크로 인식 실패하는 문제 해결
+    # (RNFB* 타겟에만 적용 시 React-Core 자체 modular 빌드와 충돌)
     installer.pods_project.targets.each do |target|
-      if target.name.start_with?('RNFB')
-        target.build_configurations.each do |config|
-          config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-        end
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
       end
     end
     # <<< CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES patch <<<`;

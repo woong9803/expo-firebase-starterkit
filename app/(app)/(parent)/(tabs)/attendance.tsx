@@ -4,8 +4,7 @@ import {
   Modal, TouchableWithoutFeedback, StyleSheet, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getDoc, doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../../../lib/firebase';
+import firestore from '@react-native-firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
 import { getMonthlyAttendance, registerParentRecord } from '../../../../lib/attendance';
 import { useAuthStore } from '../../../../store/useAuthStore';
@@ -23,10 +22,10 @@ import type { User, AttendanceRecord, AttendanceStatus } from '../../../../types
 // 결석 사유 선택지
 const REASONS = strings.attendance.absenceReasons;
 
-// 학부모가 선택 가능한 출결 상태 (present·onLeave 는 제외)
+// 학부모가 선택 가능한 출결 상태 (present 는 제외)
 const SELECTABLE_STATUSES: { value: 'absent' | 'late'; label: string; color: string; bg: string }[] = [
   { value: 'absent', label: strings.attendance.absent,  color: '#991B1B', bg: '#FEF2F2' },
-  { value: 'late',   label: strings.attendance.late,    color: '#78350F', bg: '#FFFBEB' },
+  { value: 'late',   label: strings.attendance.late,    color: '#78350F', bg: '#FEF3E2' },
 ];
 
 // 최근 기록 날짜 표시: 'YYYY-MM-DD' → 'M/D 요일'
@@ -47,18 +46,16 @@ function getStatusDisplay(record: AttendanceRecord): { text: string; color: stri
   const reason = record.reason ? ` (${record.reason})` : '';
   switch (record.status) {
     case 'present': return { text: '○ 출석',          color: '#10B981' };
-    case 'late':    return { text: `△ 지각${reason}`, color: '#F59E0B' };
+    case 'late':    return { text: `△ 지각${reason}`, color: '#B45309' };
     case 'absent':  return { text: `✕ 결석${reason}`, color: '#EF4444' };
-    case 'onLeave': return { text: '- 휴원',           color: '#94A3B8' };
   }
 }
 
 // 출결 상태 뱃지 색상 (모달 상단 현재 상태 표시용)
 const STATUS_BADGE: Record<AttendanceStatus, { label: string; bg: string; text: string }> = {
   present: { label: strings.attendance.present, bg: '#ECFDF5', text: '#065F46' },
-  late:    { label: strings.attendance.late,    bg: '#FFFBEB', text: '#78350F' },
+  late:    { label: strings.attendance.late,    bg: '#FEF3E2', text: '#78350F' },
   absent:  { label: strings.attendance.absent,  bg: '#FEF2F2', text: '#991B1B' },
-  onLeave: { label: strings.attendance.onLeave, bg: '#F1F5F9', text: '#64748B' },
 };
 
 // 이달 요약 4칸 아이템 컴포넌트
@@ -114,7 +111,7 @@ export default function ParentAttendanceScreen() {
     (async () => {
       try {
         const snaps = await Promise.all(
-          user.children.map((uid) => getDoc(Collections.user(uid)))
+          user.children.map((uid) => Collections.user(uid).get())
         );
         const loaded = snaps
           .filter((s) => s.exists())
@@ -190,15 +187,13 @@ export default function ParentAttendanceScreen() {
       const dateStr   = `${yearMonth}-${String(day).padStart(2, '0')}`;
       subscribedDatesRef.current.add(dateStr);
 
-      const recordRef = doc(
-        db,
-        'attendances',
-        `${selectedChild.class_id}_${dateStr}`,
-        'records',
-        selectedChild.uid,
-      );
+      const recordRef = firestore()
+        .collection('attendances')
+        .doc(`${selectedChild.class_id}_${dateStr}`)
+        .collection('records')
+        .doc(selectedChild.uid);
 
-      dateUnsubsRef.current[dateStr] = onSnapshot(recordRef, (snap) => {
+      dateUnsubsRef.current[dateStr] = recordRef.onSnapshot((snap) => {
         setRecordMap((prev) => {
           if (!snap.exists()) {
             if (!prev[dateStr]) return prev;
@@ -249,10 +244,10 @@ export default function ParentAttendanceScreen() {
   );
 
   // ── 날짜 탭 핸들러 ─────────────────────────────────────────
-  // present·onLeave는 등록 대상 아님 → 모달 열지 않음
+  // present는 등록 대상 아님 → 모달 열지 않음
   function handleDatePress(dateKey: string) {
     const record = recordMap[dateKey];
-    if (record?.status === 'present' || record?.status === 'onLeave') return;
+    if (record?.status === 'present') return;
 
     setModalDate(dateKey);
     // 기존 상태·사유가 있으면 해당 값으로 초기화
@@ -279,6 +274,7 @@ export default function ParentAttendanceScreen() {
         selectedChild.uid,
         selectedStatus,
         selectedReason,
+        user?.academy_id,
       );
       // 로컬 상태 즉시 반영
       setRecordMap((prev) => ({
@@ -295,7 +291,7 @@ export default function ParentAttendanceScreen() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedChild, modalDate, selectedStatus, selectedReason, isSaving]);
+  }, [selectedChild, modalDate, selectedStatus, selectedReason, isSaving, user?.academy_id]);
 
   // ── 자녀 없음 안내 ─────────────────────────────────────────
   if (!isLoadingChildren && children.length === 0) {
@@ -326,7 +322,7 @@ export default function ParentAttendanceScreen() {
 
         {/* ── 자녀 탭 ── */}
         {isLoadingChildren ? (
-          <ActivityIndicator size="small" color="#F59E0B" style={styles.loadingTab} />
+          <ActivityIndicator size="small" color="#B45309" style={styles.loadingTab} />
         ) : (
           <ScrollView
             horizontal
@@ -356,7 +352,7 @@ export default function ParentAttendanceScreen() {
           </Text>
           <View style={styles.summaryRow}>
             <SummaryItem value={summary.present} label={strings.attendance.present} color="#5B50E8" />
-            <SummaryItem value={summary.late}    label={strings.attendance.late}    color="#F59E0B" />
+            <SummaryItem value={summary.late}    label={strings.attendance.late}    color="#B45309" />
             <SummaryItem value={summary.absent}  label={strings.attendance.absent}  color="#EF4444" />
             <SummaryItem
               value={summary.rate !== null ? `${summary.rate}%` : '-'}
@@ -368,7 +364,7 @@ export default function ParentAttendanceScreen() {
         {/* ── 로딩 / 에러 / 반 미소속 안내 ── */}
         {isLoading && (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color="#F59E0B" />
+            <ActivityIndicator size="small" color="#B45309" />
           </View>
         )}
         {!isLoading && loadError && (
@@ -400,7 +396,7 @@ export default function ParentAttendanceScreen() {
               {recentRecords.map(([dateKey, record], idx) => {
                 const { text, color } = getStatusDisplay(record);
                 const isLast = idx === recentRecords.length - 1;
-                const tappable = record.status !== 'present' && record.status !== 'onLeave';
+                const tappable = record.status !== 'present';
                 return (
                   <TouchableOpacity
                     key={dateKey}
@@ -538,7 +534,7 @@ const styles = StyleSheet.create({
   childTabScroll: { marginBottom: 14 },
   childTabRow: { flexDirection: 'row', gap: 8 },
   childTab: { borderRadius: 20, paddingVertical: 6, paddingHorizontal: 16, backgroundColor: '#F1F5F9' },
-  childTabActive: { backgroundColor: '#F59E0B' },
+  childTabActive: { backgroundColor: '#B45309' },
   childTabText: { fontSize: 14, fontWeight: '700', color: '#64748B' },
   childTabTextActive: { color: '#fff' },
 
@@ -620,12 +616,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#E2E8F0', borderRadius: 20,
     paddingVertical: 8, paddingHorizontal: 14, backgroundColor: '#fff',
   },
-  reasonChipSel: { backgroundColor: '#F59E0B', borderColor: '#F59E0B' },
+  reasonChipSel: { backgroundColor: '#B45309', borderColor: '#B45309' },
   reasonChipText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   reasonChipTextSel: { color: '#fff' },
 
   // 안내
-  autoNoticeRow: { backgroundColor: '#FFFBEB', borderRadius: 10, padding: 10 },
+  autoNoticeRow: { backgroundColor: '#FEF3E2', borderRadius: 10, padding: 10 },
   autoNoticeText: { fontSize: 13, color: '#78350F', textAlign: 'center' },
 
   // 버튼
@@ -636,7 +632,7 @@ const styles = StyleSheet.create({
   },
   cancelBtnText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
   saveBtn: {
-    flex: 2, height: 48, backgroundColor: '#F59E0B',
+    flex: 2, height: 48, backgroundColor: '#B45309',
     borderRadius: 12, alignItems: 'center', justifyContent: 'center',
   },
   saveBtnOff: { opacity: 0.4 },

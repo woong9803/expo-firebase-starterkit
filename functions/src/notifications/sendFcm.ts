@@ -11,7 +11,7 @@ export interface SendFcmParams {
   fcmToken: string;                     // Expo Push 토큰 (필드명은 호환 유지)
   title: string;
   body: string;
-  type: 'homework_created' | 'homework_feedback' | 'homework_due' | 'attendance' | 'notice';
+  type: 'homework_created' | 'homework_submitted' | 'homework_feedback' | 'homework_due' | 'attendance' | 'attendance_reason' | 'notice';
   deepLink?: string;                    // 알림 클릭 시 이동할 화면 경로
 }
 

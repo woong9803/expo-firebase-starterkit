@@ -6,9 +6,8 @@
  * - latest_version 미만: 권장 업데이트 (닫기 가능)
  */
 
-import { getDoc, doc } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Platform } from 'react-native';
-import { db } from './firebase';
 
 // Firestore app_config/version 문서 구조
 interface VersionConfig {
@@ -54,7 +53,7 @@ function compareVersions(v1: string, v2: string): number {
  */
 async function getVersionConfig(): Promise<VersionConfig | null> {
   try {
-    const snap = await getDoc(doc(db, 'app_config', 'version'));
+    const snap = await firestore().collection('app_config').doc('version').get();
     if (!snap.exists()) return null;
     return snap.data() as VersionConfig;
   } catch (e) {

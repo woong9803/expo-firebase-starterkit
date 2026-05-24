@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { onSnapshot } from 'firebase/firestore';
 import { Collections } from '../../lib/firestore';
-import { auth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Academy } from '../../types';
 import { checkVersion, VersionCheckResult } from '../../lib/versionCheck';
+import { safeSignOut } from '../../lib/auth';
 import ForceUpdateDialog from '../../components/ForceUpdateDialog';
 
 // app.config.ts의 version 값과 동기화 — 업데이트 시 함께 수정
@@ -38,8 +37,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (user?.role !== 'admin' || !user?.academy_id) return;
 
-    const unsub = onSnapshot(
-      Collections.academy(user.academy_id),
+    const unsub = Collections.academy(user.academy_id).onSnapshot(
       (snap) => {
         if (snap.exists()) {
           setAcademy({ id: snap.id, ...snap.data() } as Academy);
@@ -56,7 +54,7 @@ export default function AppLayout() {
     // 탈퇴 처리된 계정 — 소프트 삭제 직후 서버가 완전 삭제하기 전
     // 앱에서 즉시 로그아웃 처리하여 접근 차단
     if (user.deleted_at != null) {
-      import('firebase/auth').then(({ signOut }) => signOut(auth).catch(() => {}));
+      safeSignOut().catch(() => {});
       return;
     }
 

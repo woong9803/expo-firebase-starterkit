@@ -21,8 +21,6 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getDocs, query, where } from 'firebase/firestore';
-
 import { useAuthStore } from '../../../store/useAuthStore';
 import { createNotice, uploadNoticeAttachment, type PendingNoticeAttachment } from '../../../lib/notice';
 import { Collections } from '../../../lib/firestore';
@@ -60,11 +58,13 @@ export default function AdminNoticeCreateScreen() {
   useEffect(() => {
     if (!user?.academy_id) return;
 
-    getDocs(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id))
-    ).then((snap) => {
-      setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
-    }).catch((e) => console.warn('[AdminNoticeCreate] 반 로드 오류:', e));
+    Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .get()
+      .then((snap) => {
+        setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
+      })
+      .catch((e) => console.warn('[AdminNoticeCreate] 반 로드 오류:', e));
   }, [user?.academy_id]);
 
   // 저장 버튼 활성 조건

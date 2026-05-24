@@ -20,7 +20,6 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { onSnapshot } from 'firebase/firestore';
 
 import { Collections } from '../../../lib/firestore';
 import { strings } from '../../../constants/strings';
@@ -84,8 +83,7 @@ export default function ChildHomeworkScreen() {
     setIsLoading(true);
     setError(null);
 
-    const unsub = onSnapshot(
-      Collections.homework(homeworkId),
+    const unsub = Collections.homework(homeworkId).onSnapshot(
       (snap) => {
         if (snap.exists()) {
           setHomework({ id: snap.id, ...snap.data() } as Homework);
@@ -109,8 +107,7 @@ export default function ChildHomeworkScreen() {
   useEffect(() => {
     if (!homeworkId || !childUid) return;
 
-    const unsub = onSnapshot(
-      Collections.submission(homeworkId, childUid),
+    const unsub = Collections.submission(homeworkId, childUid).onSnapshot(
       (snap) => {
         setSubmission(snap.exists() ? (snap.data() as Submission) : null);
       },
@@ -135,7 +132,7 @@ export default function ChildHomeworkScreen() {
       {/* ── 로딩 ── */}
       {isLoading && (
         <View style={styles.centerBox}>
-          <ActivityIndicator color="#F59E0B" size="large" />
+          <ActivityIndicator color="#B45309" size="large" />
         </View>
       )}
 

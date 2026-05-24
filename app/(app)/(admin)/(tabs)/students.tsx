@@ -18,10 +18,22 @@ import {
 const ACCESSORY_ID = 'adminStudents';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { query, where, getDocs, onSnapshot, updateDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import { firebase as fbFunctions } from '@react-native-firebase/functions';
 import { Collections } from '../../../../lib/firestore';
+
+// RN Firebase 타입 별칭 — 기존 firebase/firestore의 Timestamp 사용처와 호환
+type Timestamp = FirebaseFirestoreTypes.Timestamp;
+const Timestamp = firestore.Timestamp;
+const serverTimestamp = () => firestore.FieldValue.serverTimestamp();
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { User, Class, AttendanceRecord } from '../../../../types';
+import {
+  resolveTuitionOnClassChange,
+  formatTuitionInput,
+  parseTuitionInput,
+  tuitionToInputString,
+} from '../../../../lib/tuitionFormat';
 
 // ─────────────────────────────────────────────────────────────
 // 날짜 유틸
@@ -34,6 +46,20 @@ function getTodayInfo() {
 
 function toDateStr(y: number, m: number, d: number): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * 퇴원일 라벨 변환 — 카드 부제목용.
+ * Timestamp 있으면 "퇴원일 5/15", 없으면 "퇴원" 만 반환.
+ */
+function formatWithdrawalLabel(ts: Timestamp | null | undefined): string {
+  if (!ts) return '퇴원';
+  try {
+    const d = ts.toDate();
+    return `퇴원일 ${d.getMonth() + 1}/${d.getDate()}`;
+  } catch {
+    return '퇴원';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -72,6 +98,8 @@ export default function AdminStudentsScreen() {
   const [searchText, setSearchText]         = useState('');
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null); // null = 전체
   const [isClassPickerVisible, setIsClassPickerVisible] = useState(false); // 반 선택 바텀시트
+  // 학생 목록 모드: 'active' = 재원생, 'inactive' = 퇴원생 (세그먼트 토글)
+  const [studentMode, setStudentMode] = useState<'active' | 'inactive'>('active');
 
   // ── 반이동 모달 ──
   const [moveTargetStudent, setMoveTargetStudent] = useState<User | null>(null);
@@ -92,31 +120,35 @@ export default function AdminStudentsScreen() {
   const [editBirthDate, setEditBirthDate]         = useState('');
   const [editGuardianPhone, setEditGuardianPhone] = useState('');
   const [editEnrollDate, setEditEnrollDate]       = useState(''); // YYYY-MM-DD 문자열
+  const [editAddress, setEditAddress]             = useState('');
+  // 수강료 — 콤마 포함 문자열로 보관, 저장 시 number|null 로 변환
+  const [editTuitionFee, setEditTuitionFee]       = useState('');
+  // 수정 모달 진입 시 초기 수강료 입력 문자열 — 저장 시 변경 여부 판단용 (변경 없으면 페이로드 제외)
+  const [editTuitionInitial, setEditTuitionInitial] = useState('');
   const [isSavingEdit, setIsSavingEdit]           = useState(false);
 
   // ── 1. 학생 + 반 목록 실시간 구독 (활성/비활성 모두) ──
   useEffect(() => {
     if (!user?.academy_id) return;
 
-    const unsubStudents = onSnapshot(
-      query(
-        Collections.users(),
-        where('academy_id', '==', user.academy_id),
-        where('role', '==', 'student'),
-      ),
-      (snap) => {
-        // 탈퇴 처리된 학생(deleted_at != null) 제외
-        setStudents(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)).filter(s => !s.deleted_at));
-        setIsLoading(false);
-      },
-      (e) => { console.error('[AdminStudents] 학생 구독 실패:', e); setIsLoading(false); }
-    );
+    const unsubStudents = Collections.users()
+      .where('academy_id', '==', user.academy_id)
+      .where('role', '==', 'student')
+      .onSnapshot(
+        (snap) => {
+          // 탈퇴 처리된 학생(deleted_at != null) 제외
+          setStudents(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)).filter(s => !s.deleted_at));
+          setIsLoading(false);
+        },
+        (e) => { console.error('[AdminStudents] 학생 구독 실패:', e); setIsLoading(false); }
+      );
 
-    const unsubClasses = onSnapshot(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id)),
-      (snap) => setClasses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Class))),
-      (e) => console.error('[AdminStudents] 반 구독 실패:', e)
-    );
+    const unsubClasses = Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .onSnapshot(
+        (snap) => setClasses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Class))),
+        (e) => console.error('[AdminStudents] 반 구독 실패:', e)
+      );
 
     return () => { unsubStudents(); unsubClasses(); };
   }, [user?.academy_id]);
@@ -147,7 +179,7 @@ export default function AdminStudentsScreen() {
         // 1일~오늘까지 각 날짜의 records 조회
         const dayPromises = Array.from({ length: day }, (_, i) => {
           const dateStr = toDateStr(year, month, i + 1);
-          return getDocs(Collections.attendanceRecords(classId, dateStr));
+          return Collections.attendanceRecords(classId, dateStr).get();
         });
 
         const snaps = await Promise.all(dayPromises);
@@ -191,25 +223,50 @@ export default function AdminStudentsScreen() {
   );
 
   // ── 검색 + 필터 적용 ──
+  // 모드별 분기: 재원생(is_active !== false) vs 퇴원생(is_active === false)
+  // 반 필터는 재원생 모드에서만 적용 — 퇴원생은 반 무관 전체 노출
   const filteredStudents = useMemo(() => {
     return students.filter(s => {
+      const matchMode = studentMode === 'active'
+        ? s.is_active !== false
+        : s.is_active === false;
+      if (!matchMode) return false;
       const matchSearch = !searchText.trim()
         || s.name?.toLowerCase().includes(searchText.toLowerCase());
-      const matchClass = !selectedClassId || s.class_id === selectedClassId;
+      const matchClass = studentMode === 'inactive' || !selectedClassId || s.class_id === selectedClassId;
       return matchSearch && matchClass;
     });
-  }, [students, searchText, selectedClassId]);
+  }, [students, searchText, selectedClassId, studentMode]);
 
   // ── 반이동: 확인 후 Firestore 업데이트 ──
+  // 수강료 자동 채움 정책: 학생 tuition_fee 가 비어있으면 새 반 default_tuition_fee 로 채움.
+  // 이미 값(0 포함)이 있으면 보존 — 학생별 설정 유지 (resolveTuitionOnClassChange 가 결정).
   const handleMoveClass = useCallback(async (targetClassId: string) => {
     if (!moveTargetStudent) return;
 
     setIsMoving(true);
     try {
-      await updateDoc(Collections.user(moveTargetStudent.uid), { class_id: targetClassId });
-      // 로컬 상태 업데이트
+      // 새 반의 default_tuition_fee 조회 (이미 onSnapshot 캐시 보유 — 추가 RTT 없음)
+      const newClass = classes.find(c => c.id === targetClassId);
+      const newFee = resolveTuitionOnClassChange(
+        moveTargetStudent.tuition_fee,
+        newClass?.default_tuition_fee,
+      );
+
+      // 페이로드 조립 — undefined = 페이로드 제외(보존), null = 명시적 미설정 저장
+      const payload: Record<string, unknown> = { class_id: targetClassId };
+      if (newFee !== undefined) payload.tuition_fee = newFee;
+
+      await Collections.user(moveTargetStudent.uid).update(payload);
+
+      // 로컬 상태 업데이트 — class_id + (변경된 경우만) tuition_fee 반영
       setStudents(prev =>
-        prev.map(s => s.uid === moveTargetStudent.uid ? { ...s, class_id: targetClassId } : s)
+        prev.map(s => {
+          if (s.uid !== moveTargetStudent.uid) return s;
+          const updated: User = { ...s, class_id: targetClassId };
+          if (newFee !== undefined) updated.tuition_fee = newFee;
+          return updated;
+        })
       );
       setIsMoveModalVisible(false);
       setMoveTargetStudent(null);
@@ -219,27 +276,76 @@ export default function AdminStudentsScreen() {
     } finally {
       setIsMoving(false);
     }
-  }, [moveTargetStudent]);
+  }, [moveTargetStudent, classes]);
 
-  // ── 비활성: 확인 후 Firestore 업데이트 ──
+  // ── 퇴원 처리: 확인 후 Firestore 업데이트 (is_active: false) ──
   const handleDeactivate = useCallback((student: User) => {
     Alert.alert(
-      '학생 비활성화',
-      `${student.name} 학생을 비활성화할까요?\n비활성화된 학생은 앱에 접속할 수 없어요.`,
+      '학생 퇴원 처리',
+      `${student.name} 학생을 퇴원 처리할까요?\n퇴원 처리된 학생은 앱에 접속할 수 없어요.`,
       [
         { text: '취소', style: 'cancel' },
         {
-          text: '비활성화',
+          text: '퇴원 처리',
           style: 'destructive',
           onPress: async () => {
             try {
-              await updateDoc(Collections.user(student.uid), { is_active: false });
+              // 퇴원 처리: is_active=false + withdrawal_date 자동 기록 (법정 출석부 수강기간 종료일용)
+              await Collections.user(student.uid).update({
+                is_active: false,
+                withdrawal_date: serverTimestamp(),
+              });
+              // 로컬 상태 미러링 — serverTimestamp는 즉시 Timestamp 객체로 안 오므로 클라이언트 시간으로 임시 반영
+              const localWithdrawalTs = Timestamp.now();
               setStudents(prev =>
-                prev.map(s => s.uid === student.uid ? { ...s, is_active: false } : s)
+                prev.map(s => s.uid === student.uid
+                  ? { ...s, is_active: false, withdrawal_date: localWithdrawalTs }
+                  : s)
               );
             } catch (e) {
-              console.error('[AdminStudents] 비활성화 실패:', e);
-              Alert.alert('오류', '비활성화에 실패했어요. 다시 시도해주세요.');
+              console.error('[AdminStudents] 퇴원 처리 실패:', e);
+              Alert.alert('오류', '퇴원 처리에 실패했어요. 다시 시도해주세요.');
+            }
+          },
+        },
+      ]
+    );
+  }, []);
+
+  // ── 재원 복구: Cloud Function 호출 (서버에서 플랜별 학생 수 한도 재검증) ──
+  //
+  // 직접 updateDoc 사용 금지 — Rules는 컬렉션 카운트 쿼리를 지원하지 않아
+  // 다운그레이드 후 한도 초과 복구를 막을 수 없음. 따라서 onCall CF에서
+  // 서버 측 학생 수 카운트 + 플랜 한도 검증을 수행한다.
+  const handleReactivate = useCallback((student: User) => {
+    Alert.alert(
+      '재원 복구',
+      `${student.name} 학생을 다시 재원 처리할까요?\n재원 처리 시 다시 앱에 접속할 수 있어요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '재원 복구',
+          onPress: async () => {
+            try {
+              // CF region: asia-northeast3 (서울)
+              const restore = fbFunctions
+                .app()
+                .functions('asia-northeast3')
+                .httpsCallable('restoreStudent');
+              await restore({ studentUid: student.uid });
+              // 성공 — 로컬 상태 즉시 반영 (서버 onSnapshot 갱신 전이라도 UI 일관성 유지)
+              setStudents(prev =>
+                prev.map(s => s.uid === student.uid
+                  ? { ...s, is_active: true, withdrawal_date: null }
+                  : s)
+              );
+            } catch (e: unknown) {
+              console.error('[AdminStudents] 재원 복구 실패:', e);
+              // CF에서 던지는 사용자 친화 메시지(플랜 한도 초과 등)를 그대로 노출
+              const message =
+                (e as { message?: string })?.message ??
+                '재원 복구에 실패했어요. 다시 시도해주세요.';
+              Alert.alert('재원 복구 실패', message);
             }
           },
         },
@@ -258,7 +364,7 @@ export default function AdminStudentsScreen() {
     if (!feedbackTarget || !user) return;
     setIsSavingFeedback(true);
     try {
-      await updateDoc(Collections.user(feedbackTarget.uid), {
+      await Collections.user(feedbackTarget.uid).update({
         teacher_feedback: feedbackText.trim()
           ? {
               text: feedbackText.trim(),
@@ -294,6 +400,11 @@ export default function AdminStudentsScreen() {
     // 기존 값을 입력창에 미리 채움
     setEditBirthDate(student.birth_date ?? '');
     setEditGuardianPhone(student.guardian_phone ?? '');
+    setEditAddress(student.address ?? '');
+    // 수강료 — 학생이 값 가지면 콤마 문자열로 채움, 없으면 빈 칸 (placeholder가 반 default 힌트)
+    const tuitionInput = tuitionToInputString(student.tuition_fee);
+    setEditTuitionFee(tuitionInput);
+    setEditTuitionInitial(tuitionInput);
     // enrollment_date Timestamp → YYYY-MM-DD 문자열 변환
     if (student.enrollment_date) {
       const d = student.enrollment_date.toDate();
@@ -321,24 +432,35 @@ export default function AdminStudentsScreen() {
         }
       }
 
-      await updateDoc(Collections.user(editTarget.uid), {
+      // 수강료: 입력값이 초기값과 동일 → undefined (건드리지 않음, 페이로드 제외)
+      // 변경됨 → parseTuitionInput (number|null) — 빈 칸=null=반 default 따라감, "0"=무료
+      const tuitionFeeChanged = editTuitionFee !== editTuitionInitial;
+      const newTuition = tuitionFeeChanged ? parseTuitionInput(editTuitionFee) : undefined;
+
+      const payload: Record<string, unknown> = {
         birth_date:      editBirthDate.trim() || null,
         guardian_phone:  editGuardianPhone.trim() || null,
         enrollment_date: enrollTimestamp,
-      });
+        address:         editAddress.trim() || null,
+      };
+      if (newTuition !== undefined) payload.tuition_fee = newTuition;
+
+      await Collections.user(editTarget.uid).update(payload);
 
       // 로컬 상태 동기화
       setStudents(prev =>
-        prev.map(s =>
-          s.uid === editTarget.uid
-            ? {
-                ...s,
-                birth_date:      editBirthDate.trim() || null,
-                guardian_phone:  editGuardianPhone.trim() || null,
-                enrollment_date: enrollTimestamp,
-              }
-            : s
-        )
+        prev.map(s => {
+          if (s.uid !== editTarget.uid) return s;
+          const updated: User = {
+            ...s,
+            birth_date:      editBirthDate.trim() || null,
+            guardian_phone:  editGuardianPhone.trim() || null,
+            enrollment_date: enrollTimestamp,
+            address:         editAddress.trim() || null,
+          };
+          if (newTuition !== undefined) updated.tuition_fee = newTuition;
+          return updated;
+        })
       );
       setIsEditModalVisible(false);
       setEditTarget(null);
@@ -348,7 +470,7 @@ export default function AdminStudentsScreen() {
     } finally {
       setIsSavingEdit(false);
     }
-  }, [editTarget, editBirthDate, editGuardianPhone, editEnrollDate]);
+  }, [editTarget, editBirthDate, editGuardianPhone, editEnrollDate, editAddress, editTuitionFee, editTuitionInitial]);
 
   // ── 로딩 ──
   if (isLoading) {
@@ -361,6 +483,8 @@ export default function AdminStudentsScreen() {
 
   // is_active !== false: 자가 가입 학생(undefined) + 선생님 생성 학생(true) 모두 포함, 탈퇴 학생 제외
   const activeCount = students.filter(s => s.is_active !== false && !s.deleted_at).length;
+  // 퇴원생 카운트 (is_active === false, 탈퇴 학생 제외)
+  const inactiveCount = students.filter(s => s.is_active === false && !s.deleted_at).length;
 
   return (
     <View style={[styles.container, { paddingTop: top }]}>
@@ -369,7 +493,7 @@ export default function AdminStudentsScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>학생 관리</Text>
-          <Text style={styles.headerSub}>전체 {activeCount}명</Text>
+          <Text style={styles.headerSub}>재원생 {activeCount}명 · 퇴원생 {inactiveCount}명</Text>
         </View>
         <TouchableOpacity
           style={styles.addBtn}
@@ -400,36 +524,66 @@ export default function AdminStudentsScreen() {
         </View>
       </View>
 
-      {/* ── 반 필터 드롭다운 ── */}
-      <View style={styles.classPickerWrapper}>
-        <TouchableOpacity
-          style={styles.classPickerBtn}
-          onPress={() => setIsClassPickerVisible(true)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="people-outline" size={15} color={selectedClassId ? '#5B50E8' : '#64748B'} />
-          <Text style={[styles.classPickerBtnText, selectedClassId && styles.classPickerBtnTextActive]}>
-            {selectedClassId ? (classMap[selectedClassId]?.name ?? '반 선택') : '전체 반'}
-          </Text>
-          <Ionicons name="chevron-down" size={15} color={selectedClassId ? '#5B50E8' : '#64748B'} />
-        </TouchableOpacity>
-        {/* 선택 중일 때 초기화 버튼 */}
-        {selectedClassId && (
+      {/* ── 재원/퇴원 세그먼트 토글 ── */}
+      <View style={styles.segmentWrapper}>
+        <View style={styles.segmentBox}>
           <TouchableOpacity
-            style={styles.classPickerClearBtn}
-            onPress={() => setSelectedClassId(null)}
+            style={[styles.segmentTab, studentMode === 'active' && styles.segmentTabActive]}
+            onPress={() => setStudentMode('active')}
             activeOpacity={0.8}
           >
-            <Ionicons name="close-circle" size={16} color="#94A3B8" />
+            <Text style={[styles.segmentTabText, studentMode === 'active' && styles.segmentTabTextActive]}>
+              재원생 {activeCount}명
+            </Text>
           </TouchableOpacity>
-        )}
+          <TouchableOpacity
+            style={[styles.segmentTab, studentMode === 'inactive' && styles.segmentTabActive]}
+            onPress={() => setStudentMode('inactive')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.segmentTabText, studentMode === 'inactive' && styles.segmentTabTextActive]}>
+              퇴원생 {inactiveCount}명
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* ── 반 필터 드롭다운 (재원생 모드에서만) ── */}
+      {studentMode === 'active' && (
+        <View style={styles.classPickerWrapper}>
+          <TouchableOpacity
+            style={styles.classPickerBtn}
+            onPress={() => setIsClassPickerVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="people-outline" size={15} color={selectedClassId ? '#5B50E8' : '#64748B'} />
+            <Text style={[styles.classPickerBtnText, selectedClassId && styles.classPickerBtnTextActive]}>
+              {selectedClassId ? (classMap[selectedClassId]?.name ?? '반 선택') : '전체 반'}
+            </Text>
+            <Ionicons name="chevron-down" size={15} color={selectedClassId ? '#5B50E8' : '#64748B'} />
+          </TouchableOpacity>
+          {/* 선택 중일 때 초기화 버튼 */}
+          {selectedClassId && (
+            <TouchableOpacity
+              style={styles.classPickerClearBtn}
+              onPress={() => setSelectedClassId(null)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="close-circle" size={16} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* ── 학생 목록 ── */}
       {filteredStudents.length === 0 ? (
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
-            {searchText ? '검색 결과가 없어요' : '등록된 학생이 없어요'}
+            {searchText
+              ? '검색 결과가 없어요'
+              : studentMode === 'inactive'
+                ? '퇴원 처리된 학생이 없어요'
+                : '등록된 학생이 없어요'}
           </Text>
         </View>
       ) : (
@@ -472,12 +626,14 @@ export default function AdminStudentsScreen() {
                     {cls ? cls.name : '반 미배정'}
                     {isActive && rate !== null
                       ? ` · 출석률 ${isLoadingAttendance ? '-' : `${rate}%`}`
-                      : !isActive ? ' · 비활성' : ''}
+                      : !isActive
+                        ? ` · ${formatWithdrawalLabel(item.withdrawal_date)}`
+                        : ''}
                   </Text>
                 </View>
 
-                {/* 액션 버튼 (활성 학생만) */}
-                {isActive && (
+                {/* 액션 버튼 — 재원생: 피드백/수정/반이동/퇴원, 퇴원생: 수정/재원 */}
+                {isActive ? (
                   <View style={styles.actions}>
                     <TouchableOpacity
                       style={[styles.feedbackBtn, !!item.teacher_feedback?.text && styles.feedbackBtnFilled]}
@@ -507,7 +663,24 @@ export default function AdminStudentsScreen() {
                       onPress={() => handleDeactivate(item)}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.deactivateBtnText}>비활성</Text>
+                      <Text style={styles.deactivateBtnText}>퇴원</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.actions}>
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={() => openEditModal(item)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.editBtnText}>수정</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.reactivateBtn}
+                      onPress={() => handleReactivate(item)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.reactivateBtnText}>재원</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -683,6 +856,43 @@ export default function AdminStudentsScreen() {
             keyboardType="numbers-and-punctuation"
             inputAccessoryViewID={ACCESSORY_ID}
           />
+
+          {/* 주소 (선택) */}
+          <Text style={styles.editFieldLabel}>주소 (선택)</Text>
+          <TextInput
+            style={styles.editInput}
+            placeholder="예: 서울시 강남구 …"
+            placeholderTextColor="#94A3B8"
+            value={editAddress}
+            onChangeText={setEditAddress}
+            autoCorrect={false}
+          />
+
+          {/* 수강료 (선택) — 학생 값 있으면 그 값, 없으면 빈 칸 + placeholder가 반 default 힌트
+              빈 칸 저장 = 반 default 따라가는 학생(null), "0" = 무료(면제) */}
+          <Text style={styles.editFieldLabel}>수강료 (선택)</Text>
+          {(() => {
+            // 학생 현재 반의 default_tuition_fee 조회 (onSnapshot 캐시 — 추가 RTT 0)
+            const studentClass = editTarget?.class_id ? classMap[editTarget.class_id] : null;
+            const classDefault = studentClass?.default_tuition_fee;
+            const tuitionPlaceholder = classDefault !== null && classDefault !== undefined
+              ? `반 기본 수강료: ${classDefault.toLocaleString()}원 (비우면 반 기준 적용)`
+              : '비우면 미설정 (선택)';
+            return (
+              <TextInput
+                style={styles.editInput}
+                placeholder={tuitionPlaceholder}
+                placeholderTextColor="#94A3B8"
+                value={editTuitionFee}
+                onChangeText={(t) => setEditTuitionFee(formatTuitionInput(t))}
+                keyboardType="numeric"
+                inputAccessoryViewID={ACCESSORY_ID}
+              />
+            );
+          })()}
+          <Text style={styles.editTuitionHelp}>
+            비우면 반 기본 수강료 적용 · 0 입력 시 무료(면제)
+          </Text>
 
           <TouchableOpacity
             style={styles.editSaveBtn}
@@ -866,6 +1076,38 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
+  // ── 재원/퇴원 세그먼트 토글 ──
+  segmentWrapper: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  segmentBox: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    padding: 4,
+    gap: 4,
+  },
+  segmentTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentTabActive: {
+    backgroundColor: '#fff',
+  },
+  segmentTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  segmentTabTextActive: {
+    color: '#5B50E8',
+    fontWeight: '700',
+  },
+
   // ── 반 필터 드롭다운 ──
   classPickerWrapper: {
     flexDirection: 'row',
@@ -967,6 +1209,15 @@ const styles = StyleSheet.create({
   },
   deactivateBtnText: { fontSize: 13, fontWeight: '600', color: '#991B1B' },
 
+  // 재원 복구 버튼 (퇴원생 카드 전용) — Primary 보라 톤
+  reactivateBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#5B50E8',
+  },
+  reactivateBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+
   // ── 빈 화면 ──
   emptyText: { fontSize: 15, fontWeight: '600', color: '#94A3B8', textAlign: 'center' },
 
@@ -1066,6 +1317,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 15,
     color: '#0F172A',
+  },
+  editTuitionHelp: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 6,
   },
   editSaveBtn: {
     marginTop: 20,

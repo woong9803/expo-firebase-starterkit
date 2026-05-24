@@ -4,17 +4,11 @@
  * - 날짜별 제출 상태를 반환 (스트릭 차트용)
  */
 
-import {
-  collection,
-  doc,
-  getDoc,
-  query,
-  where,
-  getDocs,
-  onSnapshot,
-  Timestamp,
-} from 'firebase/firestore';
-import { db } from './firebase';
+import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+
+// 기존 코드와의 호환을 위한 별칭
+type Timestamp = FirebaseFirestoreTypes.Timestamp;
+const tsFromDate = (d: Date): Timestamp => firestore.Timestamp.fromDate(d);
 
 /** 날짜별 스트릭 상태 */
 export type DayStreakStatus =
@@ -61,13 +55,11 @@ export async function fetchStreakData(
   endDate.setHours(23, 59, 59, 999);
 
   // 과거~미래 범위의 숙제 목록 조회
-  const hwQuery = query(
-    collection(db, 'homeworks'),
-    where('class_id', '==', classId),
-    where('due_date', '>=', Timestamp.fromDate(startDate)),
-  );
-
-  const hwSnap = await getDocs(hwQuery);
+  const hwSnap = await firestore()
+    .collection('homeworks')
+    .where('class_id', '==', classId)
+    .where('due_date', '>=', tsFromDate(startDate))
+    .get();
 
   // 날짜별 결과 맵 초기화 — 과거 days일 + 미래 futureDays일
   const totalDays = days + futureDays;
@@ -90,8 +82,12 @@ export async function fetchStreakData(
       const dueDate: Timestamp = hw.due_date;
       const dueDateStr = toDateString(dueDate.toDate());
 
-      const subDocRef = doc(db, 'homeworks', hwDoc.id, 'submissions', studentUid);
-      const subSnap = await getDoc(subDocRef);
+      const subDocRef = firestore()
+        .collection('homeworks')
+        .doc(hwDoc.id)
+        .collection('submissions')
+        .doc(studentUid);
+      const subSnap = await subDocRef.get();
 
       if (!subSnap.exists()) {
         // 마감이 지난 숙제만 missed 처리
@@ -101,6 +97,7 @@ export async function fetchStreakData(
         }
       } else {
         const sub = subSnap.data();
+        if (!sub) return;
         const isLate: boolean = sub.is_late ?? false;
         const status: DayStreakStatus = isLate ? 'late' : 'submitted';
         // 숙제별 카운터 증가
@@ -142,15 +139,13 @@ export function subscribeStreakData(
   startDate.setDate(now.getDate() - (days - 1));
   startDate.setHours(0, 0, 0, 0);
 
-  const hwQuery = query(
-    collection(db, 'homeworks'),
-    where('class_id', '==', classId),
-    where('due_date', '>=', Timestamp.fromDate(startDate)),
-  );
+  const hwQuery = firestore()
+    .collection('homeworks')
+    .where('class_id', '==', classId)
+    .where('due_date', '>=', tsFromDate(startDate));
 
   // homeworks 변경 시마다 submissions 재조회 → streakData 재계산
-  const unsub = onSnapshot(
-    hwQuery,
+  const unsub = hwQuery.onSnapshot(
     async (hwSnap) => {
       try {
         // 날짜별 결과 맵 초기화 — 과거 days일 + 미래 futureDays일
@@ -169,8 +164,12 @@ export function subscribeStreakData(
             const dueDate: Timestamp = hw.due_date;
             const dueDateStr = toDateString(dueDate.toDate());
 
-            const subDocRef = doc(db, 'homeworks', hwDoc.id, 'submissions', studentUid);
-            const subSnap = await getDoc(subDocRef);
+            const subDocRef = firestore()
+              .collection('homeworks')
+              .doc(hwDoc.id)
+              .collection('submissions')
+              .doc(studentUid);
+            const subSnap = await subDocRef.get();
 
             if (!subSnap.exists()) {
               // 마감이 지난 숙제이고, due_date가 resultMap 범위 안일 때만 missed 처리
@@ -179,6 +178,7 @@ export function subscribeStreakData(
               }
             } else {
               const sub = subSnap.data();
+              if (!sub) return;
               const status: DayStreakStatus = sub.is_late ? 'late' : 'submitted';
               // submitted_at 기준으로 차트 위치 결정
               // serverTimestamp() 미확정 시 toDate() 실패 → 오늘로 fallback

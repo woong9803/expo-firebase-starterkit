@@ -21,6 +21,23 @@ export const onNoticeCreated = onDocumentCreated(
 
     const db = admin.firestore();
 
+    // ── 멱등성 가드 (Eventarc at-least-once 정책으로 인한 중복 호출 방지) ──
+    // 같은 noticeId 이벤트가 2회 이상 트리거돼도 알림은 1회만 발송되도록
+    // notification_sent 플래그를 트랜잭션으로 선점한다.
+    // 알림 발송 중 실패하더라도 중복 발송보다 누락이 덜 치명적이라는 판단.
+    const noticeRef = db.collection('notices').doc(noticeId);
+    const shouldProcess = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(noticeRef);
+      if (!snap.exists) return false;
+      if (snap.data()?.notification_sent === true) return false;
+      tx.update(noticeRef, { notification_sent: true });
+      return true;
+    });
+    if (!shouldProcess) {
+      logger.info('[noticeAlert] 중복 호출 — 알림 발송 건너뜀', { noticeId });
+      return;
+    }
+
     // 해당 학원의 사용자 조회
     let query = db
       .collection('users')
@@ -36,7 +53,9 @@ export const onNoticeCreated = onDocumentCreated(
     if (usersSnap.empty) return;
 
     const batch: SendFcmParams[] = [];
-    const deepLink = `/(app)/common/notice-detail?id=${noticeId}`;
+    // notice-detail 화면은 useLocalSearchParams 로 noticeId 키를 읽음
+    // (id 로 보내면 화면이 noticeId 가드에 걸려 무한 로딩 발생)
+    const deepLink = `/(app)/common/notice-detail?noticeId=${noticeId}`;
 
     for (const userDoc of usersSnap.docs) {
       const user = userDoc.data();

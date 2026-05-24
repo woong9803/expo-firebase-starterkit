@@ -60,6 +60,24 @@ export const sendHomeworkReminderPush = onCall(async (request) => {
   if (!studentDoc.exists) return { success: true };
   const student = studentDoc.data()!;
 
+  // P1-신규(2026-05-20): 호출자가 임의 studentUid 로 타 학원/타 반 학생에게
+  //   스팸 푸시를 보내는 경로 차단.
+  //   - student.academy_id 가 hw.class_id 의 academy 와 일치해야 함
+  //   - student.class_id 가 hw.class_id 와 일치해야 함 (같은 반 학생만)
+  //   - 탈퇴(soft delete) 학생도 차단
+  if (student.deleted_at) {
+    throw new HttpsError('permission-denied', '탈퇴한 학생에게는 알림을 보낼 수 없습니다.');
+  }
+  if (student.academy_id !== academyId) {
+    throw new HttpsError('permission-denied', '다른 학원 학생에게는 알림을 보낼 수 없습니다.');
+  }
+  if (student.class_id !== hw.class_id) {
+    throw new HttpsError('permission-denied', '해당 반 학생에게만 알림을 보낼 수 있습니다.');
+  }
+  if (student.role !== 'student') {
+    throw new HttpsError('permission-denied', '학생에게만 알림을 보낼 수 있습니다.');
+  }
+
   const deepLink = `/(app)/(student)/homework-submit?hwId=${hwId}`;
 
   // 숙제 알림 OFF 설정 시 건너뜀
@@ -76,9 +94,10 @@ export const sendHomeworkReminderPush = onCall(async (request) => {
     deepLink,
   });
 
-  // 학생의 학부모에게도 알림 발송
+  // 학생의 학부모에게도 알림 발송 — academy_id 격리로 멀티 학원 자녀 누수 방지
   const parentsSnap = await db
     .collection('users')
+    .where('academy_id', '==', academyId)
     .where('role', '==', 'parent')
     .where('children', 'array-contains', studentUid)
     .get();

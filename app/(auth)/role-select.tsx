@@ -47,7 +47,7 @@ const ROLE_CARDS: Array<{
   },
   {
     role: 'admin',
-    label: '원장님 (admin)',
+    label: '원장님',
     desc: '학원 전체 관리, 통계',
     icon: 'business-outline',
     iconBg: '#F5F3FF',

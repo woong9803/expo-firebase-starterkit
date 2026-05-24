@@ -20,14 +20,6 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  getDoc,
-} from 'firebase/firestore';
-
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { Collections } from '../../../../lib/firestore';
 import { strings } from '../../../../constants/strings';
@@ -168,13 +160,13 @@ export default function ParentHomeworkScreen() {
     }
 
     setIsLoading(true);
-    getDoc(Collections.user(activeChildUid))
+    Collections.user(activeChildUid).get()
       .then((snap) => {
         if (snap.exists()) {
           setChildUser({ uid: snap.id, ...snap.data() } as User);
         }
       })
-      .catch((e) => console.warn('[ParentHomework] 자녀 조회 오류:', e));
+      .catch((e: unknown) => console.warn('[ParentHomework] 자녀 조회 오류:', e));
   }, [activeChildUid]);
 
   // ── 반 숙제 실시간 구독 ─────────────────────────────────────
@@ -185,24 +177,20 @@ export default function ParentHomeworkScreen() {
     }
 
     setIsLoading(true);
-    const q = query(
-      Collections.homeworks(),
-      where('class_id', '==', childUser.class_id),
-      orderBy('due_date', 'asc'),
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Homework));
-        setRawHomeworks(list);
-        setIsLoading(false);
-      },
-      (err) => {
-        console.warn('[ParentHomework] 숙제 onSnapshot 오류:', err);
-        setIsLoading(false);
-      }
-    );
+    const unsub = Collections.homeworks()
+      .where('class_id', '==', childUser.class_id)
+      .orderBy('due_date', 'asc')
+      .onSnapshot(
+        (snap) => {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Homework));
+          setRawHomeworks(list);
+          setIsLoading(false);
+        },
+        (err) => {
+          console.warn('[ParentHomework] 숙제 onSnapshot 오류:', err);
+          setIsLoading(false);
+        }
+      );
 
     return () => unsub();
   }, [childUser?.class_id]);
@@ -214,8 +202,7 @@ export default function ParentHomeworkScreen() {
     if (!childUser?.uid || rawHomeworks.length === 0) return;
 
     const unsubs = rawHomeworks.map((hw) =>
-      onSnapshot(
-        Collections.submission(hw.id, childUser.uid),
+      Collections.submission(hw.id, childUser.uid).onSnapshot(
         (snap) => {
           const sub = snap.exists() ? (snap.data() as Submission) : null;
           setSubmissionsMap((prev) => ({ ...prev, [hw.id]: sub }));
@@ -271,7 +258,7 @@ export default function ParentHomeworkScreen() {
         {/* 다자녀 전환 버튼 (2명 이상일 때만) */}
         {hasMultipleChildren && (
           <TouchableOpacity style={styles.switchBtn} onPress={handleSwitchChild} activeOpacity={0.7}>
-            <Ionicons name="people-outline" size={16} color="#F59E0B" />
+            <Ionicons name="people-outline" size={16} color="#B45309" />
             <Text style={styles.switchBtnText}>{strings.parent.switchChild}</Text>
           </TouchableOpacity>
         )}
@@ -280,7 +267,7 @@ export default function ParentHomeworkScreen() {
       {/* ── 로딩 ── */}
       {isLoading && (
         <View style={styles.centerBox}>
-          <ActivityIndicator color="#F59E0B" size="large" />
+          <ActivityIndicator color="#B45309" size="large" />
         </View>
       )}
 
@@ -350,9 +337,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: '#FEF3E2',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: '#E8B07A',
     borderRadius: 20,
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -360,7 +347,7 @@ const styles = StyleSheet.create({
   switchBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#F59E0B',
+    color: '#B45309',
   },
 
   // ── 중앙 배치 ──
@@ -398,13 +385,13 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   cardMissing:  { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },  // 미제출 — 빨강
-  cardWaiting:  { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },  // 검사대기 — 노랑
+  cardWaiting:  { backgroundColor: '#FEF3E2', borderColor: '#E8B07A' },  // 검사대기 — 노랑
   cardRetry:    { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' },  // 다시제출 — 주황
   cardDone:     { backgroundColor: '#F0FDF4', borderColor: '#A7F3D0' },  // 완료 — 초록
 
   cardBar: { width: 4, alignSelf: 'stretch' },
   cardBarMissing:  { backgroundColor: '#EF4444' },
-  cardBarWaiting:  { backgroundColor: '#F59E0B' },
+  cardBarWaiting:  { backgroundColor: '#B45309' },
   cardBarRetry:    { backgroundColor: '#F97316' },
   cardBarDone:     { backgroundColor: '#10B981' },
   cardBarPending:  { backgroundColor: '#CBD5E1' }, // 마감 전 미제출 — 회색
@@ -421,7 +408,7 @@ const styles = StyleSheet.create({
   // ── 상태 뱃지 ──
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 8 },
   badgeMissing:  { backgroundColor: '#FEE2E2' },
-  badgeWaiting:  { backgroundColor: '#FEF3C7' },
+  badgeWaiting:  { backgroundColor: '#FDE7C7' },
   badgeRetry:    { backgroundColor: '#FFEDD5' },
   badgeDone:     { backgroundColor: '#ECFDF5' },
   badgePending:  { backgroundColor: '#F1F5F9' }, // 마감 전 미제출 — 회색

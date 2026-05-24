@@ -5,23 +5,14 @@
  * 모든 화면에서 직접 Firestore 쿼리를 작성하는 대신 이 파일의 함수를 사용한다.
  */
 
-import {
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  serverTimestamp,
-  arrayUnion,
-} from 'firebase/firestore';
-import { getIdToken } from 'firebase/auth';
-import { auth } from './firebase';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 import { Collections } from './firestore';
 import type { Notice, NoticeAttachment, User } from '../types/index';
+
+// RN Firebase 호환 shim — 기존 코드 변경 최소화
+const serverTimestamp = () => firestore.FieldValue.serverTimestamp();
+const arrayUnion = (value: string) => firestore.FieldValue.arrayUnion(value);
 
 // ─────────────────────────────────────────────────────────────
 // 타입
@@ -65,7 +56,7 @@ export interface NoticeReadStatus {
 export async function createNotice(params: CreateNoticeParams): Promise<string> {
   const { title, content, isImportant, academyId, createdBy, targetClassIds, targetRoles, attachments } = params;
 
-  const docRef = await addDoc(Collections.notices(), {
+  const docRef = await Collections.notices().add({
     title,
     content,
     is_important: isImportant,
@@ -99,7 +90,8 @@ export async function uploadNoticeAttachment(
   noticeTempId: string,
   file: PendingNoticeAttachment,
 ): Promise<NoticeAttachment> {
-  const token = auth.currentUser ? await getIdToken(auth.currentUser) : null;
+  const currentUser = auth().currentUser;
+  const token = currentUser ? await currentUser.getIdToken() : null;
   if (!token) throw new Error('인증 토큰 없음');
 
   const bucket = process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET;
@@ -150,7 +142,7 @@ export async function updateNotice(
   noticeId: string,
   params: { title: string; content: string; isImportant: boolean }
 ): Promise<void> {
-  await updateDoc(Collections.notice(noticeId), {
+  await Collections.notice(noticeId).update({
     title: params.title,
     content: params.content,
     is_important: params.isImportant,
@@ -165,7 +157,7 @@ export async function updateNotice(
  * 공지 문서를 Firestore에서 삭제한다.
  */
 export async function deleteNotice(noticeId: string): Promise<void> {
-  await deleteDoc(Collections.notice(noticeId));
+  await Collections.notice(noticeId).delete();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -177,7 +169,7 @@ export async function deleteNotice(noticeId: string): Promise<void> {
  * arrayUnion을 사용하므로 중복 추가되지 않는다.
  */
 export async function markNoticeRead(noticeId: string, uid: string): Promise<void> {
-  await updateDoc(Collections.notice(noticeId), {
+  await Collections.notice(noticeId).update({
     read_by: arrayUnion(uid),
   });
 }
@@ -202,14 +194,11 @@ export function subscribeNotices(
   viewerClassId?: string | null,
   viewerRole?: string | null,
 ): () => void {
-  const q = query(
-    Collections.notices(),
-    where('academy_id', '==', academyId),
-    orderBy('is_important', 'desc'), // 중요 공지 상단
-    orderBy('created_at', 'desc'),   // 최신순
-  );
-
-  const unsub = onSnapshot(q, (snap) => {
+  const unsub = Collections.notices()
+    .where('academy_id', '==', academyId)
+    .orderBy('is_important', 'desc') // 중요 공지 상단
+    .orderBy('created_at', 'desc')   // 최신순
+    .onSnapshot((snap) => {
     let notices = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notice));
 
     // 학생: 전체 공지(target_class_ids=[]) 또는 본인 반 포함 공지만 표시
@@ -263,14 +252,12 @@ export function subscribeNoticeReadUsers(
   let isCancelled = false;
 
   // 1) 학원 소속 학생+학부모 일회성 조회
-  getDocs(
-    query(
-      Collections.users(),
-      where('academy_id', '==', academyId),
-      where('role', 'in', ['student', 'parent']),
-      where('is_active', '==', true),
-    )
-  ).then((usersSnap) => {
+  Collections.users()
+    .where('academy_id', '==', academyId)
+    .where('role', 'in', ['student', 'parent'])
+    .where('is_active', '==', true)
+    .get()
+    .then((usersSnap) => {
     if (isCancelled) return;
 
     // 탈퇴 학생·학부모(deleted_at != null) 제외
@@ -279,7 +266,7 @@ export function subscribeNoticeReadUsers(
       .filter((u) => !u.deleted_at);
 
     // 2) 공지 문서 실시간 구독 — read_by 변경 시마다 호출됨
-    unsubNotice = onSnapshot(Collections.notice(noticeId), (snap) => {
+    unsubNotice = Collections.notice(noticeId).onSnapshot((snap) => {
       if (!snap.exists()) {
         callback({ readUsers: [], unreadUsers: [] });
         return;
@@ -343,7 +330,7 @@ export async function getNoticeReadUsers(
   academyId: string
 ): Promise<NoticeReadStatus> {
   // 1) 공지 문서에서 read_by 배열 + 대상 설정 조회
-  const noticeSnap = await getDoc(Collections.notice(noticeId));
+  const noticeSnap = await Collections.notice(noticeId).get();
   if (!noticeSnap.exists()) {
     return { readUsers: [], unreadUsers: [] };
   }
@@ -353,14 +340,11 @@ export async function getNoticeReadUsers(
   const targetClassIds: string[] = noticeData.target_class_ids ?? [];     // 빈 배열 = 전체 반
 
   // 2) 해당 학원의 학생 + 학부모 전체 목록 조회
-  const usersSnap = await getDocs(
-    query(
-      Collections.users(),
-      where('academy_id', '==', academyId),
-      where('role', 'in', ['student', 'parent']),
-      where('is_active', '==', true),
-    )
-  );
+  const usersSnap = await Collections.users()
+    .where('academy_id', '==', academyId)
+    .where('role', 'in', ['student', 'parent'])
+    .where('is_active', '==', true)
+    .get();
   let allUsers = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() } as User));
 
   // 3) target_roles 필터 — 빈 배열이면 모두 포함

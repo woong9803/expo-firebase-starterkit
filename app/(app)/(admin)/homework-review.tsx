@@ -25,14 +25,6 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  getDoc,
-  getDocs,
-  query,
-  where,
-  onSnapshot,
-  updateDoc,
-} from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -76,7 +68,7 @@ export default function AdminHomeworkReviewScreen() {
     (async () => {
       try {
         // 1단계: 숙제 문서 조회
-        const hwSnap = await getDoc(Collections.homework(hwId));
+        const hwSnap = await Collections.homework(hwId).get();
         if (!hwSnap.exists()) {
           setIsLoading(false);
           return;
@@ -85,13 +77,10 @@ export default function AdminHomeworkReviewScreen() {
         setHomework(hw);
 
         // 2단계: 해당 반 학생 목록 조회
-        const studentSnap = await getDocs(
-          query(
-            Collections.users(),
-            where('academy_id', '==', user.academy_id),
-            where('class_id', '==', hw.class_id),
-          )
-        );
+        const studentSnap = await Collections.users()
+          .where('academy_id', '==', user.academy_id)
+          .where('class_id', '==', hw.class_id)
+          .get();
         const studentList = studentSnap.docs
           .map(d => ({ uid: d.id, ...d.data() } as User))
           .filter(u => u.role === 'student' && u.is_active && !u.deleted_at);
@@ -117,7 +106,7 @@ export default function AdminHomeworkReviewScreen() {
       if (s.school_name) schoolMap[s.uid] = s.school_name;
     });
 
-    const unsub = onSnapshot(Collections.submissions(hwId), (snap) => {
+    const unsub = Collections.submissions(hwId).onSnapshot((snap) => {
       const list = snap.docs.map(d => ({
         studentUid: d.id,
         studentName: nameMap[d.id] ?? '알 수 없음',
@@ -150,7 +139,7 @@ export default function AdminHomeworkReviewScreen() {
     try {
       // 같은 피드백 재탭 시 → 피드백 초기화(null)로 되돌리기
       const newFeedback = currentFeedback === feedback ? null : feedback;
-      await updateDoc(Collections.submission(hwId, studentUid), {
+      await Collections.submission(hwId, studentUid).update({
         feedback: newFeedback,
         status: newFeedback ? 'checked' : 'submitted',
         // 피드백 취소 또는 👍로 변경 시 기존 코멘트도 초기화
@@ -167,7 +156,7 @@ export default function AdminHomeworkReviewScreen() {
     comment: string,
   ) => {
     if (!hwId) return;
-    await updateDoc(Collections.submission(hwId, studentUid), {
+    await Collections.submission(hwId, studentUid).update({
       feedback_comment: comment.trim(),
     });
   }, [hwId]);
@@ -234,9 +223,11 @@ export default function AdminHomeworkReviewScreen() {
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${submitRatio * 100}%` as any }]} />
             </View>
-            {/* 검사 완료 수 */}
+            {/* 검사 완료 / 다시풀기 요청 분리 표시 — 원장님이 후속 조치가 필요한 학생을 한눈에 식별 */}
             <Text style={styles.checkedLabel}>
-              검사 완료 {submissions.filter(s => s.status === 'checked').length}명
+              검사 완료 {submissions.filter(s => s.status === 'checked' && s.feedback === '👍').length}명
+              {submissions.filter(s => s.status === 'checked' && s.feedback === '💧').length > 0 &&
+                ` · 다시풀기 요청 ${submissions.filter(s => s.status === 'checked' && s.feedback === '💧').length}명`}
             </Text>
           </View>
 
@@ -349,11 +340,19 @@ function SubmissionCard({ submission, onFeedback, onSaveComment, onImagePress }:
   // 저장된 코멘트와 현재 입력값이 같으면 저장 불필요
   const isCommentChanged = commentText.trim() !== (feedback_comment ?? '').trim();
 
+  // 검사 완료 상태 분기
+  // - 👍 + checked: 검사 완료(초록)
+  // - 💧 + checked: 다시풀기 요청 — 학생이 다시 풀고 있는 중(주황 강조)
+  const isReviewedOk = submission.status === 'checked' && feedback === '👍';
+  const isRetryRequested = submission.status === 'checked' && feedback === '💧';
+
   return (
     <View
       style={[
         styles.submissionCard,
-        submission.status === 'checked' && styles.submissionCardChecked,
+        isReviewedOk && styles.submissionCardChecked,
+        // 원장님이 다시풀기 요청한 상태 → 학생이 다시 풀고 있는 중임을 강조
+        isRetryRequested && styles.submissionCardRetryRequested,
         isRetryPending && styles.submissionCardRetry,
       ]}
     >
@@ -386,9 +385,15 @@ function SubmissionCard({ submission, onFeedback, onSaveComment, onImagePress }:
                 <Text style={styles.retryChipText}>다시제출</Text>
               </View>
             )}
-            {submission.status === 'checked' && (
+            {/* 검사완료(👍) — 초록 / 다시풀기 요청(💧) — 주황으로 분기 */}
+            {isReviewedOk && (
               <View style={styles.checkedChip}>
                 <Text style={styles.checkedChipText}>검사완료</Text>
+              </View>
+            )}
+            {isRetryRequested && (
+              <View style={styles.retryRequestChip}>
+                <Text style={styles.retryRequestChipText}>다시풀기 요청</Text>
               </View>
             )}
           </View>
@@ -658,7 +663,7 @@ const styles = StyleSheet.create({
   },
   lateChipText: { fontSize: 11, fontWeight: '700', color: '#991B1B' },
 
-  // 검사 완료 칩
+  // 검사 완료 칩 (👍)
   checkedChip: {
     backgroundColor: '#ECFDF5',
     borderRadius: 6,
@@ -666,6 +671,23 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   checkedChipText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
+
+  // 다시풀기 요청 칩 (💧 + 검사 완료) — 학생이 다시 풀고 있는 중
+  retryRequestChip: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  retryRequestChipText: { fontSize: 11, fontWeight: '700', color: '#92400E' },
+
+  // 다시풀기 요청 카드 배경 — 검사 완료(초록) 와 시각적으로 구분
+  submissionCardRetryRequested: {
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+  },
 
   // 썸네일
   thumbnailScroll: { marginHorizontal: -14, paddingHorizontal: 14 },

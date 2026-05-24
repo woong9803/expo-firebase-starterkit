@@ -19,7 +19,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { getYouTubeWatchUrl, getYouTubeThumbnailUrl } from '../../../../lib/youtube';
@@ -44,24 +43,20 @@ export default function StudentVideosScreen() {
     setIsLoading(true);
     setError(false);
 
-    const q = query(
-      Collections.videos(),
-      where('class_id', '==', user.class_id),
-      orderBy('created_at', 'desc'),
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      snap => {
-        setVideos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Video)));
-        setIsLoading(false);
-      },
-      e => {
-        console.error('[StudentVideos] 영상 목록 구독 실패:', e);
-        setError(true);
-        setIsLoading(false);
-      }
-    );
+    const unsubscribe = Collections.videos()
+      .where('class_id', '==', user.class_id)
+      .orderBy('created_at', 'desc')
+      .onSnapshot(
+        snap => {
+          setVideos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Video)));
+          setIsLoading(false);
+        },
+        e => {
+          console.error('[StudentVideos] 영상 목록 구독 실패:', e);
+          setError(true);
+          setIsLoading(false);
+        }
+      );
 
     // class_id 변경 또는 언마운트 시에만 구독 해제
     return () => unsubscribe();

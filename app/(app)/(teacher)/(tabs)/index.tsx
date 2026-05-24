@@ -7,10 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  query, where, getDocs,
-  orderBy, limit, documentId, onSnapshot,
-} from 'firebase/firestore';
+import firestore, { documentId } from '@react-native-firebase/firestore';
 import { Collections } from '../../../../lib/firestore';
 import { useAuthStore } from '../../../../store/useAuthStore';
 import { useNotificationStore } from '../../../../store/useNotificationStore';
@@ -78,29 +75,24 @@ export default function TeacherHomeScreen() {
     const classIds = user?.assigned_class_ids ?? [];
     if (!user?.academy_id || classIds.length === 0) { setIsLoading(false); return; }
 
-    const unsub = onSnapshot(
-      query(Collections.classes(), where(documentId(), 'in', classIds)),
-      (snap) => {
+    const unsub = Collections.classes()
+      .where(documentId(), 'in', classIds)
+      .onSnapshot((snap) => {
         const classList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         setClasses(classList);
         setSelectedClassId(prev => prev ?? (classList[0]?.id ?? null));
-      }
-    );
+      });
     return () => unsub();
   }, [user?.academy_id, user?.assigned_class_ids?.join(',')]);
 
   // 공지 실시간 구독 (최신 3건)
   useEffect(() => {
     if (!user?.academy_id) return;
-    const unsub = onSnapshot(
-      query(
-        Collections.notices(),
-        where('academy_id', '==', user.academy_id),
-        orderBy('created_at', 'desc'),
-        limit(3),
-      ),
-      (snap) => setNotices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice)))
-    );
+    const unsub = Collections.notices()
+      .where('academy_id', '==', user.academy_id)
+      .orderBy('created_at', 'desc')
+      .limit(3)
+      .onSnapshot((snap) => setNotices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice))));
     return () => unsub();
   }, [user?.academy_id]);
 
@@ -110,11 +102,11 @@ export default function TeacherHomeScreen() {
 
     Promise.all(
       classes.map(async (cls) => {
-        const studentSnap = await getDocs(query(Collections.users(),
-          where('academy_id', '==', user.academy_id),
-          where('class_id', '==', cls.id),
-          where('role', '==', 'student'),
-        ));
+        const studentSnap = await Collections.users()
+          .where('academy_id', '==', user.academy_id)
+          .where('class_id', '==', cls.id)
+          .where('role', '==', 'student')
+          .get();
         const studentCount = studentSnap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length;
         return { classId: cls.id, studentCount };
       })
@@ -151,8 +143,7 @@ export default function TeacherHomeScreen() {
     const todayStr = getTodayStr();
 
     const unsubs = classes.map((cls) =>
-      onSnapshot(
-        Collections.attendanceRecords(cls.id, todayStr),
+      Collections.attendanceRecords(cls.id, todayStr).onSnapshot(
         (snap) => {
           setClassStats((prev) => {
             const existing = prev[cls.id];
@@ -196,13 +187,14 @@ export default function TeacherHomeScreen() {
     const classIds = user?.assigned_class_ids ?? [];
     if (!user?.academy_id || classIds.length === 0) return;
 
-    const unsub = onSnapshot(
-      query(Collections.homeworks(), where('class_id', 'in', classIds.slice(0, 10))),
-      (snap) => {
-        setRawHwList(snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework)));
-      },
-      (e) => console.error('[TeacherHome] 숙제 목록 구독 실패:', e)
-    );
+    const unsub = Collections.homeworks()
+      .where('class_id', 'in', classIds.slice(0, 10))
+      .onSnapshot(
+        (snap) => {
+          setRawHwList(snap.docs.map(d => ({ id: d.id, ...d.data() } as Homework)));
+        },
+        (e) => console.error('[TeacherHome] 숙제 목록 구독 실패:', e)
+      );
     return () => unsub();
   }, [user?.academy_id, user?.assigned_class_ids?.join(',')]);
 
@@ -213,8 +205,7 @@ export default function TeacherHomeScreen() {
     if (rawHwList.length === 0) return;
 
     const unsubs = rawHwList.map((hw) =>
-      onSnapshot(
-        Collections.submissions(hw.id),
+      Collections.submissions(hw.id).onSnapshot(
         (snap) => {
           // 전체 제출 수
           setSubmissionCountsMap(prev => ({ ...prev, [hw.id]: snap.size }));
@@ -236,12 +227,11 @@ export default function TeacherHomeScreen() {
     const uniqueClassIds = [...new Set(rawHwList.map(h => h.class_id))];
     Promise.all(
       uniqueClassIds.map(async (classId) => {
-        const snap = await getDocs(query(
-          Collections.users(),
-          where('academy_id', '==', user.academy_id!),
-          where('class_id', '==', classId),
-          where('role', '==', 'student'),
-        ));
+        const snap = await Collections.users()
+          .where('academy_id', '==', user.academy_id!)
+          .where('class_id', '==', classId)
+          .where('role', '==', 'student')
+          .get();
         return { classId, count: snap.docs.filter(d => d.data().is_active !== false && !d.data().deleted_at).length };
       })
     ).then((results) => {

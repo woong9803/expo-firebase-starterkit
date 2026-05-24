@@ -18,7 +18,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getDocs, query, where } from 'firebase/firestore';
+import firestore, { documentId } from '@react-native-firebase/firestore';
 
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useProCheck } from '../../../hooks/useProCheck';
@@ -86,11 +86,14 @@ export default function TeacherNoticeReadStatusScreen() {
   useEffect(() => {
     if (!user?.assigned_class_ids?.length) return;
 
-    getDocs(
-      query(Collections.classes(), where('__name__', 'in', user.assigned_class_ids.slice(0, 10)))
-    ).then((snap) => {
-      setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
-    }).catch((e) => console.warn('[NoticeReadStatus] 반 로드 오류:', e));
+    // RN Firebase: documentId() modular 함수 사용 (FieldPath.documentId() static 미구현)
+    Collections.classes()
+      .where(documentId(), 'in', user.assigned_class_ids.slice(0, 10))
+      .get()
+      .then((snap) => {
+        setClasses(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Class)));
+      })
+      .catch((e) => console.warn('[NoticeReadStatus] 반 로드 오류:', e));
   }, [user?.assigned_class_ids]);
 
   // ── 읽음 현황 실시간 구독 ──

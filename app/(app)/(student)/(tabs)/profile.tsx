@@ -14,30 +14,25 @@ import {
   Switch,
   Alert,
   Share,
-  Linking,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { signOut } from 'firebase/auth';
-import { doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { auth, db, app } from '../../../../lib/firebase';
 import { Collections } from '../../../../lib/firestore';
+import { safeSignOut } from '../../../../lib/auth';
+import { openKakaoSupport } from '../../../../lib/support';
+import { showDeleteAccountDialog } from '../../../../lib/deleteAccount';
 import { initFCM } from '../../../../lib/fcm';
 import { useAuthStore } from '../../../../store/useAuthStore';
-import { updateDoc } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Class, Homework, AttendanceRecord } from '../../../../types';
 import PasswordChangeModal from '../../../../components/PasswordChangeModal';
 import { strings } from '../../../../constants/strings';
-
-const APP_VERSION = '1.0.0';
 
 // AsyncStorage 키 — 알림 ON/OFF 설정 저장
 const NOTIF_HOMEWORK_KEY = 'student_notif_homework';
@@ -93,9 +88,9 @@ export default function StudentProfileScreen() {
     if (!user?.uid) return;
 
     // Firestore notif_prefs 업데이트
-    await updateDoc(Collections.user(user.uid), {
+    await Collections.user(user.uid).update({
       [`notif_prefs.${key}`]: value,
-    }).catch((e) => console.warn('[StudentProfile] notif_prefs 업데이트 실패:', e));
+    }).catch((e: unknown) => console.warn('[StudentProfile] notif_prefs 업데이트 실패:', e));
 
     // 현재 다른 토글의 값 계산
     // 토글 적용 후 상태로 전체 ON/OFF 판단
@@ -112,12 +107,12 @@ export default function StudentProfileScreen() {
 
     if (allOff) {
       // 모든 알림 OFF → FCM 토큰 제거
-      await updateDoc(Collections.user(user.uid), { fcm_token: null }).catch((e) =>
+      await Collections.user(user.uid).update({ fcm_token: null }).catch((e: unknown) =>
         console.warn('[StudentProfile] fcm_token 제거 실패:', e)
       );
     } else if (value && wasAllOff) {
       // 모두 OFF 상태에서 하나가 ON으로 전환 → FCM 토큰 재발급
-      await initFCM(user.uid).catch((e) =>
+      await initFCM(user.uid).catch((e: unknown) =>
         console.warn('[StudentProfile] FCM 재초기화 실패:', e)
       );
     }
@@ -135,23 +130,23 @@ export default function StudentProfileScreen() {
     (async () => {
       try {
         // 1) 소속 반 이름 조회
-        const classSnap = await getDoc(Collections.class(user.class_id!));
+        const classSnap = await Collections.class(user.class_id!).get();
         if (classSnap.exists()) {
           setClassName((classSnap.data() as Class).name);
         }
 
         // 2) 제출 완료 수 계산
         //    학생 반의 숙제 목록 조회 후 내 제출물 존재 여부 확인 (최근 30개)
-        const hwSnap = await getDocs(
-          query(Collections.homeworks(), where('class_id', '==', user.class_id))
-        );
+        const hwSnap = await Collections.homeworks()
+          .where('class_id', '==', user.class_id)
+          .get();
         const hwList = hwSnap.docs.map(d => ({ id: d.id, ...d.data() } as Homework));
         const recentHws = hwList.slice(0, 30);
 
         const subResults = await Promise.all(
           recentHws.map(async (hw) => {
             const subRef = Collections.submission(hw.id, user.uid);
-            const subSnap = await getDoc(subRef);
+            const subSnap = await subRef.get();
             return subSnap.exists() ? 1 : 0; // 숫자 반환
           })
         );
@@ -177,21 +172,16 @@ export default function StudentProfileScreen() {
 
         await Promise.all(
           dates.map(async (dateStr) => {
-            const ref = doc(
-              db,
-              'attendances',
-              `${user.class_id}_${dateStr}`,
-              'records',
-              user.uid
-            );
-            const snap = await getDoc(ref);
+            const ref = firestore()
+              .collection('attendances')
+              .doc(`${user.class_id}_${dateStr}`)
+              .collection('records')
+              .doc(user.uid);
+            const snap = await ref.get();
             if (snap.exists()) {
               const record = snap.data() as AttendanceRecord;
-              // onLeave(휴원)는 출석률 계산에서 제외
-              if (record.status !== 'onLeave') {
-                totalCnt++;
-                if (record.status === 'present') presentCnt++;
-              }
+              totalCnt++;
+              if (record.status === 'present') presentCnt++;
             }
           })
         );
@@ -235,7 +225,7 @@ export default function StudentProfileScreen() {
         text: '로그아웃',
         style: 'destructive',
         onPress: async () => {
-          await signOut(auth);
+          await safeSignOut();
           clearUser();
         },
       },
@@ -245,42 +235,17 @@ export default function StudentProfileScreen() {
   // ── 비밀번호 변경 모달 열기 ──────────────────
   const handlePasswordChange = () => setIsPwModalVisible(true);
 
-  // ── 문의하기 — 기기 정보 포함 이메일 열기 ──────
+  // ── 문의하기 — 카카오톡 상담 채널로 연결 ──────
   const handleInquiry = () => {
-    const body = `\n\n---\n기기: ${Platform.OS} ${Platform.Version}\n앱 버전: ${APP_VERSION}\n사용자 ID: ${user?.uid ?? ''}`;
-    const mailto = `mailto:${strings.account.inquiryEmail}?subject=${encodeURIComponent(strings.account.inquirySubject)}&body=${encodeURIComponent(body)}`;
-    Linking.openURL(mailto).catch(() =>
-      Alert.alert(strings.account.inquiryTitle, `${strings.account.inquiryEmail}로 문의해주세요.`)
-    );
+    openKakaoSupport();
   };
 
-  // ── 탈퇴하기 ──────────────────────────────────
+  // ── 탈퇴하기 (PIPA 삭제권 — 30일 후 / 즉시 완전 삭제 선택) ──
   const handleDeleteAccount = () => {
-    Alert.alert(
-      strings.account.deleteConfirmTitle,
-      strings.account.deleteConfirmMessage,
-      [
-        { text: strings.common.cancel, style: 'cancel' },
-        {
-          text: strings.account.deleteButton,
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeleting(true);
-            try {
-              const fns = getFunctions(app, 'asia-northeast3');
-              const deleteUserFn = httpsCallable(fns, 'deleteUser');
-              await deleteUserFn({});
-              await signOut(auth);
-              clearUser();
-            } catch {
-              Alert.alert(strings.common.error, strings.account.deleteFailed);
-            } finally {
-              setIsDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+    showDeleteAccountDialog({
+      onLoadingChange: setIsDeleting,
+      onSuccess: clearUser,
+    });
   };
 
   const linkCode = user?.link_code ?? '';

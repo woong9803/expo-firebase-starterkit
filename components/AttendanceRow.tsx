@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,8 @@ interface Props {
   status: AttendanceStatus | null;
   reason: string | null;
   onStatusChange: (status: AttendanceStatus) => void;
-  onReasonSave: (reason: string | null) => void; // 사유 저장 콜백
+  // 사유 입력 즉시 부모(pending state)로 전달 — Firestore 쓰기는 "저장하기"에서 일괄 처리
+  onReasonChange: (reason: string) => void;
   disabled?: boolean;
   readOnly?: boolean; // 저장 완료 후 보기 전용 모드
 }
@@ -54,29 +55,14 @@ export default function AttendanceRow({
   status,
   reason,
   onStatusChange,
-  onReasonSave,
+  onReasonChange,
   disabled = false,
   readOnly = false,
 }: Props) {
-  // 로컬 입력값 — Firestore 저장 전 임시 상태
-  const [localReason, setLocalReason] = useState(reason ?? '');
-  const [isSaving, setIsSaving] = useState(false);
-
-  // 외부에서 reason이 바뀌면 (onSnapshot) 로컬 상태 동기화
-  useEffect(() => {
-    setLocalReason(reason ?? '');
-  }, [reason]);
-
-  // 사유 저장 핸들러
-  async function handleSave() {
-    const trimmed = localReason.trim();
-    setIsSaving(true);
-    try {
-      await onReasonSave(trimmed === '' ? null : trimmed);
-    } finally {
-      setIsSaving(false);
-    }
-  }
+  // 입력값은 부모 pending state에 즉시 반영(controlled)
+  // — record가 아직 없는 상태에서 자동 저장하면 updateDoc 실패하므로,
+  //   "저장하기" 한 번에 status·reason 함께 저장되도록 흐름을 일원화
+  const value = reason ?? '';
 
   const avatarBg = getAvatarColor(studentName);
   // 편집 모드: 지각·결석 상태일 때 입력창 표시
@@ -141,8 +127,8 @@ export default function AttendanceRow({
         <View style={styles.reasonRow}>
           <TextInput
             style={styles.reasonInput}
-            value={localReason}
-            onChangeText={setLocalReason}
+            value={value}
+            onChangeText={onReasonChange}
             placeholder={
               status === 'late'
                 ? strings.attendance.lateReasonPlaceholder
@@ -150,9 +136,7 @@ export default function AttendanceRow({
             }
             placeholderTextColor="#94A3B8"
             returnKeyType="done"
-            onSubmitEditing={handleSave}   // 키보드 완료 버튼
-            onEndEditing={handleSave}      // 포커스 해제 시 자동 저장
-            editable={!isSaving}
+            editable={!disabled}
           />
         </View>
       )}

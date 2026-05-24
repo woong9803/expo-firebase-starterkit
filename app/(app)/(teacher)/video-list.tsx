@@ -23,15 +23,6 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  getDocs,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  deleteDoc,
-  updateDoc,
-} from 'firebase/firestore';
 import { Collections } from '../../../lib/firestore';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { parseYouTubeVideoId, getYouTubeThumbnailUrl, getYouTubeWatchUrl } from '../../../lib/youtube';
@@ -72,24 +63,26 @@ export default function VideoListScreen() {
 
   useEffect(() => {
     if (!user?.academy_id) return;
-    getDocs(
-      query(Collections.classes(), where('academy_id', '==', user.academy_id))
-    ).then(snap => {
-      const map: Record<string, string> = {};
-      snap.docs.forEach(d => { map[d.id] = d.data().name; });
-      classMapRef.current = map;
-      const ids = snap.docs.map(d => d.id);
-      setClassIds(ids);
-      if (ids.length === 0) {
-        // 반이 없으면 빈 목록으로 로딩 종료
-        setVideos([]);
+    Collections.classes()
+      .where('academy_id', '==', user.academy_id)
+      .get()
+      .then(snap => {
+        const map: Record<string, string> = {};
+        snap.docs.forEach(d => { map[d.id] = d.data().name; });
+        classMapRef.current = map;
+        const ids = snap.docs.map(d => d.id);
+        setClassIds(ids);
+        if (ids.length === 0) {
+          // 반이 없으면 빈 목록으로 로딩 종료
+          setVideos([]);
+          setIsLoading(false);
+        }
+      })
+      .catch(e => {
+        console.error('[VideoList] 반 목록 조회 실패:', e);
+        setError(true);
         setIsLoading(false);
-      }
-    }).catch(e => {
-      console.error('[VideoList] 반 목록 조회 실패:', e);
-      setError(true);
-      setIsLoading(false);
-    });
+      });
   }, [user?.academy_id, retryKey]);
 
   // ── 2단계: 영상 실시간 구독 ───────────────────────────────────────────
@@ -100,29 +93,26 @@ export default function VideoListScreen() {
     setIsLoading(true);
     setError(false);
 
-    const q = query(
-      Collections.videos(),
-      where('class_id', 'in', classIds.slice(0, 30)),
-      orderBy('created_at', 'desc'),
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      snap => {
-        const list = snap.docs.map(d => ({
-          id: d.id,
-          ...d.data(),
-          className: classMapRef.current[d.data().class_id] ?? '알 수 없는 반',
-        } as VideoItem));
-        setVideos(list);
-        setIsLoading(false);
-      },
-      e => {
-        console.error('[VideoList] 영상 실시간 구독 실패:', e);
-        setError(true);
-        setIsLoading(false);
-      }
-    );
+    // RN Firebase 체이닝 API — where('in')은 최대 30개까지 지원
+    const unsubscribe = Collections.videos()
+      .where('class_id', 'in', classIds.slice(0, 30))
+      .orderBy('created_at', 'desc')
+      .onSnapshot(
+        snap => {
+          const list = snap.docs.map(d => ({
+            id: d.id,
+            ...d.data(),
+            className: classMapRef.current[d.data().class_id] ?? '알 수 없는 반',
+          } as VideoItem));
+          setVideos(list);
+          setIsLoading(false);
+        },
+        e => {
+          console.error('[VideoList] 영상 실시간 구독 실패:', e);
+          setError(true);
+          setIsLoading(false);
+        }
+      );
 
     // 컴포넌트 언마운트 또는 classIds 변경 시 구독 해제
     return () => unsubscribe();
@@ -141,7 +131,7 @@ export default function VideoListScreen() {
           onPress: async () => {
             try {
               // onSnapshot이 삭제를 자동으로 감지해 목록에서 제거함
-              await deleteDoc(Collections.video(video.id));
+              await Collections.video(video.id).delete();
             } catch (e) {
               console.error('[VideoList] 삭제 실패:', e);
               Alert.alert('오류', '삭제에 실패했어요. 다시 시도해주세요.');
@@ -186,7 +176,7 @@ export default function VideoListScreen() {
     setIsSaving(true);
     try {
       // onSnapshot이 수정 내용을 자동으로 감지해 목록에 반영함
-      await updateDoc(Collections.video(editTarget.id), {
+      await Collections.video(editTarget.id).update({
         title: editTitle.trim(),
         youtube_url: editUrl.trim(),
         video_id: editParsedId,

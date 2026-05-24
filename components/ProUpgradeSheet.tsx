@@ -4,7 +4,8 @@
  * 무료 플랜 사용자가 Pro 전용 기능 진입 시 표시.
  *
  * 역할별 동작 분기 (학원 설정은 admin만 변경 가능 — security.md 기준):
- * - admin:  "플랜 업그레이드 →" → /plan-upgrade 화면으로 이동
+ * - admin:  "출시 후 오픈 예정" 안내 후 시트 닫음 (결제 기능은 정식 출시 시점에 오픈)
+ *            → 출시 시: handleUpgradePress 안의 router.push 복구
  * - teacher: "원장님께 요청 →" → 시트만 닫고 요청 가이드 유지
  * - 기타:    시트만 닫음 (학부모/학생은 이 시트를 보게 될 일이 거의 없음)
  */
@@ -17,8 +18,8 @@ import {
   StyleSheet,
   Modal,
   Pressable,
+  Alert,
 } from 'react-native';
-import { router } from 'expo-router';
 
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -49,18 +50,21 @@ export default function ProUpgradeSheet({ visible, onClose, featureName }: Props
   const role = user?.role;
   const isAdmin = role === 'admin';
 
-  // admin: 결제 화면으로 이동 / 그 외: 시트만 닫음 (원장님께 요청 안내)
+  // admin: 결제 기능은 정식 출시 시점에 오픈 예정 — 안내 알림만 표시
+  //         (출시 시: 아래 Alert 블록을 router.push('/(app)/(admin)/plan-upgrade') 로 교체)
+  // 그 외: 시트만 닫음 (원장님께 요청 안내는 시트 본문 텍스트로 노출)
   const handleUpgradePress = () => {
+    onClose();
     if (isAdmin) {
-      onClose();
-      router.push('/(app)/(admin)/plan-upgrade');
-    } else {
-      onClose();
+      Alert.alert(
+        '결제 오픈 예정',
+        '플랜 결제 기능은 앱 정식 출시 시점에 오픈될 예정이에요.\n조금만 기다려주세요!'
+      );
     }
   };
 
   // 역할별 버튼 라벨
-  const ctaLabel = isAdmin ? '플랜 업그레이드 →' : '원장님께 요청하기';
+  const ctaLabel = isAdmin ? '출시 알림 받기' : '원장님께 요청하기';
 
   return (
     <Modal

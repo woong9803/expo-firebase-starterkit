@@ -22,9 +22,12 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { addDoc, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Collections } from '../../../lib/firestore';
+
+// RN Firebase Timestamp 별칭
+const Timestamp = firestore.Timestamp;
 import { useAuthStore } from '../../../store/useAuthStore';
 import ClassPickerSheet from '../../../components/ClassPickerSheet';
 import { Class } from '../../../types';
@@ -81,9 +84,9 @@ export default function HomeworkCreateScreen() {
     if (!user?.academy_id) return;
     (async () => {
       try {
-        const snap = await getDocs(
-          query(Collections.classes(), where('academy_id', '==', user.academy_id))
-        );
+        const snap = await Collections.classes()
+          .where('academy_id', '==', user.academy_id)
+          .get();
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Class));
         setClasses(list);
         if (list.length === 1) setSelectedClassId(list[0].id);
@@ -151,7 +154,7 @@ export default function HomeworkCreateScreen() {
 
     setIsLoading(true);
     try {
-      await addDoc(Collections.homeworks(), {
+      await Collections.homeworks().add({
         title: title.trim(),
         content: content.trim(),
         class_id: selectedClassId,
