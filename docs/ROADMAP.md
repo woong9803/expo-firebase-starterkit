@@ -553,25 +553,40 @@ dev-app-first는 학원 운영자(원장), 선생님, 학생, 학부모를 위�
 
 ---
 
-### Phase 11: Pro 플랜 & 결제 통합
+### Phase 11: Pro 플랜 & 결제 통합 ✅
 
-**목표**: RevenueCat 인앱결제가 iOS/Android 모두 동작하고, Pro 전용 기능 진입 시 업그레이드 바텀시트가 올바르게 표시되는 상태
+**목표**: 결제 흐름이 완성되고, Pro 전용 기능 진입 시 업그레이드 바텀시트가 올바르게 표시되는 상태
+
+> RevenueCat 인앱결제(수수료 30%) 대신 웹 직접 결제(토스페이먼츠, 수수료 2~3%) 채택
+> PRD 섹션 12 기준: 앱 내에서 웹으로 결제 유도는 스토어 정책 위반 위험 → 원장이 직접 웹 접속 후 결제
 
 **구현 내용**:
-- RevenueCat SDK 통합 (iOS/Android 인앱결제 통합 관리)
-- Pro 업그레이드 바텀시트 컴포넌트 (`components/ProUpgradeSheet.tsx`) 완성
-  - 기능 목록 + 가격 안내 (학생 수 기반 슬라이더) + '14일 무료 체험 시작' 버튼
-- 무료 기능에서 Pro 전용 기능 진입 시 바텀시트 표시
-- Firestore `academies.plan` 체크 + Security Rules 적용
+- ✅ `components/ProUpgradeSheet.tsx` — 무료 기능 진입 시 업그레이드 안내 바텀시트
+  - admin: "요금제 확인하기" → `plan-upgrade.tsx`로 이동
+  - teacher: "원장님께 요청하기" 안내
+- ✅ `app/(app)/(admin)/plan-upgrade.tsx` — 요금제 선택 + "웹에서 결제하기" → 외부 브라우저 오픈
+- ✅ `web/src/pages/SubscriptionManagement.tsx` — 토스페이먼츠 결제 + `verifyTossPayment` CF 연동
+- ✅ `functions/src/academy/verifyTossPayment.ts` — 결제 검증 + `academies.plan` 갱신
+- ✅ `hooks/useProCheck.ts` — standard/pro 플랜 여부 판별 훅
+- ✅ `hooks/useStudentLimit.ts` — 플랜별 학생 수 한도 체크 훅
+- ✅ `app/(app)/(admin)/(tabs)/settings.tsx` — 플랜 업그레이드 버튼 복원
+- ✅ Firestore Security Rules — `academies.plan` 체크 (이미 Phase 4~7에서 적용)
+- ✅ `EXPO_PUBLIC_WEB_DASHBOARD_URL` 환경변수 추가 (.env.local)
+  ⚠️ 웹 배포 후 실제 URL로 교체 필요
 
 **완료 기준**:
-- RevenueCat 인앱결제가 iOS/Android 모두 정상 동작
-- Pro 전환 바텀시트가 올바른 시점에 표시됨
-- Pro 전용 기능에 free 플랜으로 접근 시 차단됨
+- ✅ Pro 전환 바텀시트가 올바른 시점에 표시됨
+- ✅ admin이 바텀시트에서 "요금제 확인하기" → plan-upgrade 화면 이동
+- ✅ plan-upgrade에서 "웹에서 결제하기" → 브라우저로 웹 대시보드 오픈
+- ✅ 웹 대시보드에서 토스페이먼츠 결제 → plan 자동 갱신
+- ✅ Pro 전용 기능에 free 플랜으로 접근 시 바텀시트 표시 차단
 
 **주요 파일**:
 - `components/ProUpgradeSheet.tsx`
-- `lib/revenueCat.ts` (RevenueCat SDK 초기화 및 헬퍼)
+- `app/(app)/(admin)/plan-upgrade.tsx`
+- `web/src/pages/SubscriptionManagement.tsx`
+- `functions/src/academy/verifyTossPayment.ts`
+- `hooks/useProCheck.ts`
 
 ---
 

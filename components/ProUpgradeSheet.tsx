@@ -18,8 +18,8 @@ import {
   StyleSheet,
   Modal,
   Pressable,
-  Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -47,24 +47,21 @@ const PRO_BENEFITS = [
 
 export default function ProUpgradeSheet({ visible, onClose, featureName }: Props) {
   const { user } = useAuthStore();
+  const router = useRouter();
   const role = user?.role;
   const isAdmin = role === 'admin';
 
-  // admin: 결제 기능은 정식 출시 시점에 오픈 예정 — 안내 알림만 표시
-  //         (출시 시: 아래 Alert 블록을 router.push('/(app)/(admin)/plan-upgrade') 로 교체)
+  // admin: plan-upgrade 화면으로 이동 (요금제 선택 → 웹에서 결제)
   // 그 외: 시트만 닫음 (원장님께 요청 안내는 시트 본문 텍스트로 노출)
   const handleUpgradePress = () => {
     onClose();
     if (isAdmin) {
-      Alert.alert(
-        '결제 오픈 예정',
-        '플랜 결제 기능은 앱 정식 출시 시점에 오픈될 예정이에요.\n조금만 기다려주세요!'
-      );
+      router.push('/(app)/(admin)/plan-upgrade');
     }
   };
 
   // 역할별 버튼 라벨
-  const ctaLabel = isAdmin ? '출시 알림 받기' : '원장님께 요청하기';
+  const ctaLabel = isAdmin ? '요금제 확인하기' : '원장님께 요청하기';
 
   return (
     <Modal

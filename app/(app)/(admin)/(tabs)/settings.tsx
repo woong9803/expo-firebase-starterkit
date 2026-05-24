@@ -485,9 +485,17 @@ export default function AdminSettingsScreen() {
           </View>
         </View>
 
-        {/* 플랜 업그레이드 CTA — 결제 기능은 앱 정식 출시 시점에 오픈 예정 */}
-        {/* 진입 버튼만 임시 숨김. plan-upgrade 화면 코드와 styles.planUpgradeBtn 은 유지 */}
-        {/* 출시 시 위 블록(academy?.status === 'active' && <TouchableOpacity>…)을 복구하면 끝 */}
+        {/* 플랜 업그레이드 CTA — active 학원만 표시 */}
+        {academy?.status === 'active' && (
+          <TouchableOpacity
+            style={styles.planUpgradeBtn}
+            onPress={() => router.push('/(app)/(admin)/plan-upgrade')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="arrow-up-circle-outline" size={16} color="#5B50E8" />
+            <Text style={styles.planUpgradeBtnText}>플랜 업그레이드</Text>
+          </TouchableOpacity>
+        )}
       </LinearGradient>
 
       {/* ── 반 관리 ── */}
