@@ -1,8 +1,48 @@
-import { useQuery } from '@tanstack/react-query';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuthStore } from '../store/useAuthStore';
-import type { Class, User, AttendanceRecord } from '../../../types/index';
+import type { Class, User, AttendanceRecord, AttendanceStatus } from '../../../types/index';
+
+// 엑셀 내보내기 대상 학생 조회 (웹 전용 — Firebase JS SDK)
+// 재원자(is_active: true) + 해당 월에 수강기간이 걸친 퇴원자 포함, 탈퇴 계정 제외
+async function fetchStudentsForExportWeb(
+  academyId: string,
+  classId: string,
+  year: number,
+  month: number,
+): Promise<User[]> {
+  const snap = await getDocs(
+    query(
+      collection(db, 'users'),
+      where('academy_id', '==', academyId),
+      where('role', '==', 'student'),
+      where('class_id', '==', classId),
+    ),
+  );
+
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+  return snap.docs
+    .map((d) => ({ uid: d.id, ...d.data() } as User))
+    .filter((s) => !s.deleted_at)
+    .filter((s) => {
+      if (s.is_active) return true;
+      if (!s.withdrawal_date) return false;
+      const withdrawal = s.withdrawal_date.toDate();
+      if (withdrawal < monthStart) return false;
+      if (s.enrollment_date && s.enrollment_date.toDate() > monthEnd) return false;
+      return true;
+    });
+}
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -182,7 +222,7 @@ export function useDateClassStats(date: string) {
           if (teacherSnap.exists()) teacherName = teacherSnap.data().name ?? '-';
         }
 
-        // 학생 목록
+        // 학생 목록 — 탈퇴 처리된 계정(deleted_at) 제외
         const studentsSnap = await getDocs(
           query(
             collection(db, 'users'),
@@ -192,7 +232,7 @@ export function useDateClassStats(date: string) {
             where('is_active', '==', true)
           )
         );
-        const total = studentsSnap.size;
+        const total = studentsSnap.docs.filter((d) => !d.data().deleted_at).length;
 
         // 출결 기록
         const recordsSnap = await getDocs(
@@ -294,23 +334,8 @@ export async function fetchMonthlyAttendanceData(
   year: number,
   month: number
 ): Promise<MonthlyAttendanceData> {
-  // 학생 목록 조회
-  const studentsSnap = await getDocs(
-    query(
-      collection(db, 'users'),
-      where('academy_id', '==', academyId),
-      where('role', '==', 'student'),
-      where('class_id', '==', classId),
-      where('is_active', '==', true)
-    )
-  );
-  // 탈퇴 처리된 계정(deleted_at 있음) 제외
-  const students = studentsSnap.docs
-    .filter((d) => !d.data().deleted_at)
-    .map((d) => ({
-      uid: d.id,
-      ...d.data(),
-    } as User));
+  // 재원자 + 해당 월에 걸친 퇴원자까지 포함 — 공통 헬퍼 사용 (web 전용 db 주입)
+  const students = await fetchStudentsForExportWeb(academyId, classId, year, month);
 
   // 해당 월의 날짜 배열 생성
   const lastDay = new Date(year, month, 0).getDate();
@@ -336,4 +361,103 @@ export async function fetchMonthlyAttendanceData(
   }
 
   return { students, attendanceData };
+}
+
+// ─── 출결 입력 mutations ────────────────────────────────────────────────────
+
+/**
+ * 명렬표에서 임시 토글한 출결 상태들을 한 번에 저장한다.
+ * - 부모 문서에 academy_id를 merge로 보장 (Rules·인덱스 조회 필수)
+ * - 각 학생 records/{uid}에 status만 merge 저장 (기존 reason 보존)
+ */
+export function useSaveAttendanceBulk() {
+  const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const academyId = user?.academy_id ?? '';
+
+  return useMutation({
+    mutationFn: async (params: {
+      classId: string;
+      date: string;
+      // reason 미지정(undefined) → 기존 reason 보존
+      // reason: null → 사유 제거 / reason: string → 사유 저장
+      records: { uid: string; status?: AttendanceStatus; reason?: string | null }[];
+    }) => {
+      const { classId, date, records } = params;
+      if (!academyId) throw new Error('학원 정보를 불러오지 못했습니다.');
+
+      // 1) 부모 문서에 academy_id 보장 (없으면 생성, 있으면 그대로)
+      await setDoc(
+        doc(db, 'attendances', `${classId}_${date}`),
+        { academy_id: academyId },
+        { merge: true }
+      );
+
+      // 2) 각 학생 record를 병렬로 status·reason merge 저장
+      //    status/reason 중 정의된 필드만 payload에 담아 미지정 필드는 보존
+      await Promise.all(
+        records.map(({ uid, status, reason }) => {
+          const payload: Record<string, unknown> = {};
+          if (status !== undefined) payload.status = status;
+          if (reason !== undefined) payload.reason = reason;
+          if (Object.keys(payload).length === 0) return Promise.resolve();
+          return setDoc(
+            doc(db, 'attendances', `${classId}_${date}`, 'records', uid),
+            payload,
+            { merge: true }
+          );
+        })
+      );
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['dailyAttendance', academyId, vars.classId, vars.date] });
+      qc.invalidateQueries({ queryKey: ['absenceReasons', academyId, vars.classId, vars.date] });
+      qc.invalidateQueries({ queryKey: ['dateClassStats', academyId, vars.date] });
+      qc.invalidateQueries({ queryKey: ['todayStats', academyId] });
+      qc.invalidateQueries({ queryKey: ['todayByClass', academyId] });
+      qc.invalidateQueries({ queryKey: ['weeklyTrend', academyId] });
+      qc.invalidateQueries({ queryKey: ['monthlyCalendar', academyId] });
+    },
+  });
+}
+
+/**
+ * 결석/지각 사유 즉시 저장 (status는 건드리지 않음)
+ * - reason: null → 사유 제거
+ * - 부모 문서에 academy_id 보장 (Rules·인덱스 조회 필수) + record는 setDoc merge로
+ *   문서가 없을 때도 안전하게 생성. status가 아직 없으면 reason만 들어 있는 부분 record가
+ *   생성되지만 후속 status 저장이 merge이므로 손실 없음.
+ */
+export function useSetAttendanceReason() {
+  const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const academyId = user?.academy_id ?? '';
+
+  return useMutation({
+    mutationFn: async (params: {
+      classId: string;
+      date: string;
+      uid: string;
+      reason: string | null;
+    }) => {
+      const { classId, date, uid, reason } = params;
+      if (!academyId) throw new Error('학원 정보를 불러오지 못했습니다.');
+
+      await setDoc(
+        doc(db, 'attendances', `${classId}_${date}`),
+        { academy_id: academyId },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, 'attendances', `${classId}_${date}`, 'records', uid),
+        { reason },
+        { merge: true }
+      );
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['dailyAttendance', academyId, vars.classId, vars.date] });
+      qc.invalidateQueries({ queryKey: ['absenceReasons', academyId, vars.classId, vars.date] });
+    },
+  });
 }

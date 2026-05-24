@@ -1,15 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { strings } from '../constants/strings';
 import { useAuthStore } from '../store/useAuthStore';
 import {
   useDateClassStats,
   useAbsenceReasons,
   useMonthlyCalendar,
+  useDailyAttendance,
+  useSaveAttendanceBulk,
   fetchMonthlyAttendanceData,
   useAttendanceClasses,
   type ClassDailyStats,
   type AbsenceReasonItem,
+  type StudentAttendance,
 } from '../hooks/useAttendance';
+import type { AttendanceStatus } from '../../../types/index';
 import {
   downloadClassAttendanceExcel,
   downloadAllClassesAttendanceExcel,
@@ -43,11 +48,14 @@ function Skeleton({ height = 80 }: { height?: number }) {
 export default function AttendanceManagement() {
   const { user, academy } = useAuthStore();
   const { data: classes } = useAttendanceClasses();
+  const navigate = useNavigate();
 
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
+  // 출결 입력 모달 — 클래스 객체 전체를 들고 있어야 모달 헤더에 이름 표시 가능
+  const [entryClass, setEntryClass] = useState<ClassDailyStats | null>(null);
 
   const now = new Date();
   const { data: classStats, isLoading: statsLoading } = useDateClassStats(selectedDate);
@@ -104,6 +112,9 @@ export default function AttendanceManagement() {
               </div>
             )}
           </div>
+          <button className="btn-secondary" onClick={() => navigate('/attendance/roster')}>
+            {strings.attendance.rosterTitle}
+          </button>
           <button className="btn-primary" onClick={() => setShowExcelModal(true)}>
             <IconDownload /> 월별 출석부 (Excel)
           </button>
@@ -160,6 +171,7 @@ export default function AttendanceManagement() {
                   stats={c}
                   selected={selectedClassId === c.classId}
                   onClick={() => setSelectedClassId((prev) => prev === c.classId ? null : c.classId)}
+                  onEnter={() => setEntryClass(c)}
                 />
               ))
             )}
@@ -225,6 +237,16 @@ export default function AttendanceManagement() {
           onClose={() => setShowExcelModal(false)}
         />
       )}
+
+      {/* 출결 입력(명렬표) 모달 */}
+      {entryClass && (
+        <AttendanceEntryModal
+          classId={entryClass.classId}
+          className={entryClass.className}
+          date={selectedDate}
+          onClose={() => setEntryClass(null)}
+        />
+      )}
     </div>
   );
 }
@@ -259,9 +281,9 @@ function SummaryCard({
 
 // ── 반별 리스트 아이템 ─────────────────────────────────────────
 function ClassListItem({
-  stats, selected, onClick,
+  stats, selected, onClick, onEnter,
 }: {
-  stats: ClassDailyStats; selected: boolean; onClick: () => void;
+  stats: ClassDailyStats; selected: boolean; onClick: () => void; onEnter: () => void;
 }) {
   const rate = stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0;
   const presentW = stats.total > 0 ? (stats.present / stats.total) * 100 : 0;
@@ -284,17 +306,30 @@ function ClassListItem({
         if (!selected) e.currentTarget.style.background = 'transparent';
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
           <p style={{ fontWeight: 600, fontSize: 13.5, color: '#0f172a' }}>{stats.className}</p>
           <p style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3 }}>
             {stats.teacherName}
             {stats.schedule ? ` · ${stats.schedule}` : ''}
           </p>
         </div>
-        <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
-          {rate}%
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+            {rate}%
+          </p>
+          {/* 카드 본체 onClick(반 선택)과 분리되도록 stopPropagation */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onEnter(); }}
+            style={{
+              padding: '5px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+              background: '#3b5bdb', color: '#fff', border: 'none', cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            출결 입력
+          </button>
+        </div>
       </div>
 
       {/* 출/지/결 스택 바 */}
@@ -466,6 +501,273 @@ function CalendarHeatmap({
         );
       })}
     </div>
+  );
+}
+
+// ── 출결 입력 모달 (명렬표) ───────────────────────────────────
+// 앱(students.tsx의 AttendanceDetailModal)과 동일한 흐름:
+//  1) status 토글은 로컬 임시 상태(pending)에 보관 — 저장하기 누르면 일괄 반영
+//  2) reason 입력은 즉시 저장 (포커스 이탈 시점)
+function AttendanceEntryModal({
+  classId, className, date, onClose,
+}: {
+  classId: string; className: string; date: string; onClose: () => void;
+}) {
+  const { data: roster, isLoading } = useDailyAttendance(classId, date);
+  const saveBulk = useSaveAttendanceBulk();
+
+  // 임시 상태 — 저장 전 로컬 변경분 (status·reason 둘 다 누적)
+  // 자동 저장으로는 record 없는 상태에서 reason 단독 쓰기가 실패하므로,
+  // status·reason 모두 pending에 모아 저장하기 한 번으로 일괄 반영
+  type PendingEntry = { status?: AttendanceStatus; reason?: string | null };
+  const [pending, setPending] = useState<Record<string, PendingEntry>>({});
+
+  // 모달이 열릴 때마다(반/날짜 변경 포함) 임시 상태 초기화
+  useEffect(() => { setPending({}); }, [classId, date]);
+
+  // 표시용 값: 임시 우선, 없으면 저장된 값
+  const mergedStatus: Record<string, AttendanceStatus | null> = useMemo(() => {
+    const map: Record<string, AttendanceStatus | null> = {};
+    (roster ?? []).forEach((r) => {
+      map[r.uid] = pending[r.uid]?.status ?? r.record?.status ?? null;
+    });
+    return map;
+  }, [roster, pending]);
+
+  const mergedReason: Record<string, string> = useMemo(() => {
+    const map: Record<string, string> = {};
+    (roster ?? []).forEach((r) => {
+      const p = pending[r.uid]?.reason;
+      // pending에 명시적으로 들어 있으면 우선 (null도 빈 문자열 표시)
+      if (p !== undefined) map[r.uid] = p ?? '';
+      else map[r.uid] = r.record?.reason ?? '';
+    });
+    return map;
+  }, [roster, pending]);
+
+  // 요약 카운터
+  const summary = useMemo(() => {
+    const values = Object.values(mergedStatus);
+    return {
+      present: values.filter((s) => s === 'present').length,
+      late: values.filter((s) => s === 'late').length,
+      absent: values.filter((s) => s === 'absent').length,
+    };
+  }, [mergedStatus]);
+  const total = roster?.length ?? 0;
+  const notEntered = total - summary.present - summary.late - summary.absent;
+
+  // 변경 건수: status·reason 중 하나라도 변경된 학생 수
+  const pendingCount = Object.keys(pending).length;
+  const hasPending = pendingCount > 0;
+
+  const handleStatusClick = (uid: string, status: AttendanceStatus) => {
+    setPending((prev) => {
+      const cur = prev[uid] ?? {};
+      // 이미 같은 status면 토글 해제 (reason은 보존)
+      if (cur.status === status) {
+        const next: PendingEntry = { ...cur };
+        delete next.status;
+        // reason도 없으면 entry 자체 제거
+        if (next.reason === undefined) {
+          const { [uid]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [uid]: next };
+      }
+      return { ...prev, [uid]: { ...cur, status } };
+    });
+  };
+
+  const handleReasonChange = (uid: string, reason: string) => {
+    setPending((prev) => {
+      const cur = prev[uid] ?? {};
+      const trimmed = reason.trim();
+      // 저장된 원본 reason과 같으면 pending에서 제거
+      const original = roster?.find((r) => r.uid === uid)?.record?.reason ?? '';
+      if (trimmed === original) {
+        const next: PendingEntry = { ...cur };
+        delete next.reason;
+        if (next.status === undefined) {
+          const { [uid]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [uid]: next };
+      }
+      return { ...prev, [uid]: { ...cur, reason: trimmed || null } };
+    });
+  };
+
+  const handleSaveAll = async () => {
+    if (!hasPending) return;
+    const records = Object.entries(pending).map(([uid, { status, reason }]) => ({
+      uid, status, reason,
+    }));
+    try {
+      await saveBulk.mutateAsync({ classId, date, records });
+      setPending({});
+    } catch (err: unknown) {
+      alert((err as { message?: string }).message ?? '저장에 실패했어요.');
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-box" style={{ width: '100%', maxWidth: 640, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        {/* 헤더 */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '18px 22px 14px', borderBottom: '1px solid #e4e7ec',
+        }}>
+          <div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{className} — 출결 입력</h2>
+            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>{date}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* 요약 칩 */}
+        <div style={{
+          display: 'flex', gap: 8, padding: '12px 22px',
+          borderBottom: '1px solid #e4e7ec', background: '#f8fafc',
+          flexWrap: 'wrap',
+        }}>
+          <SummaryChip count={summary.present} label="출석" color="#0ea371" />
+          <SummaryChip count={summary.late} label="지각" color="#d97706" />
+          <SummaryChip count={summary.absent} label="결석" color="#dc2626" />
+          <SummaryChip count={notEntered} label="미입력" color="#94a3b8" />
+        </div>
+
+        {/* 명렬표 */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 22px' }}>
+          {isLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 0' }}>
+              {[...Array(4)].map((_, i) => <Skeleton key={i} height={56} />)}
+            </div>
+          ) : !roster?.length ? (
+            <p style={{ textAlign: 'center', padding: '40px 0', fontSize: 13, color: '#94a3b8' }}>
+              등록된 학생이 없어요
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {roster.map((s) => (
+                <RosterRow
+                  key={s.uid}
+                  student={s}
+                  status={mergedStatus[s.uid]}
+                  reason={mergedReason[s.uid]}
+                  isPending={s.uid in pending}
+                  onChangeStatus={(st) => handleStatusClick(s.uid, st)}
+                  onChangeReason={(reason) => handleReasonChange(s.uid, reason)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 저장 버튼 */}
+        <div style={{
+          padding: '14px 22px', borderTop: '1px solid #e4e7ec',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+        }}>
+          <p style={{ fontSize: 12, color: '#94a3b8' }}>
+            {hasPending ? `변경 ${Object.keys(pending).length}건 — 저장 전 미반영 상태` : '변경 사항 없음'}
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-secondary" onClick={onClose} disabled={saveBulk.isPending}>닫기</button>
+            <button className="btn-primary" onClick={handleSaveAll} disabled={!hasPending || saveBulk.isPending}>
+              {saveBulk.isPending ? '저장 중...' : '저장하기'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryChip({ count, label, color }: { count: number; label: string; color: string }) {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '5px 10px', borderRadius: 999, background: '#fff',
+      border: `1px solid ${color}33`, fontSize: 12, fontWeight: 600,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: 3, background: color }} />
+      <span style={{ color: '#0f172a' }}>{label}</span>
+      <span style={{ color, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+    </div>
+  );
+}
+
+// ── 명렬표 한 줄 ──────────────────────────────────────────────
+// 사유 입력은 부모(pending state)에 즉시 반영되며, 실제 Firestore 쓰기는
+// "저장하기" 클릭 시 saveBulk가 일괄 처리. 자동 저장 시 record 미존재로 인한
+// updateDoc 실패를 막기 위함.
+function RosterRow({
+  student, status, reason, isPending, onChangeStatus, onChangeReason,
+}: {
+  student: StudentAttendance;
+  status: AttendanceStatus | null;
+  reason: string;
+  isPending: boolean;
+  onChangeStatus: (s: AttendanceStatus) => void;
+  onChangeReason: (reason: string) => void;
+}) {
+  // 결석/지각일 때만 사유 입력 노출
+  const showReason = status === 'absent' || status === 'late';
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      padding: '10px 12px', border: '1px solid #e4e7ec', borderRadius: 8,
+      background: isPending ? '#fffbe6' : '#ffffff',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <p style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{student.name}</p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <StatusBtn label="출석" active={status === 'present'} color="#0ea371"
+            onClick={() => onChangeStatus('present')} />
+          <StatusBtn label="지각" active={status === 'late'} color="#d97706"
+            onClick={() => onChangeStatus('late')} />
+          <StatusBtn label="결석" active={status === 'absent'} color="#dc2626"
+            onClick={() => onChangeStatus('absent')} />
+        </div>
+      </div>
+      {showReason && (
+        <input
+          className="input-field"
+          placeholder="결석/지각 사유 (선택, 저장하기 누를 때 함께 반영)"
+          value={reason}
+          onChange={(e) => onChangeReason(e.target.value)}
+          style={{ fontSize: 12.5 }}
+        />
+      )}
+    </div>
+  );
+}
+
+function StatusBtn({
+  label, active, color, onClick,
+}: { label: string; active: boolean; color: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        minWidth: 56, height: 32, padding: '0 12px',
+        borderRadius: 6, fontSize: 13, fontWeight: 700,
+        cursor: 'pointer',
+        background: active ? color : '#fff',
+        color: active ? '#fff' : '#475569',
+        border: `1px solid ${active ? color : '#d0d5dd'}`,
+        transition: 'all 0.1s',
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

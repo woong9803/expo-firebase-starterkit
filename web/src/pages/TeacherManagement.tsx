@@ -51,6 +51,9 @@ export default function TeacherManagement() {
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TeacherWithClasses | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // 반 배정 모달 — 선택된 선생님 + 저장 진행 상태
+  const [assignTarget, setAssignTarget] = useState<TeacherWithClasses | null>(null);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   // ── 반 목록 + 반별 학생 수 1회 조회
   useEffect(() => {
@@ -137,6 +140,22 @@ export default function TeacherManagement() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // ── 반 배정 저장 — assigned_class_ids 필드만 업데이트 (Rules 화이트리스트)
+  const handleSaveAssignment = async (selectedIds: string[]) => {
+    if (!assignTarget) return;
+    setIsAssigning(true);
+    try {
+      await updateDoc(doc(db, 'users', assignTarget.uid), {
+        assigned_class_ids: selectedIds,
+      });
+      setAssignTarget(null);
+    } catch {
+      alert(strings.common.error);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
   // ── 선생님 소프트 삭제
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -208,6 +227,7 @@ export default function TeacherManagement() {
                       key={t.uid}
                       teacher={t}
                       onDelete={() => setDeleteTarget(t)}
+                      onAssign={() => setAssignTarget(t)}
                     />
                   ))}
                 </tbody>
@@ -282,6 +302,18 @@ export default function TeacherManagement() {
         </div>
       </div>
 
+      {/* ── 반 배정 모달 ── */}
+      {assignTarget && (
+        <AssignClassesModal
+          teacher={assignTarget}
+          classMap={classMap}
+          studentCountMap={studentCountMap}
+          onSave={handleSaveAssignment}
+          onClose={() => setAssignTarget(null)}
+          isLoading={isAssigning}
+        />
+      )}
+
       {/* ── 가입코드 공유 모달 ── */}
       {showCodeModal && (
         <CodeShareModal
@@ -307,10 +339,11 @@ export default function TeacherManagement() {
 
 // ── 선생님 테이블 행 ──────────────────────────────────────────
 function TeacherRow({
-  teacher, onDelete,
+  teacher, onDelete, onAssign,
 }: {
   teacher: TeacherWithClasses;
   onDelete: () => void;
+  onAssign: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -386,10 +419,23 @@ function TeacherRow({
             style={{
               position: 'absolute', right: 8, top: '100%', zIndex: 30,
               background: '#fff', border: '1px solid #e4e7ec', borderRadius: 8,
-              boxShadow: '0 4px 8px rgba(16,24,40,0.08)', padding: '4px 0', minWidth: 110,
+              boxShadow: '0 4px 8px rgba(16,24,40,0.08)', padding: '4px 0', minWidth: 130,
             }}
             onMouseLeave={() => setMenuOpen(false)}
           >
+            {/* 반 배정 — 학원 내 모든 반을 토글로 선택 */}
+            <button
+              onClick={() => { setMenuOpen(false); onAssign(); }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '7px 14px', fontSize: 12.5, fontWeight: 500,
+                border: 'none', background: 'transparent', cursor: 'pointer', color: '#0f172a',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f3f6'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              {strings.teachers.assignClasses}
+            </button>
             <button
               onClick={() => { setMenuOpen(false); onDelete(); }}
               style={{
@@ -513,6 +559,135 @@ function CodeShareModal({ code, onClose }: { code: string; onClose: () => void }
 
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose}>닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 반 배정 모달 ──────────────────────────────────────────────
+// 학원 내 반 목록을 체크박스로 토글하여 선생님에게 배정
+function AssignClassesModal({
+  teacher, classMap, studentCountMap, onSave, onClose, isLoading,
+}: {
+  teacher: TeacherWithClasses;
+  classMap: Map<string, string>;
+  studentCountMap: Map<string, number>;
+  onSave: (selectedIds: string[]) => void;
+  onClose: () => void;
+  isLoading: boolean;
+}) {
+  // 현재 배정된 반 ID로 초기 선택 상태 구성 (Set으로 토글 효율화)
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(teacher.assigned_class_ids ?? [])
+  );
+
+  // classMap을 배열로 변환 — 반 이름 가나다순 정렬
+  const classList = Array.from(classMap.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+
+  const toggle = (classId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(classId)) next.delete(classId);
+      else next.add(classId);
+      return next;
+    });
+  };
+
+  const handleSave = () => {
+    onSave(Array.from(selected));
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-box" style={{ width: '100%', maxWidth: 460 }}>
+        {/* 헤더 */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '18px 22px 14px', borderBottom: '1px solid #e4e7ec',
+        }}>
+          <div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+              {strings.teachers.assignClassesTitle}
+            </h2>
+            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+              {teacher.name} 선생님
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            style={{ background: 'none', border: 'none', cursor: isLoading ? 'not-allowed' : 'pointer', color: '#94a3b8' }}
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* 본문 — 반 목록 체크박스 */}
+        <div style={{ padding: '14px 22px 0', maxHeight: 380, overflowY: 'auto' }}>
+          <p style={{ fontSize: 12.5, color: '#475569', marginBottom: 12, lineHeight: 1.5 }}>
+            {strings.teachers.assignClassesDesc}
+          </p>
+
+          {classList.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center' }}>
+              <p style={{ fontSize: 13, color: '#94a3b8' }}>
+                {strings.teachers.noClassesYet}
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {classList.map((c) => {
+                const isChecked = selected.has(c.id);
+                const studentCount = studentCountMap.get(c.id) ?? 0;
+                return (
+                  <label
+                    key={c.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                      background: isChecked ? '#eef2ff' : '#f9fafb',
+                      border: `1px solid ${isChecked ? '#3b5bdb' : '#e4e7ec'}`,
+                      transition: 'background 0.12s, border-color 0.12s',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggle(c.id)}
+                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#3b5bdb' }}
+                    />
+                    <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>
+                        {c.name}
+                      </span>
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                        학생 {studentCount}명
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 푸터 */}
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose} disabled={isLoading}>
+            취소
+          </button>
+          <button
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={isLoading || classList.length === 0}
+          >
+            {isLoading ? '저장 중...' : `${strings.teachers.saveAssignment} (${selected.size}개)`}
+          </button>
         </div>
       </div>
     </div>

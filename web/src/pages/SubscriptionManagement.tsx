@@ -25,11 +25,11 @@ import { useAuthStore } from '../store/useAuthStore';
 import { strings } from '../constants/strings';
 import type { Payment } from '../../../types/index';
 
-// ── 요금제 정보 (PRD 기준)
+// ── 요금제 정보 (PRD 도메인 룰 기준 — id는 starter/standard/pro)
 const PLANS = [
   {
-    id: 'basic' as const,
-    label: '베이직',
+    id: 'starter' as const,
+    label: '스타터',
     limitLabel: '30명 이하',
     limitMin: 0,
     limitMax: 30,
@@ -45,7 +45,7 @@ const PLANS = [
     limitMax: 100,
     amount: 59000,
     popular: true,
-    features: ['학생 100명 이하', '베이직 전체 기능', '공지 무제한', '엑셀 다운로드'],
+    features: ['학생 100명 이하', '스타터 전체 기능', '학습 영상 등록', '공지 읽음 확인'],
   },
   {
     id: 'pro' as const,
@@ -55,9 +55,11 @@ const PLANS = [
     limitMax: 9999,
     amount: 99000,
     popular: false,
-    features: ['학생 수 제한 없음', '스탠다드 전체 기능', '선생님 계정 무제한', '전담 상담사'],
+    features: ['학생 수 제한 없음', '스탠다드 전체 기능', '웹 대시보드 우선 지원', '전담 상담사'],
   },
 ] as const;
+
+type PlanId = typeof PLANS[number]['id'];
 
 export default function SubscriptionManagement() {
   const { user, academy } = useAuthStore();
@@ -68,8 +70,10 @@ export default function SubscriptionManagement() {
   const [studentCount, setStudentCount] = useState<number | null>(null);
 
   // 선택된 플랜 (모달용)
-  const [selectedPlanId, setSelectedPlanId] = useState<'basic' | 'standard' | 'pro'>('standard');
+  const [selectedPlanId, setSelectedPlanId] = useState<PlanId>('standard');
   const [showPayModal, setShowPayModal] = useState(false);
+  // 다운그레이드 차단 안내 (학생 수가 새 플랜 한도 초과 시)
+  const [downgradeBlock, setDowngradeBlock] = useState<{ planLabel: string; limit: number } | null>(null);
 
   // 결제 처리 상태
   const [payingAmount, setPayingAmount] = useState<number | null>(null);
@@ -94,7 +98,7 @@ export default function SubscriptionManagement() {
   const handleVerify = async (paymentKey: string, orderId: string, amount: number) => {
     setVerifyStatus('verifying');
     try {
-      const functions = getFunctions(app, 'us-central1');
+      const functions = getFunctions(app, 'asia-northeast3');
       const verify = httpsCallable(functions, 'verifyTossPayment');
       await verify({ paymentKey, orderId, amount });
       setVerifyStatus('success');
@@ -177,18 +181,34 @@ export default function SubscriptionManagement() {
   };
 
   const isPaid = academy?.plan && academy.plan !== 'free';
-  const isPro = academy?.plan === 'pro';
+  const isTrial = academy?.plan === 'trial';
   const currentPlanLabel =
     academy?.plan === 'pro' ? '프로' :
     academy?.plan === 'standard' ? '스탠다드' :
     academy?.plan === 'starter' ? '스타터' :
     academy?.plan === 'trial' ? '체험판' : 'Free';
 
-  // 현재 플랜에 해당하는 PLANS 항목 (pro = 스탠다드로 매핑, free = 스타터)
-  // 학생 수 기반으로 해당하는 플랜 자동 감지
-  const currentPlan = studentCount != null
+  // 체험판 D-day 계산 (오늘 0시 기준 남은 일수)
+  const trialDaysLeft: number | null = (() => {
+    if (!isTrial || !academy?.trial_ends_at) return null;
+    const end = academy.trial_ends_at.toDate().getTime();
+    const now = Date.now();
+    return Math.max(0, Math.ceil((end - now) / (24 * 60 * 60 * 1000)));
+  })();
+
+  // 현재 플랜에 해당하는 PLANS 항목 매핑
+  //   1순위) academy.plan 이 결제된 유료 플랜이면 그것을 사용
+  //   2순위) 미결제 상태(free/trial)는 학생 수 기반으로 추천 플랜 표시
+  // 이 로직이 빠지면 학생이 적을 때 결제된 프로 플랜이 스타터로 잘못 표시됨.
+  const paidPlan: typeof PLANS[number] | null =
+    academy?.plan === 'pro' ? PLANS[2] :
+    academy?.plan === 'standard' ? PLANS[1] :
+    academy?.plan === 'starter' ? PLANS[0] :
+    null;
+  const recommendedPlan = studentCount != null
     ? PLANS.find((p) => studentCount >= p.limitMin && studentCount <= p.limitMax) ?? PLANS[0]
-    : (isPro ? PLANS[1] : PLANS[0]);
+    : PLANS[0];
+  const currentPlan = paidPlan ?? recommendedPlan;
   // progress bar용 학생 한도 (프로 티어는 실제 학생 수 기준)
   const planLimit = currentPlan.limitMax === 9999
     ? Math.max(studentCount ?? 100, 100)
@@ -258,9 +278,25 @@ export default function SubscriptionManagement() {
                 </div>
               )}
             </div>
-            {isPro && academy?.plan_expires_at && (
+            {isPaid && !isTrial && academy?.plan_expires_at && (
               <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 10 }}>
                 다음 결제일: <b style={{ color: 'var(--text-primary)' }}>{formatDate(academy.plan_expires_at as Payment['paid_at'])}</b>
+              </div>
+            )}
+            {isTrial && academy?.trial_ends_at && (
+              <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 10 }}>
+                체험판 만료: <b style={{ color: 'var(--text-primary)' }}>{formatDate(academy.trial_ends_at as Payment['paid_at'])}</b>
+                {trialDaysLeft != null && (
+                  <span style={{
+                    display: 'inline-block', marginLeft: 8,
+                    padding: '2px 8px', borderRadius: 6,
+                    background: trialDaysLeft <= 3 ? '#FEF2F2' : '#FFFBEB',
+                    color: trialDaysLeft <= 3 ? '#991B1B' : '#78350F',
+                    fontSize: 11, fontWeight: 700,
+                  }}>
+                    D-{trialDaysLeft}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -283,7 +319,6 @@ export default function SubscriptionManagement() {
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button className="btn-secondary btn-sm">결제 수단 변경</button>
               <button
                 className="btn-primary btn-sm"
                 onClick={() => { setSelectedPlanId('pro'); setShowPayModal(true); }}
@@ -373,10 +408,14 @@ export default function SubscriptionManagement() {
                     disabled={isCurrent || isPaying || verifyStatus === 'verifying'}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!isCurrent) {
-                        setSelectedPlanId(plan.id as 'basic' | 'standard' | 'pro');
-                        setShowPayModal(true);
+                      if (isCurrent) return;
+                      // 다운그레이드 시 학생 수 한도 검증 (한도 초과면 결제 차단)
+                      if (studentCount != null && plan.limitMax !== 9999 && studentCount > plan.limitMax) {
+                        setDowngradeBlock({ planLabel: plan.label, limit: plan.limitMax });
+                        return;
                       }
+                      setSelectedPlanId(plan.id);
+                      setShowPayModal(true);
                     }}
                     style={{ width: '100%', marginTop: 20, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }}
                   >
@@ -394,11 +433,8 @@ export default function SubscriptionManagement() {
         <div className="card-header">
           <div>
             <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text-primary)' }}>결제 내역</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>최근 결제 내역</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>토스페이먼츠 결제 기록</div>
           </div>
-          <button className="btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <DownloadIcon /> 영수증 다운로드
-          </button>
         </div>
         {isLoadingPayments ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
@@ -414,10 +450,10 @@ export default function SubscriptionManagement() {
               <tr>
                 <th>결제일</th>
                 <th>내역</th>
-                <th>결제 수단</th>
-                <th>영수증</th>
+                <th>주문번호</th>
                 <th style={{ textAlign: 'right' }}>금액</th>
                 <th>상태</th>
+                <th>영수증</th>
               </tr>
             </thead>
             <tbody>
@@ -427,7 +463,6 @@ export default function SubscriptionManagement() {
                   <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
                     EduOnePass {p.plan === 'pro' ? '프로' : p.plan === 'standard' ? '스탠다드' : p.plan === 'starter' ? '스타터' : p.plan} 플랜 월 구독
                   </td>
-                  <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>-</td>
                   <td style={{ fontFamily: 'SF Mono, Menlo, Monaco, Consolas, monospace', fontSize: 12, color: 'var(--text-tertiary)' }}>
                     {p.order_id?.slice(0, 16) ?? '-'}
                   </td>
@@ -441,6 +476,20 @@ export default function SubscriptionManagement() {
                       <span className="badge-danger">취소됨</span>
                     )}
                   </td>
+                  <td>
+                    {p.receipt_url ? (
+                      <a
+                        href={p.receipt_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}
+                      >
+                        <DownloadIcon /> 보기
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>-</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -452,10 +501,31 @@ export default function SubscriptionManagement() {
       {showPayModal && (
         <PayModal
           plan={selectedPlan}
+          academyName={academy?.name ?? ''}
           onClose={() => setShowPayModal(false)}
           onPay={handlePay}
           isPaying={payingAmount === selectedPlan.amount}
         />
+      )}
+
+      {/* ── 다운그레이드 차단 안내 모달 */}
+      {downgradeBlock && (
+        <div className="modal-backdrop" onClick={() => setDowngradeBlock(null)}>
+          <div className="modal-box" style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: '22px 24px 18px' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                {downgradeBlock.planLabel} 플랜으로 변경할 수 없어요
+              </div>
+              <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', marginTop: 10, lineHeight: 1.55 }}>
+                현재 등록된 학생 수({studentCount}명)가 {downgradeBlock.planLabel} 플랜의 한도({downgradeBlock.limit}명)를 초과해요.
+                먼저 학생을 정리한 뒤 다시 시도해주세요.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-primary" onClick={() => setDowngradeBlock(null)}>확인</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -465,30 +535,32 @@ export default function SubscriptionManagement() {
 
 interface PayModalProps {
   plan: typeof PLANS[number];
+  academyName: string;
   onClose: () => void;
   onPay: (amount: number) => void;
   isPaying: boolean;
 }
 
-function PayModal({ plan, onClose, onPay, isPaying }: PayModalProps) {
+function PayModal({ plan, academyName, onClose, onPay, isPaying }: PayModalProps) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-box" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-box" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
         {/* 헤더 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 0' }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-            플랜 변경 — 결제
+            결제 안내
           </div>
           <button
             onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 4 }}
+            aria-label="닫기"
           >
             <CloseIcon />
           </button>
         </div>
 
-        {/* 본문 */}
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* 본문 — 토스 결제창에서 카드 정보 입력하므로 요약만 노출 */}
+        <div style={{ padding: '18px 24px 8px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* 변경 예정 플랜 요약 */}
           <div style={{ padding: '14px 16px', background: 'var(--bg-subtle)', borderRadius: 10 }}>
             <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>변경 예정 플랜</div>
@@ -500,53 +572,14 @@ function PayModal({ plan, onClose, onPay, isPaying }: PayModalProps) {
                 ₩{plan.amount.toLocaleString()} <span style={{ fontSize: 12.5, fontWeight: 400, color: 'var(--text-secondary)' }}>/월</span>
               </div>
             </div>
+            {academyName && (
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
+                결제 대상: {academyName}
+              </div>
+            )}
           </div>
 
-          {/* 카드 번호 */}
-          <div>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-              카드 번호
-            </label>
-            <input
-              className="input-field"
-              placeholder="1234 5678 9012 3456"
-              style={{ fontFamily: 'SF Mono, Menlo, Monaco, Consolas, monospace' }}
-            />
-          </div>
-
-          {/* 유효기간 + CVC */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                유효기간
-              </label>
-              <input
-                className="input-field"
-                placeholder="MM / YY"
-                style={{ fontFamily: 'SF Mono, Menlo, Monaco, Consolas, monospace' }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                CVC
-              </label>
-              <input
-                className="input-field"
-                placeholder="•••"
-                style={{ fontFamily: 'SF Mono, Menlo, Monaco, Consolas, monospace' }}
-              />
-            </div>
-          </div>
-
-          {/* 카드 소유주 */}
-          <div>
-            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-              카드 소유주
-            </label>
-            <input className="input-field" placeholder="이름을 입력하세요" />
-          </div>
-
-          {/* 일할 계산 안내 */}
+          {/* 결제 수단 안내 */}
           <div style={{
             padding: '12px 14px',
             background: 'var(--accent-soft)',
@@ -556,9 +589,19 @@ function PayModal({ plan, onClose, onPay, isPaying }: PayModalProps) {
             display: 'flex',
             gap: 10,
             alignItems: 'flex-start',
+            lineHeight: 1.5,
           }}>
             <SparkleIcon />
-            <div>변경 즉시 일할 계산되어 청구되며, 이전 플랜의 잔여 금액은 자동 차감됩니다.</div>
+            <div>
+              <b>토스페이먼츠 결제창</b>이 열리며, 카드 결제·계좌이체·간편결제 중 선택할 수 있어요.
+              결제 완료 즉시 플랜이 활성화됩니다.
+            </div>
+          </div>
+
+          {/* 정기결제 안내 */}
+          <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+            · 1개월 단위로 결제되며, 만료 전 다시 결제해야 자동 갱신돼요.<br />
+            · 결제 후 7일 이내 환불은 고객센터로 문의해주세요.
           </div>
         </div>
 

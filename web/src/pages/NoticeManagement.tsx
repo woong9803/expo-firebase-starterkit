@@ -1,12 +1,29 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   collection, query, where, orderBy, onSnapshot,
   addDoc, updateDoc, deleteDoc, doc, getDocs, serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app, db } from '../lib/firebase';
 import { useAuthStore } from '../store/useAuthStore';
 import { strings } from '../constants/strings';
-import type { Notice } from '../../../types/index';
+import type { Notice, User, AcademyPlan } from '../../../types/index';
+
+// 읽음 확인 기능 사용 가능 여부 — standard 이상 + 체험판
+// (도메인 규칙: 스탠다드 플랜부터 "읽음 확인" 기능 제공)
+function canUseReadConfirm(plan?: AcademyPlan | null): boolean {
+  return plan === 'standard' || plan === 'pro' || plan === 'trial';
+}
+
+// 공지 수신 대상 후보 — 학생/학부모 1명 (학부모는 자녀 반 기준으로 매칭)
+interface AudienceUser {
+  uid: string;
+  name: string;
+  role: 'student' | 'parent';
+  classId: string | null;     // 학생: 본인 반 / 학부모: 첫 자녀 반
+  className: string;          // 표시용 반 이름 (없으면 '미배정')
+}
 
 // ── 날짜 포맷 ────────────────────────────────────────────────
 function fmt(ts: Notice['created_at'], short = false) {
@@ -19,11 +36,14 @@ function fmt(ts: Notice['created_at'], short = false) {
 type ListTab = 'all' | 'important';
 
 export default function NoticeManagement() {
-  const { user } = useAuthStore();
+  const { user, academy } = useAuthStore();
+  // 읽음 확인 게이트 — academy.plan 기반 (standard/pro/trial 만 허용)
+  const canRead = canUseReadConfirm(academy?.plan);
 
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [audienceUids, setAudienceUids] = useState<Set<string>>(new Set());
+  // 학원 전체 수신 대상 — 학생/학부모 정보 (공지별 audience 계산에 사용)
+  const [audienceUsers, setAudienceUsers] = useState<AudienceUser[]>([]);
 
   const [listTab, setListTab] = useState<ListTab>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -33,19 +53,79 @@ export default function NoticeManagement() {
   const [deleteTarget, setDeleteTarget] = useState<Notice | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // ── 활성 학생+학부모 uid Set
+  // ── 활성 학생+학부모 정보 + 반 이름 맵
+  // 공지별 정확한 audience(역할/반)를 계산하기 위해 학부모는 자녀 반까지 같이 조회
   useEffect(() => {
     if (!user?.academy_id) return;
     (async () => {
+      // 1) 학원 내 반 이름 맵
+      const classSnap = await getDocs(
+        query(collection(db, 'classes'), where('academy_id', '==', user.academy_id))
+      );
+      const classNameMap = new Map<string, string>();
+      classSnap.docs.forEach((d) => classNameMap.set(d.id, (d.data().name as string) ?? ''));
+
+      // 2) 학생/학부모 동시 조회
       const [s, p] = await Promise.all([
         getDocs(query(collection(db, 'users'), where('academy_id', '==', user.academy_id), where('role', '==', 'student'), where('is_active', '==', true))),
         getDocs(query(collection(db, 'users'), where('academy_id', '==', user.academy_id), where('role', '==', 'parent'), where('is_active', '==', true))),
       ]);
-      const uids = new Set<string>();
-      [...s.docs, ...p.docs].filter((d) => !d.data().deleted_at).forEach((d) => uids.add(d.id));
-      setAudienceUids(uids);
+
+      // 3) 학생: 본인 반 ID 사용
+      const studentDocs = s.docs.filter((d) => !d.data().deleted_at);
+      const students: AudienceUser[] = studentDocs.map((d) => {
+        const data = d.data() as User;
+        const cid = data.class_id ?? null;
+        return {
+          uid: d.id,
+          name: data.name ?? '',
+          role: 'student',
+          classId: cid,
+          className: cid ? (classNameMap.get(cid) ?? '미배정') : '미배정',
+        };
+      });
+
+      // 학부모 → 자녀 uid → 자녀 반 ID 매핑 (학부모 audience 계산용)
+      // 학생 맵을 먼저 만들어 자녀 uid로 빠르게 조회
+      const studentClassByUid = new Map<string, string | null>();
+      studentDocs.forEach((d) => studentClassByUid.set(d.id, (d.data() as User).class_id ?? null));
+
+      // 4) 학부모: 첫 자녀 반 사용 (다자녀는 첫 자녀 기준 — 단순 표시용)
+      const parents: AudienceUser[] = p.docs
+        .filter((d) => !d.data().deleted_at)
+        .map((d) => {
+          const data = d.data() as User;
+          const firstChildUid = (data.children ?? [])[0];
+          const cid = firstChildUid ? (studentClassByUid.get(firstChildUid) ?? null) : null;
+          return {
+            uid: d.id,
+            name: data.name ?? '',
+            role: 'parent',
+            classId: cid,
+            className: cid ? (classNameMap.get(cid) ?? '미배정') : '미배정',
+          };
+        });
+
+      setAudienceUsers([...students, ...parents]);
     })();
   }, [user?.academy_id]);
+
+  // 공지별 실제 수신 대상 계산 — target_roles + target_class_ids 적용
+  // target_roles 빈 배열 = 학생+학부모 모두 / target_class_ids 빈 배열 = 전체 반
+  const getNoticeAudience = (notice: Notice): AudienceUser[] => {
+    const targetRoles = notice.target_roles ?? [];
+    const targetClassIds = notice.target_class_ids ?? [];
+    return audienceUsers.filter((u) => {
+      // 역할 필터
+      if (targetRoles.length > 0 && !targetRoles.includes(u.role)) return false;
+      // 반 필터 — 학부모도 자녀 반 기준
+      if (targetClassIds.length > 0) {
+        if (!u.classId) return false;
+        if (!targetClassIds.includes(u.classId)) return false;
+      }
+      return true;
+    });
+  };
 
   // ── 공지 실시간 구독
   useEffect(() => {
@@ -79,8 +159,12 @@ export default function NoticeManagement() {
 
   const selected = notices.find((n) => n.id === selectedId) ?? null;
 
-  const readCount = (n: Notice) =>
-    (n.read_by ?? []).filter((uid) => audienceUids.has(uid)).length;
+  // 공지별 읽음 수 — 실제 audience 안에서만 카운트
+  const readCount = (n: Notice) => {
+    const audience = getNoticeAudience(n);
+    const audienceUidSet = new Set(audience.map((a) => a.uid));
+    return (n.read_by ?? []).filter((uid) => audienceUidSet.has(uid)).length;
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -137,7 +221,7 @@ export default function NoticeManagement() {
             ) : (
               filteredNotices.map((n) => {
                 const rc = readCount(n);
-                const total = audienceUids.size;
+                const total = getNoticeAudience(n).length;
                 const pct = total > 0 ? Math.round((rc / total) * 100) : 0;
                 const isSelected = selectedId === n.id;
 
@@ -185,9 +269,18 @@ export default function NoticeManagement() {
                       <span className="badge-neutral" style={{ fontSize: 10.5 }}>
                         {(n.target_class_ids?.length ?? 0) === 0 ? '전체' : `${n.target_class_ids!.length}개 반`}
                       </span>
-                      <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, color: '#64748b' }}>
-                        읽음 {pct}%
-                      </span>
+                      {canRead ? (
+                        <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, color: '#64748b' }}>
+                          읽음 {pct}%
+                        </span>
+                      ) : (
+                        <span
+                          style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 500, color: '#94a3b8' }}
+                          title={strings.notices.readConfirmLockedTitle}
+                        >
+                          {strings.notices.readConfirmLockedShort}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -200,7 +293,8 @@ export default function NoticeManagement() {
         {selected ? (
           <NoticeDetail
             notice={selected}
-            audienceUids={audienceUids}
+            audience={getNoticeAudience(selected)}
+            canRead={canRead}
             onEdit={() => { setEditTarget(selected); setShowForm(true); }}
             onDelete={() => setDeleteTarget(selected)}
           />
@@ -240,17 +334,64 @@ export default function NoticeManagement() {
 
 // ── 공지 상세 패널 ────────────────────────────────────────────
 function NoticeDetail({
-  notice, audienceUids, onEdit, onDelete,
+  notice, audience, canRead, onEdit, onDelete,
 }: {
   notice: Notice;
-  audienceUids: Set<string>;
+  audience: AudienceUser[];
+  canRead: boolean;            // 읽음 확인 + 미확인자 재알림 사용 가능 여부
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const readCnt = (notice.read_by ?? []).filter((uid) => audienceUids.has(uid)).length;
-  const total = audienceUids.size;
-  const unreadCnt = total - readCnt;
+  const navigate = useNavigate();
+  // 미확인자 명단 펼침/접힘 + 역할 필터
+  const [showUnreadList, setShowUnreadList] = useState(false);
+  const [unreadFilter, setUnreadFilter] = useState<'all' | 'student' | 'parent'>('all');
+  // 재알림 발송 진행 상태
+  const [isResending, setIsResending] = useState(false);
+
+  // 미확인자 재알림 — onCall로 서버에서 audience 재계산 + FCM 발송
+  // 24시간 쿨다운은 서버에서 검증하므로 클라이언트에서는 따로 차단 안 함
+  const handleResend = async () => {
+    if (isResending) return;
+    if (!confirm(`미확인자 ${unreadCnt}명에게 재알림을 보낼까요?\n(24시간에 한 번만 발송할 수 있어요)`)) return;
+    setIsResending(true);
+    try {
+      const functions = getFunctions(app, 'asia-northeast3');
+      const fn = httpsCallable<{ noticeId: string }, { sent: number; skipped: number }>(
+        functions,
+        'resendNoticeToUnread'
+      );
+      const res = await fn({ noticeId: notice.id });
+      const sent = res.data?.sent ?? 0;
+      if (sent === 0) {
+        alert('발송할 미확인자가 없어요.');
+      } else {
+        alert(`${sent}명에게 재알림을 보냈어요.`);
+      }
+    } catch (err) {
+      // Functions HttpsError는 message에 사용자용 안내가 들어 있음
+      const msg = err instanceof Error ? err.message : strings.common.error;
+      alert(msg);
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  // 읽음 처리된 uid Set
+  const readSet = new Set(notice.read_by ?? []);
+  // audience 안에서만 읽음/미확인 분류
+  const readUsers = audience.filter((u) => readSet.has(u.uid));
+  const unreadUsers = audience.filter((u) => !readSet.has(u.uid));
+
+  const total = audience.length;
+  const readCnt = readUsers.length;
+  const unreadCnt = unreadUsers.length;
   const pct = total > 0 ? Math.round((readCnt / total) * 100) : 0;
+
+  // 역할 필터 적용된 미확인자 명단 (이름 가나다순)
+  const filteredUnread = unreadUsers
+    .filter((u) => unreadFilter === 'all' || u.role === unreadFilter)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
   return (
     <div className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column' }}>
@@ -285,7 +426,29 @@ function NoticeDetail({
         }
       </div>
 
-      {/* 읽음 현황 */}
+      {/* 읽음 현황 — Pro 플랜 게이트 */}
+      {!canRead ? (
+        <div style={{ padding: '0 28px 22px' }}>
+          <div style={{
+            padding: '20px 22px', background: '#f8fafc', border: '1px dashed #cbd5e1',
+            borderRadius: 10, textAlign: 'center',
+          }}>
+            <p style={{ fontSize: 28, marginBottom: 8 }}>🔒</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+              {strings.notices.readConfirmLockedTitle}
+            </p>
+            <p style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.6, marginBottom: 14 }}>
+              {strings.notices.readConfirmLockedDesc}
+            </p>
+            <button
+              className="btn-primary btn-sm"
+              onClick={() => navigate('/subscription')}
+            >
+              {strings.notices.readConfirmUpgrade}
+            </button>
+          </div>
+        </div>
+      ) : (
       <div style={{ padding: '0 28px 22px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>읽음 현황</p>
@@ -300,8 +463,8 @@ function NoticeDetail({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
           {[
             { label: '읽음', value: readCnt, color: '#065f46', bg: '#e6f7ef' },
-            { label: '미확인', value: unreadCnt, color: '#475569', bg: '#f1f3f6' },
-            { label: '푸시 발송', value: total, color: '#3b5bdb', bg: '#eef2ff' },
+            { label: '미확인', value: unreadCnt, color: '#991b1b', bg: '#fee4e4' },
+            { label: '수신 대상', value: total, color: '#3b5bdb', bg: '#eef2ff' },
           ].map((s) => (
             <div key={s.label} style={{ padding: '12px 14px', background: s.bg, borderRadius: 8 }}>
               <p style={{ fontSize: 12, color: s.color, fontWeight: 500 }}>{s.label}</p>
@@ -311,7 +474,103 @@ function NoticeDetail({
             </div>
           ))}
         </div>
+
+        {/* ── 미확인자 명단 펼침 ── */}
+        {total > 0 && (
+          <div style={{ marginTop: 14, border: '1px solid #e4e7ec', borderRadius: 8, overflow: 'hidden' }}>
+            <button
+              onClick={() => setShowUnreadList((p) => !p)}
+              style={{
+                width: '100%', padding: '10px 14px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: showUnreadList ? '#f6f7f9' : '#fff',
+                border: 'none', cursor: 'pointer', transition: 'background 0.12s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#f6f7f9'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = showUnreadList ? '#f6f7f9' : '#fff'; }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                미확인자 {unreadCnt}명
+              </span>
+              <svg
+                width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                style={{
+                  color: '#94a3b8',
+                  transform: showUnreadList ? 'rotate(180deg)' : 'rotate(0)',
+                  transition: 'transform 0.18s',
+                }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showUnreadList && (
+              <div style={{ borderTop: '1px solid #e4e7ec' }}>
+                {/* 역할 필터 탭 */}
+                {unreadCnt > 0 && (
+                  <div style={{
+                    padding: '10px 14px', borderBottom: '1px solid #e4e7ec',
+                    display: 'flex', gap: 6, background: '#fafbfc',
+                  }}>
+                    {([
+                      ['all', '전체', unreadUsers.length],
+                      ['student', '학생', unreadUsers.filter((u) => u.role === 'student').length],
+                      ['parent', '학부모', unreadUsers.filter((u) => u.role === 'parent').length],
+                    ] as ['all' | 'student' | 'parent', string, number][]).map(([id, label, cnt]) => (
+                      <button
+                        key={id}
+                        onClick={() => setUnreadFilter(id)}
+                        style={{
+                          padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6,
+                          border: 'none', cursor: 'pointer', transition: 'all 0.12s',
+                          background: unreadFilter === id ? '#eef2ff' : 'transparent',
+                          color: unreadFilter === id ? '#3b5bdb' : '#64748b',
+                        }}
+                      >
+                        {label} {cnt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 명단 */}
+                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                  {filteredUnread.length === 0 ? (
+                    <p style={{ textAlign: 'center', padding: '24px 0', fontSize: 12.5, color: '#94a3b8' }}>
+                      {unreadCnt === 0 ? '모두 확인했어요 🎉' : '해당 조건의 미확인자가 없어요'}
+                    </p>
+                  ) : (
+                    filteredUnread.map((u) => (
+                      <div
+                        key={u.uid}
+                        style={{
+                          padding: '10px 14px', borderBottom: '1px solid #f1f3f6',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                            {u.name || '(이름 없음)'}
+                          </span>
+                          <span style={{
+                            fontSize: 10.5, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
+                            background: u.role === 'student' ? '#e6f7ef' : '#fff7e6',
+                            color: u.role === 'student' ? '#065f46' : '#7c4a02',
+                          }}>
+                            {u.role === 'student' ? '학생' : '학부모'}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{u.className}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+      )}
 
       {/* 하단 액션 */}
       <div style={{
@@ -322,9 +581,17 @@ function NoticeDetail({
         <button className="btn-secondary btn-sm" onClick={onEdit}>
           <IconEdit /> 수정
         </button>
-        <button className="btn-secondary btn-sm">
-          <IconUsers /> 미확인자 재알림
-        </button>
+        {canRead && (
+          <button
+            className="btn-secondary btn-sm"
+            onClick={handleResend}
+            disabled={isResending || unreadCnt === 0}
+            title={unreadCnt === 0 ? '모두 확인했어요' : '24시간에 한 번 발송 가능'}
+          >
+            <IconUsers />
+            {isResending ? '발송 중...' : `미확인자 재알림${unreadCnt > 0 ? ` (${unreadCnt})` : ''}`}
+          </button>
+        )}
         <button className="btn-danger btn-sm" style={{ marginLeft: 'auto' }} onClick={onDelete}>
           <IconTrash /> 삭제
         </button>
