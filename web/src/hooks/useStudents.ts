@@ -10,6 +10,7 @@ import {
   deleteDoc,
   serverTimestamp,
   Timestamp,
+  type DocumentData,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, app } from '../lib/firebase';
@@ -161,7 +162,7 @@ export function useUpdateStudent() {
         if (!isNaN(d.getTime())) enrollTs = Timestamp.fromDate(d);
       }
 
-      const payload: Record<string, unknown> = {
+      const payload: DocumentData = {
         name: data.name.trim(),
         birth_date: data.birthDate.trim() || null,
         guardian_phone: data.guardianPhone.trim() || null,
@@ -210,7 +211,7 @@ export function useMoveStudentClass() {
       newClassDefault?: number | null;
     }) => {
       const newFee = resolveTuitionOnClassChange(currentTuitionFee, newClassDefault);
-      const payload: Record<string, unknown> = { class_id: classId };
+      const payload: DocumentData = { class_id: classId };
       // undefined = "건드리지 않음" (페이로드 제외) / null = "명시적 미설정" (저장)
       if (newFee !== undefined) payload.tuition_fee = newFee;
       await updateDoc(doc(db, 'users', uid), payload);
@@ -260,7 +261,7 @@ export function useCreateStudent() {
           ? data.tuitionFee
           : resolveTuitionOnClassChange(undefined, data.newClassDefault);
 
-        const extraPayload: Record<string, unknown> = {};
+        const extraPayload: DocumentData = {};
         if (data.guardianPhone) extraPayload.guardian_phone = data.guardianPhone;
         if (data.address !== undefined) extraPayload.address = data.address.trim() || null;
         // newFee 는 number 또는 null — null 도 명시적 미설정 의미로 저장

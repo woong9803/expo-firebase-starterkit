@@ -23,7 +23,16 @@
         "RCT_USE_PREBUILT_RNCORE": "0",
         "RCT_USE_RN_DEP": "0",
         "RCT_NEW_ARCH_ENABLED": "0",
-        "APNS_ENV": "production"
+        "APNS_ENV": "production",
+        "EXPO_PUBLIC_KAKAO_APP_KEY": "9aa1e30b75fd0d1d6de5e046548c9753",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "611902629604-ppn78jqe4gqu8bale9c1n5fied00s5t4.apps.googleusercontent.com",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAqBBFy46yIpvgOM1i4Md2wtCrNqgRwB4I",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "dev-app-first.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "dev-app-first",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "dev-app-first.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "611902629604",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:611902629604:web:b34029c0a98087cb652ef1",
+        "EXPO_PUBLIC_WEB_DASHBOARD_URL": "https://dev-app-first.web.app"
       }
     }
   },
